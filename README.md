@@ -79,11 +79,23 @@ A move keeps everything: branches, stashes, the reflog, your uncommitted
 changes. A re-clone throws all of it away, which is why this tool does not do
 one.
 
+**Worktrees come too.** The sibling `<repo>-worktrees/` folder moves alongside
+the repo, and every worktree is re-linked afterwards — the ones that moved and
+the ones that did not. A worktree is never mistaken for a second copy of the
+repo, even though git reports the same `origin` for both.
+
 ```sh
 talea adopt                      # show what would move, change nothing
 talea adopt --from ~/Desktop     # look there too; the folder is remembered
 talea adopt --apply              # do it
 ```
+
+Matching is on the remote URL. When only the *name* matches — a fork, a mirror,
+or a directory that merely shares a name — it is listed and left alone; `--loose`
+or `-r <repo>` includes it once you have looked. That guard is not theoretical:
+an FVM Flutter SDK cache reports `origin` as `flutter/flutter`, which name-matches
+a personal `flutter` fork, and moving it would break every Flutter project on the
+machine.
 
 If the same repo turns up twice, the copy at the catalogue path wins and the
 other moves into `.talea-duplicates/` with everything in it. **Nothing is ever

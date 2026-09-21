@@ -34,9 +34,13 @@ called ${c.dim('~/tmp/clone2')} is still recognised as the repo it holds. A matc
 ${c.bold('moved')}, never re-cloned — the move keeps every branch, stash, reflog entry
 and uncommitted change exactly as it is.
 
-A repo that cannot be moved safely (a linked worktree, extra worktrees, an
-occupied destination, another filesystem) is left alone and the reason is
-printed.
+${c.bold('Worktrees come too.')} The sibling ${c.dim('<repo>-worktrees/')} folder moves alongside the
+repo, and every worktree — there, nested inside the repo, or anywhere else on
+disk — is re-linked afterwards. A worktree that does not move is repaired where
+it sits.
+
+A repo that cannot be moved safely (it is itself a linked worktree, an occupied
+destination, another filesystem) is left alone and the reason is printed.
 
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
@@ -52,6 +56,7 @@ Options
   -r, --repo <names>    restrict to repos
       --from <path>     extra folder to search (repeatable, remembered)
       --apply           perform the moves (default is a dry run)
+      --loose           also move repos matched by name when the remote differs
       --fix-paths       re-repair config for repos already adopted, moving nothing
   -j, --jobs <n>        parallel git calls (default 8)
 `;
@@ -97,6 +102,23 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     ok(
       `${c.bold(plan.repo.name)} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, plan.to))}`,
     );
+
+    // Said out loud, always. A worktree folder moving is a second directory
+    // relocating on the developer's disk, and the one thing worse than not
+    // moving it is moving it without saying so.
+    const wt = res.worktrees;
+    if (wt?.siblings) {
+      plain(
+        `    ${c.dim(glyph.pending)} worktrees ${c.dim(shorten(wt.siblings.from))} ${icon.arrow} ${c.dim(path.relative(root, wt.siblings.to))}`,
+      );
+    }
+    if (wt?.repaired?.length) {
+      plain(
+        `    ${c.dim(glyph.pending)} ${wt.repaired.length} worktree${wt.repaired.length > 1 ? 's' : ''} re-linked` +
+          (wt.stale ? c.yellow(` (${wt.stale} unreachable, left registered)`) : ''),
+      );
+    }
+
     const repairs = repairPaths(root, plan);
     results.push({ plan, ok: true, repairs });
   }
@@ -344,6 +366,29 @@ export async function run(opts) {
     return;
   }
 
+  // A name-only match means the remote host is not one the catalogue lists:
+  // the repo NAME matched and the URL did not. That is usually a fork or a
+  // mirror and usually right — and when it is wrong it is very wrong. An FVM
+  // Flutter SDK cache at ~/SDK/FVM/cache.git has origin flutter/flutter, which
+  // name-matches a personal `flutter` fork, and moving it breaks every Flutter
+  // project on the machine.
+  //
+  // `clone` and `sync` already refuse to act on these unattended. `adopt
+  // --apply` used to move them after printing a warning nobody had to answer,
+  // which made the warning decorative. Now they need saying so: --loose, or
+  // naming the repo with -r, which is itself an explicit instruction.
+  const named = Boolean(opts.repo);
+  const loose = Boolean(opts.loose) || named;
+  //
+  // Parking is a move too, and the FVM case was a PARK, not a move: the
+  // catalogue path was empty, so the SDK cache was second-in-line and headed
+  // for .talea-duplicates/. Gating only `moves` would have left the exact
+  // directory this guard exists for still being relocated.
+  const exact = (p) => p.confidence === 'exact';
+  const unsure = [...moves, ...parks].filter((p) => !exact(p));
+  const willMove = loose ? moves : moves.filter(exact);
+  const willPark = loose ? parks : parks.filter(exact);
+
   if (moves.length && !opts.apply) {
     plain('');
     for (const p of moves) {
@@ -354,11 +399,18 @@ export async function run(opts) {
           `      to    ${c.dim(path.relative(root, p.to))}`,
       );
     }
-    if (moves.some((p) => p.confidence === 'name')) {
+    if (unsure.length) {
       plain('');
       warn(
-        `${c.yellow('~')} matched on repo name only — the remote host is not one the catalogue lists.\n` +
-          `  Check those remotes before applying.`,
+        `${c.yellow('~')} ${unsure.length} matched on repo name only — the remote host is not one the\n` +
+          `  catalogue lists. Check those remotes: a directory that merely shares a name\n` +
+          `  with one of your repos is not one of your repos.`,
+      );
+      plain(
+        c.dim(
+          `  --apply leaves them alone. Add ${c.bold('--loose')} to include them, or name one\n` +
+            `  with ${c.bold('-r <repo>')} once you have checked it.`,
+        ),
       );
     }
   }
@@ -390,8 +442,11 @@ export async function run(opts) {
 
   if (!opts.apply) {
     const bits = [];
-    if (moves.length) bits.push(`move ${moves.length} into place`);
-    if (parks.length) bits.push(`park ${parks.length} second cop${parks.length === 1 ? 'y' : 'ies'}`);
+    if (willMove.length) bits.push(`move ${willMove.length} into place`);
+    if (willPark.length) bits.push(`park ${willPark.length} second cop${willPark.length === 1 ? 'y' : 'ies'}`);
+    if (unsure.length && !loose) {
+      bits.push(`${c.yellow(`leave ${unsure.length} name-only match${unsure.length === 1 ? '' : 'es'} alone`)}`);
+    }
     plain(`\n${c.dim(bits.length ? `Re-run with --apply to ${bits.join(' and ')}.` : 'Nothing to apply.')}`);
     return;
   }
@@ -400,13 +455,25 @@ export async function run(opts) {
     saveState(root, { ...state, scanPaths: [...new Set([...remembered, ...extra])] });
   }
 
+  if (unsure.length && !loose) {
+    plain('');
+    for (const p of unsure) {
+      warn(
+        `${c.bold(p.repo.name)} left alone — matched on name only, not on remote\n` +
+          `    ${c.dim(shorten(p.from))}\n` +
+          `    ${c.dim(p.originUrl ?? 'no origin')}`,
+      );
+    }
+    plain(c.dim('  Check the remote, then re-run with --loose or -r to include it.'));
+  }
+
   plain('');
-  const applied = await applyMoves(root, moves, parks, manifest);
+  const applied = await applyMoves(root, willMove, willPark, manifest);
   const okCount = applied.results.filter((r) => r.ok).length;
   summary({
     ok: okCount + applied.parked.length,
     skipped: inPlace.length,
-    failed: applied.results.length - okCount + (parks.length - applied.parked.length),
+    failed: applied.results.length - okCount + (willPark.length - applied.parked.length),
     okLabel: 'relocated',
   });
 

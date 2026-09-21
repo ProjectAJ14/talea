@@ -143,6 +143,23 @@ export function catalogueUrls(manifest, repo) {
 }
 
 /**
+ * Is this directory a linked worktree rather than a checkout of its own?
+ *
+ * A worktree's `.git` is a file holding a pointer, where a real checkout has a
+ * directory. The distinction matters because a worktree reports the same
+ * `origin` as the repo it belongs to, so by remote alone it is indistinguishable
+ * from a second clone — and treating one as a stray copy is how you rename it
+ * out from under git and unroot every commit in it.
+ */
+export function isLinkedWorktree(dir) {
+  try {
+    return lstatSync(path.join(dir, '.git')).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Which catalogue repo does this remote belong to?
  *
  * `exact` — the normalised URL matches a form the catalogue knows.
@@ -250,16 +267,6 @@ async function moveBlockers(dir) {
     return 'no .git found';
   }
 
-  const { code, stdout } = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
-  if (code === 0) {
-    const outside = strandedWorktrees(dir, stdout);
-    if (outside.length) {
-      return (
-        `${outside.length} extra worktree(s) registered elsewhere — their absolute ` +
-        `paths would break: ${outside.join(', ')}`
-      );
-    }
-  }
   return null;
 }
 
@@ -292,36 +299,68 @@ export function canonical(p) {
 }
 
 /**
- * Worktrees a move would actually strand.
+ * Every linked worktree of this repo, as git currently records it.
  *
- * Two kinds are not blockers, and treating them as such refused a move that
- * was perfectly safe:
+ * `prunable` ones are skipped: git already knows the directory is gone, so
+ * there is no path left to repair. `--porcelain` emits a blank-line-separated
+ * block per worktree, the first being the main checkout — which is the repo
+ * being moved, not a link into it.
  *
- *  - `prunable` — git already knows the directory is gone, so a stale
- *    registration has no path left to break.
- *  - one living *inside* the repo (`.claude/worktrees/x`) — it travels with
- *    the rename, and `git worktree repair` re-links it afterwards.
- *
- * What is left is a worktree somewhere else on disk, which really would be
- * orphaned. `--porcelain` emits a blank-line-separated block per worktree,
- * the first being the main checkout.
+ * This used to return only the worktrees *outside* the repo, and a move was
+ * refused when there were any. That was wrong: an external worktree does not
+ * move, so nothing about it breaks except the pointer in its own `.git` file,
+ * and `git worktree repair` exists to rewrite exactly that. Refusing meant a
+ * developer who uses worktrees at all could never have their repos organised —
+ * and it cascaded, because a refused winner leaves every duplicate of it
+ * refused too.
  */
-export function strandedWorktrees(dir, porcelain) {
-  const base = canonical(dir);
-  const inside = (p) => {
-    const rel = path.relative(base, canonical(p));
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-  };
-
+export function linkedWorktrees(porcelain) {
   return String(porcelain)
     .split(/\r?\n\s*\r?\n/)
     .map((block) => lines(block))
     .filter((block) => block.length && block[0].startsWith('worktree '))
-    .slice(1) // the main checkout is the thing being moved, not a blocker
+    .slice(1) // the main checkout is the thing being moved, not a link into it
     .filter((block) => !block.some((l) => l === 'prunable' || l.startsWith('prunable ')))
-    .map((block) => block[0].slice('worktree '.length))
-    .filter((p) => !inside(p));
+    .map((block) => block[0].slice('worktree '.length));
 }
+
+/**
+ * Where a worktree ends up once the repo has moved.
+ *
+ * Three cases, and the whole correctness of the repair is getting them right:
+ *
+ *  - inside the repo (`.claude/worktrees/x`) — travelled with the rename.
+ *  - inside the sibling `<repo>-worktrees/` folder, when that folder was moved
+ *    alongside — travelled too, to the new sibling.
+ *  - anywhere else — did not move at all, and must be repaired where it sits.
+ */
+export function remapWorktree(p, { from, to, siblings }) {
+  const within = (base) => {
+    const rel = path.relative(canonical(base), canonical(p));
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null;
+  };
+
+  const nested = within(from);
+  if (nested) return path.join(to, nested);
+
+  if (siblings) {
+    const moved = within(siblings.from);
+    if (moved) return path.join(siblings.to, moved);
+  }
+
+  return p;
+}
+
+/**
+ * The sibling folder worktrees are conventionally kept in.
+ *
+ * `<repo>-worktrees/`, derived from the repo's own path rather than stored
+ * anywhere — which is why it has to move when the repo does. Leave it behind
+ * and the tooling that creates worktrees starts using a new empty folder next
+ * to the moved repo while every existing worktree sits beside the old location.
+ * Both halves keep working; the developer now has two.
+ */
+export const siblingWorktreeDir = (repoPath) => `${repoPath}-worktrees`;
 
 /**
  * What a second copy holds that the copy being kept does not.
@@ -411,6 +450,14 @@ export async function planAdoptions(manifest, root, repos, candidates) {
   for (const { dir, originUrl } of candidates) {
     const match = matchRepo(manifest, repos, originUrl);
     if (!match) continue;
+
+    // A linked worktree shares its repo's origin, so it arrives here looking
+    // exactly like a second clone. It is not one — it is part of the repo, and
+    // it travels when the repo moves (see relocateWorktrees). Reporting one as
+    // a stray copy produced a refusal line per worktree, which for a developer
+    // who uses them buried the real findings under fifteen lines of noise.
+    if (isLinkedWorktree(dir)) continue;
+
     const key = match.repo.name;
     if (!byRepo.has(key)) byRepo.set(key, { repo: match.repo, copies: [] });
     byRepo.get(key).copies.push({ dir, originUrl, confidence: match.confidence });
@@ -506,38 +553,83 @@ export async function planAdoptions(manifest, root, repos, candidates) {
  * moved aside, and the developer removes the duplicates area themselves.
  */
 /**
- * Re-link worktrees that lived inside the repo and moved with it.
+ * What git records about this repo's worktrees, read BEFORE it moves.
  *
- * Every link between a repo and its worktrees is an absolute path to where the
- * repo used to be, and `git worktree repair` with no arguments cannot help:
- * it looks for each worktree at its recorded path, which is exactly the path
- * that no longer exists. Handing it the new paths is what the flag is for.
+ * The ordering is load-bearing. Once the repo has moved, every worktree that
+ * travelled with it is reported `prunable` — git looks for it at its recorded
+ * location, which is the path that just stopped existing — and a prunable
+ * entry is indistinguishable from a genuinely dead one. Read after the move
+ * and the worktrees that most need repairing are exactly the ones filtered out.
  */
-function repairNestedWorktrees(from, to) {
+export function readWorktrees(dir) {
   const listed = spawnSync('git', ['worktree', 'list', '--porcelain'], {
-    cwd: to,
+    cwd: dir,
     encoding: 'utf8',
   });
-  if (listed.status !== 0) return;
+  return listed.status === 0 ? linkedWorktrees(listed.stdout) : [];
+}
 
-  const moved = lines(listed.stdout)
-    .filter((l) => l.startsWith('worktree '))
-    .map((l) => l.slice('worktree '.length))
-    .map((p) => path.relative(canonical(from), canonical(p)))
-    .filter((rel) => rel && !rel.startsWith('..') && !path.isAbsolute(rel))
-    .map((rel) => path.join(to, rel));
+/**
+ * Bring a repo's worktrees with it, then re-link every one of them.
+ *
+ * Every link between a repo and a worktree is an absolute path to where the
+ * repo used to be, so a rename breaks all of them at once. `git worktree
+ * repair` with no arguments cannot help: it looks for each worktree at its
+ * recorded path, which is exactly the path that no longer exists. Handing it
+ * the new paths is what the argument form is for.
+ *
+ * The sibling `<repo>-worktrees/` folder moves too. That location is derived
+ * from the repo's own path at the moment a worktree is created, never stored,
+ * so leaving it behind does not break anything — it silently splits the
+ * workflow in half instead, new worktrees appearing next to the moved repo
+ * while every existing one stays beside the old location. Splitting something
+ * in two and reporting success is worse than refusing.
+ *
+ * Nothing is deleted and nothing is overwritten: an occupied destination means
+ * the folder stays where it is, and the worktrees in it are repaired in place.
+ */
+function relocateWorktrees(from, to, recorded) {
+  if (!recorded.length) return { repaired: [], siblings: null, stale: 0 };
 
-  if (moved.length) {
-    spawnSync('git', ['worktree', 'repair', ...moved], { cwd: to, stdio: 'ignore' });
+  // The sibling folder moves only if it exists, is going somewhere new, and
+  // that somewhere is free. Anything else and the worktrees stay put — still
+  // correct, just not tidied.
+  let siblings = null;
+  const fromSiblings = siblingWorktreeDir(from);
+  const toSiblings = siblingWorktreeDir(to);
+  if (
+    existsSync(fromSiblings) &&
+    !samePath(fromSiblings, toSiblings) &&
+    !existsSync(toSiblings)
+  ) {
+    try {
+      mkdirSync(path.dirname(toSiblings), { recursive: true });
+      renameSync(fromSiblings, toSiblings);
+      siblings = { from: fromSiblings, to: toSiblings };
+    } catch {
+      // A cross-device sibling folder, or one being written to. The repo has
+      // already moved and is fine; the worktrees are repaired where they are.
+    }
   }
+
+  const now = recorded
+    .map((p) => remapWorktree(p, { from, to, siblings }))
+    .filter((p) => existsSync(p));
+
+  if (now.length) {
+    spawnSync('git', ['worktree', 'repair', ...now], { cwd: to, stdio: 'ignore' });
+  }
+  return { repaired: now, siblings, stale: recorded.length - now.length };
 }
 
 export function executeMove(plan) {
   try {
     mkdirSync(path.dirname(plan.to), { recursive: true });
+    // Read before the rename: see readWorktrees.
+    const recorded = readWorktrees(plan.from);
     renameSync(plan.from, plan.to);
-    repairNestedWorktrees(plan.from, plan.to);
-    return { ok: true, to: plan.to };
+    const worktrees = relocateWorktrees(plan.from, plan.to, recorded);
+    return { ok: true, to: plan.to, worktrees };
   } catch (err) {
     if (err.code === 'EXDEV') {
       const cmd = process.platform === 'win32' ? 'move' : 'mv';

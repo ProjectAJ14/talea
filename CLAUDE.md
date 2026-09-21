@@ -74,7 +74,26 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    globally should carry no supply chain. Adding a dependency needs a written
    reason.
 
-2. **Never destroy uncommitted work.** No `reset --hard`, no `clean -fd`, no
+2. **Worktrees travel with their repo.** A worktree's link to its repo is an
+   absolute path, so a rename breaks every one at once. `executeMove` reads the
+   worktree list **before** the rename — afterwards every worktree that moved is
+   reported `prunable`, indistinguishable from a dead one, so reading late
+   filters out exactly the ones that need repairing — then moves the sibling
+   `<repo>-worktrees/` folder and runs `git worktree repair` with the new paths.
+   That folder is derived from the repo's path when a worktree is created and
+   never stored, so leaving it behind does not error; it silently splits the
+   workflow in two. A linked worktree is never treated as a second copy of the
+   repo, though it reports the same `origin` — renaming one unroots its commits.
+
+3. **A name-only match is never moved unattended.** `matchRepo` returns `exact`
+   when the remote URL matches and `name` when only the repo name does. `clone`
+   and `sync` act on `exact` only, and so does `adopt --apply`; `--loose` or an
+   explicit `-r` is how you say otherwise. Found on a real machine: an FVM
+   Flutter SDK cache has origin `flutter/flutter`, which name-matches a personal
+   `flutter` fork, and adopting it breaks every Flutter project there. Parks are
+   gated the same way — parking is a move, and that case was a park.
+
+4. **Never destroy uncommitted work.** No `reset --hard`, no `clean -fd`, no
    `checkout --force`. Check `isDirty()` and skip with a warning.
    This is also why a repo in the wrong place is **moved, not re-cloned**. A
    `renameSync` keeps branches, stashes, reflog and uncommitted work; a re-clone
@@ -87,35 +106,35 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
 
-3. **Never push.** This is a read-and-checkout tool. No `git push`, ever.
+5. **Never push.** This is a read-and-checkout tool. No `git push`, ever.
 
-4. **Never switch branches.** `sync` fast-forwards the branch you are on, or
+6. **Never switch branches.** `sync` fast-forwards the branch you are on, or
    leaves it alone and says why. A tool that moves you off a feature branch
    mid-task is no better than one that clobbers your changes. This is also why
    there is no environment/branch-mapping machinery: it belongs to a workspace
    of deploy branches, not to a person's own repositories.
 
-5. **Never guess a branch.** `defaultBranch` is recorded per repo by `discover`,
+7. **Never guess a branch.** `defaultBranch` is recorded per repo by `discover`,
    because GitHub is the only thing that knows. A repo with none recorded is
    cloned on whatever the server hands over — not on an assumed `main`.
 
-6. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
+8. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
    bulk command that quietly does nothing is worse than one that stops.
    `talea where` is the sharp case: it exits non-zero and writes every
    diagnostic to **stderr**, because `cd $(talea where typo)` must fail rather
    than land you in your home directory.
 
-7. **Bulk commands exit non-zero on any failure.** `summary()` in `src/log.js`
+9. **Bulk commands exit non-zero on any failure.** `summary()` in `src/log.js`
    sets `process.exitCode`. Commands print per-repo errors and keep going, so
    without this a partial failure reads as success to a script.
 
-8. **Discovery refreshes facts, never choices.** GitHub owns `owner`,
+10. **Discovery refreshes facts, never choices.** GitHub owns `owner`,
    `defaultBranch`, `fork`, `pushedAt`. You own `default`, `group`, `dir`,
    `url`. A repo the API does not return is **kept and marked `missing`** — a
    narrower token, a revoked org grant and a deleted repo look identical from
    here, and forgetting it is the only unrecoverable reading.
 
-9. **No silent self-update.** The tool moves checkouts across every repo a
+11. **No silent self-update.** The tool moves checkouts across every repo a
    developer has. It tells them an update exists; they choose when.
 
 ## Talking to GitHub
