@@ -1,25 +1,29 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
+import os from 'node:os';
+
 import {
   STATE_FILE,
   expandHome,
+  findWorkspace,
   groupDir,
   loadManifest,
   loadState,
   repoGroup,
   saveState,
 } from '../config.js';
+import { samePath } from '../adopt.js';
 import { machineRepos } from '../workspace.js';
-import { c, context, heading, info, ok, plain, skip, warn } from '../log.js';
+import { c, context, fail, heading, info, ok, plain, skip, warn } from '../log.js';
 import { run as discover } from './discover.js';
 import { run as sync } from './sync.js';
 
 export const help = `
 ${c.bold('talea init')} — set this machine up
 
-  ${c.dim('talea init')}                      use the current folder as the workspace
-  ${c.dim('talea init ~/Workspace')}          use that folder instead
+  ${c.dim('talea init')}                      set up ~/Workspace
+  ${c.dim('talea init ~/code')}               use that folder as the root instead
   ${c.dim('talea init --no-clone')}           write the config, clone later
 
 Creates the workspace, records this machine's preferences in ${STATE_FILE}, asks
@@ -41,8 +45,53 @@ ${c.bold('On your second machine')}, pull the catalogue first:
   ${c.dim('talea init ~/Workspace')}
 `;
 
+/**
+ * Where the workspace goes.
+ *
+ * The default is `~/Workspace`, never the current directory. `init` run from
+ * the home folder used to make HOME itself the root, which puts owner folders
+ * directly in the home directory and points every later scan at three levels of
+ * $HOME. It reads as working, so nobody notices until the tree is already
+ * spread out.
+ *
+ * The name comes from the catalogue, so a team that keeps its checkouts under
+ * `src/` or `code/` changes one field rather than telling everyone a flag.
+ */
+export function workspaceTarget(positional, manifest) {
+  if (positional) return path.resolve(expandHome(positional));
+  return path.join(os.homedir(), manifest?.workspace || 'Workspace');
+}
+
 export async function run(opts, positionals = []) {
-  const target = path.resolve(expandHome(positionals[0] ?? process.cwd()));
+  const target = workspaceTarget(positionals[0], loadManifest(null));
+
+  // The home directory is not a workspace. Every owner folder would land beside
+  // Documents and Downloads, and `adopt` would scan three levels of $HOME on
+  // every run. Refused rather than warned: by the time the output scrolls past,
+  // the folders exist.
+  if (samePath(target, os.homedir())) {
+    fail('The home directory cannot be the workspace root.');
+    console.error(
+      `\n  Owner folders would land beside Documents and Downloads, and every\n` +
+        `  scan would walk three levels of your home directory.\n\n` +
+        `  Try:  ${c.bold(`talea init ${path.join(os.homedir(), loadManifest(null).workspace || 'Workspace')}`)}`,
+    );
+    process.exit(1);
+  }
+
+  // A workspace inside a workspace: the upward walk stops at the nearest
+  // .talea.json, so both would half-work and which one you got would depend on
+  // where you were standing.
+  const enclosing = findWorkspace(path.dirname(target));
+  if (enclosing) {
+    warn(`There is already a talea workspace at ${c.bold(enclosing)}.`);
+    plain(
+      c.dim(
+        `  Nesting one inside another means the one you get depends on which\n` +
+          `  folder you run from. Remove ${path.join(enclosing, STATE_FILE)} if it is stale.`,
+      ),
+    );
+  }
   const stateFile = path.join(target, STATE_FILE);
   const fresh = !existsSync(stateFile);
 

@@ -5,12 +5,14 @@
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
 import path from 'node:path';
+import os from 'node:os';
 
 import { defaultBranch, repoDir, repoGroup, repoUrl } from '../src/config.js';
 import { merge, parseSince } from '../src/commands/discover.js';
 import { toEntry } from '../src/github.js';
 import { buildTree, selectedRepos, toggle } from '../src/prompt.js';
 import { machineRepos } from '../src/workspace.js';
+import { workspaceTarget } from '../src/commands/init.js';
 
 const MANIFEST = {
   remotes: {
@@ -201,5 +203,33 @@ describe('the activity window', () => {
   test("GitHub's own archived flag is honoured whatever the window says", () => {
     const entry = toEntry({ name: 'x', owner: { login: 'me' }, archived: true, pushed_at: '2026-09-20T00:00:00Z' });
     assert.equal(entry.archived, true);
+  });
+});
+
+describe('where the workspace goes', () => {
+  test('no argument means ~/Workspace, never the current directory', () => {
+    // `talea init` run from the home folder used to make HOME the root, which
+    // reads as working right up until every scan is walking $HOME.
+    assert.equal(
+      workspaceTarget(undefined, { workspace: 'Workspace' }),
+      path.join(os.homedir(), 'Workspace'),
+    );
+  });
+
+  test('the folder name comes from the catalogue', () => {
+    assert.equal(workspaceTarget(undefined, { workspace: 'code' }), path.join(os.homedir(), 'code'));
+  });
+
+  test('a catalogue with no name still lands somewhere sensible', () => {
+    assert.equal(workspaceTarget(undefined, {}), path.join(os.homedir(), 'Workspace'));
+    assert.equal(workspaceTarget(undefined, null), path.join(os.homedir(), 'Workspace'));
+  });
+
+  test('an explicit path is used as given, not nested under another folder', () => {
+    assert.equal(workspaceTarget('/tmp/ws', { workspace: 'Workspace' }), path.resolve('/tmp/ws'));
+  });
+
+  test('~ in an explicit path is expanded, because a shell may not have', () => {
+    assert.equal(workspaceTarget('~/code', {}), path.join(os.homedir(), 'code'));
   });
 });
