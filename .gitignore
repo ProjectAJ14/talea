@@ -2,6 +2,7 @@ node_modules/
 CLAUDE.local.md
 .DS_Store
 *.log
+.idea/
 
 # Claude Code local machine settings — the agents in .claude/agents are shared.
 .claude/settings.local.json
