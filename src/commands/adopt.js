@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expandHome, loadState, saveState } from '../config.js';
 import { c, fail, glyph, heading, icon, info, ok, plain, skip, summary, warn } from '../log.js';
-import { requireCatalogue, requireWorkspace, selectRepos } from '../workspace.js';
+import { adoptable, requireCatalogue, requireWorkspace, selectRepos } from '../workspace.js';
 import {
   DUPLICATES_DIR,
   claudeMaybeRunning,
@@ -57,6 +57,9 @@ Options
       --from <path>     extra folder to search (repeatable, remembered)
       --apply           perform the moves (default is a dry run)
       --loose           also move repos matched by name when the remote differs
+
+A repo marked ${c.dim('"ignore": true')} in the catalogue is never touched by any command —
+that is how you tell talea another tool owns a checkout.
       --fix-paths       re-repair config for repos already adopted, moving nothing
   -j, --jobs <n>        parallel git calls (default 8)
 `;
@@ -334,7 +337,8 @@ export async function run(opts) {
 
   // The whole catalogue, not this machine's selection: a stray checkout is
   // worth moving into place whether or not this machine had signed up for it.
-  const repos = selectRepos(manifest, opts, manifest.repos);
+  // Minus anything marked `ignore` — see `adoptable`.
+  const repos = selectRepos(manifest, opts, adoptable(manifest));
 
   const extra = parseFromPaths(opts.from);
 

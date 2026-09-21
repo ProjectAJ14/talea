@@ -21,7 +21,7 @@ Options
       --apply            write the file (default prints what would change)
 
 ${c.bold('What is preserved')} — a repo already in the catalogue keeps its ${c.dim('default')},
-${c.dim('group')} and ${c.dim('dir')}. Discovery refreshes the facts GitHub owns; the choices are
+${c.dim('group')}, ${c.dim('dir')} and ${c.dim('ignore')}. Discovery refreshes the facts GitHub owns; the choices are
 yours and are never overwritten.
 
 Auth comes from ${c.dim('gh auth token')}, then ${c.dim('GITHUB_TOKEN')}, then nothing — and nothing is
@@ -85,6 +85,7 @@ export function merge(existing, found) {
       ...(prior?.group !== undefined ? { group: prior.group } : {}),
       ...(prior?.dir !== undefined ? { dir: prior.dir } : {}),
       ...(prior?.url !== undefined ? { url: prior.url } : {}),
+      ...(prior?.ignore !== undefined ? { ignore: prior.ignore } : {}),
     });
   }
 

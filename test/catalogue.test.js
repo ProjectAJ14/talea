@@ -11,7 +11,7 @@ import { defaultBranch, repoDir, repoGroup, repoUrl } from '../src/config.js';
 import { merge, parseSince } from '../src/commands/discover.js';
 import { toEntry } from '../src/github.js';
 import { buildTree, selectedRepos, toggle } from '../src/prompt.js';
-import { machineRepos } from '../src/workspace.js';
+import { adoptable, machineRepos } from '../src/workspace.js';
 import { workspaceTarget } from '../src/commands/init.js';
 
 const MANIFEST = {
@@ -231,5 +231,42 @@ describe('where the workspace goes', () => {
 
   test('~ in an explicit path is expanded, because a shell may not have', () => {
     assert.equal(workspaceTarget('~/code', {}), path.join(os.homedir(), 'code'));
+  });
+});
+
+describe('a repo another tool owns', () => {
+  const manifest = {
+    ...MANIFEST,
+    repos: [
+      repo({ name: 'mine', default: true }),
+      repo({ name: 'theirs', default: true, ignore: true }),
+    ],
+  };
+
+  test('an ignored repo is not in the default set', () => {
+    assert.deepEqual(machineRepos(manifest, {}).map((r) => r.name), ['mine']);
+  });
+
+  test('selecting it by name explicitly still does not override ignore', () => {
+    // Otherwise a stale `selected` list from before the repo was marked would
+    // quietly keep the tug-of-war going.
+    assert.deepEqual(
+      machineRepos(manifest, { selected: ['mine', 'theirs'] }).map((r) => r.name),
+      ['mine'],
+    );
+  });
+
+  test('adopt works over the catalogue minus the ignored ones', () => {
+    // `adopt` deliberately reaches past this machine's selection, so `ignore`
+    // has to be enforced there too or it does nothing where it matters most.
+    assert.deepEqual(adoptable(manifest).map((r) => r.name), ['mine']);
+  });
+
+  test('discovery does not reset it — it is a choice, like default', () => {
+    const { repos } = merge(
+      [{ name: 'theirs', owner: 'ProjectAJ14', ignore: true }],
+      [{ name: 'theirs', owner: 'ProjectAJ14', defaultBranch: 'main' }],
+    );
+    assert.equal(repos.find((r) => r.name === 'theirs').ignore, true);
   });
 });

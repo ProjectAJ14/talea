@@ -93,7 +93,15 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `flutter` fork, and adopting it breaks every Flutter project there. Parks are
    gated the same way — parking is a move, and that case was a park.
 
-4. **Never destroy uncommitted work.** No `reset --hard`, no `clean -fd`, no
+4. **`ignore: true` means another tool owns that checkout.** No command touches
+   it — not `sync`, not `adopt`, not even an explicit `selected` entry. Two
+   tools that both organise repositories will otherwise each drag the same
+   checkout back where it thinks it belongs, on every run, forever. Found on a
+   real machine: two repos living inside a second workspace manager's tree.
+   Enforced in `adoptable()` as well as `machineRepos()`, because `adopt`
+   deliberately reaches past this machine's selection.
+
+5. **Never destroy uncommitted work.** No `reset --hard`, no `clean -fd`, no
    `checkout --force`. Check `isDirty()` and skip with a warning.
    This is also why a repo in the wrong place is **moved, not re-cloned**. A
    `renameSync` keeps branches, stashes, reflog and uncommitted work; a re-clone
@@ -106,35 +114,35 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
 
-5. **Never push.** This is a read-and-checkout tool. No `git push`, ever.
+6. **Never push.** This is a read-and-checkout tool. No `git push`, ever.
 
-6. **Never switch branches.** `sync` fast-forwards the branch you are on, or
+7. **Never switch branches.** `sync` fast-forwards the branch you are on, or
    leaves it alone and says why. A tool that moves you off a feature branch
    mid-task is no better than one that clobbers your changes. This is also why
    there is no environment/branch-mapping machinery: it belongs to a workspace
    of deploy branches, not to a person's own repositories.
 
-7. **Never guess a branch.** `defaultBranch` is recorded per repo by `discover`,
+8. **Never guess a branch.** `defaultBranch` is recorded per repo by `discover`,
    because GitHub is the only thing that knows. A repo with none recorded is
    cloned on whatever the server hands over — not on an assumed `main`.
 
-8. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
+9. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
    bulk command that quietly does nothing is worse than one that stops.
    `talea where` is the sharp case: it exits non-zero and writes every
    diagnostic to **stderr**, because `cd $(talea where typo)` must fail rather
    than land you in your home directory.
 
-9. **Bulk commands exit non-zero on any failure.** `summary()` in `src/log.js`
+10. **Bulk commands exit non-zero on any failure.** `summary()` in `src/log.js`
    sets `process.exitCode`. Commands print per-repo errors and keep going, so
    without this a partial failure reads as success to a script.
 
-10. **Discovery refreshes facts, never choices.** GitHub owns `owner`,
+11. **Discovery refreshes facts, never choices.** GitHub owns `owner`,
    `defaultBranch`, `fork`, `pushedAt`. You own `default`, `group`, `dir`,
    `url`. A repo the API does not return is **kept and marked `missing`** — a
    narrower token, a revoked org grant and a deleted repo look identical from
    here, and forgetting it is the only unrecoverable reading.
 
-11. **No silent self-update.** The tool moves checkouts across every repo a
+12. **No silent self-update.** The tool moves checkouts across every repo a
    developer has. It tells them an update exists; they choose when.
 
 ## Talking to GitHub

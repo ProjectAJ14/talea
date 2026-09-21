@@ -46,11 +46,27 @@ export function requireWorkspace() {
 export function machineRepos(manifest, state) {
   const chosen = state.selected;
   if (!Array.isArray(chosen)) {
-    return manifest.repos.filter((r) => r.default && !r.archived);
+    return manifest.repos.filter((r) => r.default && !r.archived && !r.ignore);
   }
   const wanted = new Set(chosen.map((n) => n.toLowerCase()));
-  return manifest.repos.filter((r) => wanted.has(r.name.toLowerCase()));
+  return manifest.repos.filter((r) => wanted.has(r.name.toLowerCase()) && !r.ignore);
 }
+
+/**
+ * Repos talea is allowed to touch at all.
+ *
+ * `ignore: true` means something else owns that checkout — another workspace
+ * manager, a vendored tree, an SDK cache. Without it two tools that both
+ * organise repositories will each drag the same checkout back to where it
+ * thinks it belongs, on every run, forever. Found with a repo living inside a
+ * second workspace manager's tree on the same disk.
+ *
+ * This is stronger than not selecting it: `adopt` deliberately works over the
+ * whole catalogue rather than this machine's selection, because a stray
+ * checkout is worth moving whether or not the machine signed up for it. An
+ * ignored repo is out of even that.
+ */
+export const adoptable = (manifest) => manifest.repos.filter((r) => !r.ignore);
 
 /** Has this machine ever been asked what it wants? */
 export const hasChosen = (state) => Array.isArray(state.selected);

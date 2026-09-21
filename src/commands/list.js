@@ -81,6 +81,7 @@ export function run(opts) {
           r.fork ? c.dim('fork') : '',
           r.archived ? c.yellow('quiet') : '',
           r.missing ? c.yellow('not on github') : '',
+          r.ignore ? c.yellow('ignored') : '',
         ]
           .filter(Boolean)
           .join(' '),

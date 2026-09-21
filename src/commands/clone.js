@@ -7,7 +7,7 @@ import { clone, defaultJobs, isMissingRemote, pooled } from '../git.js';
 import { board } from '../live.js';
 import { c, heading, icon, ok, plain, summary, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
-import { requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
+import { adoptable, requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 import { applyMoves, parseFromPaths, planFor } from './adopt.js';
 
 export const help = `
@@ -64,7 +64,14 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
     saveState(root, { ...state, scanPaths: [...new Set([...(state.scanPaths ?? []), ...extra])] });
   }
 
-  const { moves, parks, refused } = await planFor({ manifest, root, repos, scanRoots, jobs: opts.jobs });
+  const ours = repos.filter((r) => !r.ignore);
+  const { moves, parks, refused } = await planFor({
+    manifest,
+    root,
+    repos: ours,
+    scanRoots,
+    jobs: opts.jobs,
+  });
 
   // A name-only match means the remote host is not one the catalogue lists, so
   // it is probably right but not certainly. This runs unattended, so it only

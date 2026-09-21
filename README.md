@@ -107,6 +107,18 @@ repo that moves and loses its history has not really been helped.
 
 ---
 
+## When another tool owns a checkout
+
+Mark it in the catalogue and talea leaves it completely alone:
+
+```json
+{ "name": "some-repo", "owner": "someone", "ignore": true }
+```
+
+Without this, two tools that both organise repositories will each drag the same
+checkout back to where it thinks it belongs, on every run. Use it for repos
+inside another workspace manager's tree, vendored checkouts, and SDK caches.
+
 ## What travels, and what does not
 
 | | Where it lives | Shared |
