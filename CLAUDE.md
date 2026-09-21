@@ -172,18 +172,37 @@ to restricted and would otherwise publish private by accident. `upgrade` reads t
 A copy that is a git checkout refuses to self-upgrade — replacing somebody's
 working branch with a release is data loss with a friendly name.
 
-A release is two commands:
+A release is one sentence to the `release-manager` agent — "release it", or
+"do a patch release". It reads the commits since the last tag, proposes the
+version, writes `CHANGELOG.md`, bumps `package.json`, tags, pushes, and creates
+the GitHub release. By hand it is:
 
 ```
+git add CHANGELOG.md
 npm version patch|minor|major     # bumps package.json, commits, tags v<x.y.z>
 git push --follow-tags
+gh release create v<x.y.z> --notes "<the changelog section>"
 ```
 
-`.github/workflows/ci.yml` does the rest: the matrix runs on every push, and a
-`v*` tag additionally publishes to npm with `--provenance` and cuts a GitHub
-release. **Never publish from a laptop**, because `--provenance` needs the OIDC
-token only a workflow has — a local publish silently ships an unattested
-tarball.
+**The GitHub release is what publishes**, not the tag. `.github/workflows/publish.yml`
+runs on `release: published`; `ci.yml` only ever runs tests, so a green run on
+`main` — or a pushed tag on its own — ships nothing. A tag is a pointer somebody
+can move; a release is a dated, deliberate act with notes attached, and tying
+the publish to it means there is no second command to forget.
+
+**There is no npm token.** The workflow authenticates with npm **trusted
+publishing** over OIDC: npm mints a short-lived credential for this repository
+and this workflow file, checked against the publisher configured on the package.
+A long-lived token that cannot exist cannot leak, and nothing expires in a
+drawer. The publisher is matched by workflow **filename** — renaming
+`publish.yml` breaks publishing until the setting on npmjs.com is updated to
+match. Trusted publishing needs npm >= 11.5.1, which is newer than the npm
+bundled with any Node 22, so the workflow installs `npm@11` first; `npm@latest`
+is 12.x and wants a Node the runner may not have.
+
+**Never publish from a laptop**, because `--provenance` needs the OIDC token
+only a workflow has — a local publish silently ships an unattested tarball, and
+skips every check the workflow makes.
 
 A laptop is also the less reliable place to publish from, for a reason worth
 writing down. This machine sits behind **Cisco Secure Access**, which terminates
@@ -198,11 +217,8 @@ The publish job checks the tag against `package.json` and fails if they differ.
 Without that, `v0.2.0` happily publishes `0.1.0` and the registry and the git
 history disagree forever.
 
-The one secret is `NPM_TOKEN` (a granular automation token, publish scope, this
-package only — which is possible precisely because 0.1.0 was published by hand
-first, and npm can only scope a token to a package that already exists). Once `talea@0.1.0` exists on the registry, switch the package to
-npm **trusted publishing** and delete the secret — it is the same workflow with
-no long-lived credential.
+`CHANGELOG.md` is prepended to, never rewritten. A published entry is a record
+of what somebody installed, and editing it makes the record a guess.
 
 ## Current status
 

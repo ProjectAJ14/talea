@@ -1,5 +1,8 @@
 name: ci
 
+# Tests only. Publishing lives in publish.yml and runs off a GitHub release —
+# a green run here is not a release, and a tag on its own no longer ships
+# anything.
 on:
   push:
     branches: [main]
@@ -32,38 +35,3 @@ jobs:
       - run: node bin/talea.js doctor
         continue-on-error: true
 
-  publish:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      # write, not read: the last step cuts the GitHub release.
-      contents: write
-      # Required for npm provenance — the attestation that links the published
-      # tarball back to this workflow run and this commit.
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      # The tag and package.json must agree, or v0.2.0 publishes 0.1.0 and the
-      # registry and the git history disagree forever. Cheap to check, painful
-      # to discover later.
-      - name: tag matches package.json
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg="$(node -p "require('./package.json').version")"
-          echo "tag=$tag package.json=$pkg"
-          test "$tag" = "$pkg"
-
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: github release
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
-        env:
-          GH_TOKEN: ${{ github.token }}
