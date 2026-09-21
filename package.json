@@ -1,0 +1,36 @@
+{
+  "name": "talea",
+  "version": "0.1.0",
+  "description": "One folder structure for every machine. Clone, adopt and sync your GitHub repos from a manifest you own.",
+  "type": "module",
+  "bin": {
+    "talea": "bin/talea.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "manifest",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "github",
+    "workspace",
+    "repos",
+    "clone",
+    "sync",
+    "cli",
+    "dotfiles"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProjectAJ14/talea.git"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "workspace": "Workspace",
+  "host": "github.com",
+  "remotes": {
+    "ssh": "git@github.com:{owner}/{repo}.git",
+    "https": "https://github.com/{owner}/{repo}.git"
+  },
+  "groups": {},
+  "repos": []
+}
