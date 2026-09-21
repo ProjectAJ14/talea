@@ -172,37 +172,43 @@ to restricted and would otherwise publish private by accident. `upgrade` reads t
 A copy that is a git checkout refuses to self-upgrade — replacing somebody's
 working branch with a release is data loss with a friendly name.
 
-A release is one sentence to the `release-manager` agent — "release it", or
-"do a patch release". It reads the commits since the last tag, proposes the
-version, writes `CHANGELOG.md`, bumps `package.json`, tags, pushes, and creates
-the GitHub release. By hand it is:
+**A release is a push to `main`.** `.github/workflows/release.yml` reads the
+commits since the last tag, and if any of them asks for a version — a `feat:`, a
+`fix:`, a `!` breaking change — it bumps `package.json`, writes the `CHANGELOG.md`
+entry, commits, tags, cuts the GitHub release and publishes to npm. A push of
+nothing but docs and chores releases nothing, and says so. There is no command
+to remember and nothing to forget, which is the whole point: a release that
+depends on somebody running two commands in the right order is a release that
+eventually goes out wrong.
 
-```
-npm version <x.y.z> --no-git-tag-version   # bumps package.json and stops
-git add CHANGELOG.md package.json
-git commit -m "release: <x.y.z>"
-git tag -a v<x.y.z> -m "v<x.y.z>"
-git push --follow-tags
-gh release create v<x.y.z> --notes "<the changelog section>"
-```
+So **the commit messages are the release process**. Conventional Commits are not
+a style preference here — `feat:` is a minor, `fix:` and `perf:` are a patch,
+`!` or a `BREAKING CHANGE:` body is a major, and anything else ships nothing on
+its own. Below 1.0.0 a breaking change takes the minor instead: declaring the
+tool stable is a deliberate act, not something one `feat!:` does on the author's
+behalf.
 
-Plain `npm version` would do the bump, commit and tag in one step, but it
-refuses to run with anything staged — so it can never carry the changelog edit
-into the release commit. `--no-git-tag-version` and a commit by hand keeps the
-two files in one commit, which is the point.
+`scripts/release.mjs` holds that decision, out of the YAML and under test in
+`test/release.test.js` — the release runs unattended, so the only thing between
+a careless commit message and a wrong version number is that test.
 
-**The GitHub release is what publishes**, not the tag. `.github/workflows/publish.yml`
-runs on `release: published`; `ci.yml` only ever runs tests, so a green run on
-`main` — or a pushed tag on its own — ships nothing. A tag is a pointer somebody
-can move; a release is a dated, deliberate act with notes attached, and tying
-the publish to it means there is no second command to forget.
+To force a version — a release with no releasable commits, or a major — run the
+workflow by hand: Actions → release → *Run workflow*, with `bump` set to
+patch/minor/major, or `gh workflow run release.yml -f bump=minor`.
+
+Publishing lives in that same workflow rather than in one of its own because **a
+release created with `GITHUB_TOKEN` does not trigger other workflows** — GitHub
+refuses, so that a workflow cannot loop itself. An `on: release` job would sit
+there and never run. The bump commit carries `[skip ci]` for the same family of
+reasons: the matrix already ran on the commits that earned the release, and
+without it the push starts the whole thing again.
 
 **There is no npm token.** The workflow authenticates with npm **trusted
 publishing** over OIDC: npm mints a short-lived credential for this repository
 and this workflow file, checked against the publisher configured on the package.
 A long-lived token that cannot exist cannot leak, and nothing expires in a
 drawer. The publisher is matched by workflow **filename** — renaming
-`publish.yml` breaks publishing until the setting on npmjs.com is updated to
+`release.yml` breaks publishing until the setting on npmjs.com is updated to
 match. Trusted publishing needs npm >= 11.5.1, which is newer than the npm
 bundled with any Node 22, so the workflow installs `npm@11` first; `npm@latest`
 is 12.x and wants a Node the runner may not have.
@@ -220,9 +226,8 @@ earlier the same day npm itself died with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
 `curl` and `gh` are unaffected because they trust the keychain. A release that
 depends on which hosts are being intercepted this hour is not a release process.
 
-The publish job checks the tag against `package.json` and fails if they differ.
-Without that, `v0.2.0` happily publishes `0.1.0` and the registry and the git
-history disagree forever.
+The tag and `package.json` can no longer disagree, because the same run writes
+both. That used to be a check; now it is not a thing that can happen.
 
 `CHANGELOG.md` is prepended to, never rewritten. A published entry is a record
 of what somebody installed, and editing it makes the record a guess.

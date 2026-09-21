@@ -5,3 +5,4 @@ CLAUDE.local.md
 
 # Claude Code local machine settings — the agents in .claude/agents are shared.
 .claude/settings.local.json
+.release-notes.md

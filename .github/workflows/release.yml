@@ -1,0 +1,87 @@
+# The release, start to finish, in CI.
+#
+# Push to main. If the commits since the last tag ask for a version — a `feat:`,
+# a `fix:`, a `!` breaking change — this bumps `package.json`, writes the
+# CHANGELOG entry, tags, cuts the GitHub release and publishes to npm. If they
+# do not, it says so and stops. Nothing about a release happens on a laptop.
+#
+# Publishing lives here rather than in a workflow of its own because a release
+# created with GITHUB_TOKEN does not trigger other workflows — GitHub refuses,
+# to stop a workflow looping itself. A separate `on: release` job would sit
+# there and never run.
+#
+# WARNING: npm matches the trusted publisher by workflow FILENAME. Renaming this
+# file breaks publishing until the setting on npmjs.com is updated to match.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Force a bump instead of reading the commits'
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+concurrency:
+  # Two pushes in quick succession would otherwise race for the same tag.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      # The bump commit, the tag and the release.
+      contents: write
+      # Trusted publishing and provenance are both minted from this token.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: the bump is decided from the commits since the
+          # last tag, and a shallow clone has neither.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1, newer than the npm bundled with
+      # any Node 22. Pinned to the 11 major: npm@latest is 12.x and wants a Node
+      # this runner may not have.
+      - run: npm install -g npm@11
+
+      - run: npm test
+
+      - id: plan
+        run: node scripts/release.mjs "${{ inputs.bump || 'auto' }}"
+
+      - name: commit, tag and push
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CHANGELOG.md package.json
+          # [skip ci] on the bump commit: the matrix already ran on the commits
+          # that earned this release, and without it this push starts the whole
+          # thing again.
+          git commit -m "release: $VERSION [skip ci]"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push --follow-tags
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+
+      - name: github release
+        if: steps.plan.outputs.release == 'true'
+        run: gh release create "v$VERSION" --title "v$VERSION" --notes-file .release-notes.md --verify-tag
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: publish to npm
+        if: steps.plan.outputs.release == 'true'
+        run: npm publish --provenance --access public
