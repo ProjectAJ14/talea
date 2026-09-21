@@ -1,6 +1,6 @@
 {
   "name": "@ajaykumarnpm/talea",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "One folder structure for every machine. Clone, adopt and sync your GitHub repos from a manifest you own.",
   "type": "module",
   "bin": {
