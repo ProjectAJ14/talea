@@ -149,12 +149,18 @@ git push --follow-tags
 
 `.github/workflows/ci.yml` does the rest: the matrix runs on every push, and a
 `v*` tag additionally publishes to npm with `--provenance` and cuts a GitHub
-release. **Never publish from a laptop.** Two reasons, both real:
+release. **Never publish from a laptop**, because `--provenance` needs the OIDC
+token only a workflow has — a local publish silently ships an unattested
+tarball.
 
-- `--provenance` needs the OIDC token only a workflow has, so a local publish
-  silently ships an unattested tarball.
-- npm on a machine behind TLS interception dies with
-  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` before it reaches the registry at all.
+A laptop is also the less reliable place to publish from, for a reason worth
+writing down. This machine sits behind **Cisco Secure Access**, which terminates
+TLS and re-signs with a root that is in the system keychain and *not* in the CA
+list compiled into Node. Which hosts it covers changes with VPN state: in one
+session `api.github.com` was intercepted and `registry.npmjs.org` was not, and
+earlier the same day npm itself died with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
+`curl` and `gh` are unaffected because they trust the keychain. A release that
+depends on which hosts are being intercepted this hour is not a release process.
 
 The publish job checks the tag against `package.json` and fails if they differ.
 Without that, `v0.2.0` happily publishes `0.1.0` and the registry and the git
