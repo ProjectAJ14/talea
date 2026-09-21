@@ -60,6 +60,7 @@ this machine needs, untick what it does not, press enter.
 talea sync                   # clone the new, fast-forward the rest
 talea status                 # branch, clean/dirty, ahead/behind, in one table
 talea add some-repo          # keep one more on this machine, and clone it now
+talea select                 # reopen the checklist and change the whole list
 cd $(talea where eklavya)
 ```
 
@@ -146,7 +147,8 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea clone` | clone only — never fetches or merges |
 | `talea adopt` | move checkouts you already have into place |
 | `talea status` | branch, clean/dirty, ahead/behind |
-| `talea add` / `talea rm` | change what this machine keeps |
+| `talea select` | reopen the checklist — what this machine keeps |
+| `talea add` / `talea rm` | change that one repo at a time |
 | `talea where <repo>` | print a repo's path, for `cd $( )` |
 | `talea list` | the catalogue |
 | `talea tree` | the folder tree on disk |

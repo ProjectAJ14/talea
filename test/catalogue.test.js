@@ -9,6 +9,7 @@ import os from 'node:os';
 
 import { defaultBranch, repoDir, repoGroup, repoUrl } from '../src/config.js';
 import { merge, parseSince } from '../src/commands/discover.js';
+import { changes } from '../src/commands/select.js';
 import { toEntry } from '../src/github.js';
 import { buildTree, selectedRepos, toggle } from '../src/prompt.js';
 import { adoptable, machineRepos } from '../src/workspace.js';
@@ -270,3 +271,17 @@ describe('a repo another tool owns', () => {
     assert.equal(repos.find((r) => r.name === 'theirs').ignore, true);
   });
 });
+
+describe('reselecting what this machine keeps', () => {
+  test('the picker result is a diff against the old list, both ways', () => {
+    const { added, dropped } = changes(['a', 'b', 'c'], ['b', 'c', 'd']);
+    assert.deepEqual(added, ['d']);
+    assert.deepEqual(dropped, ['a']);
+  });
+
+  test('ticking nothing drops everything and adds nothing', () => {
+    // Empty is a real answer — "I chose nothing" — not "never asked", so
+    // `select` has to report three removals rather than no change at all.
+    assert.deepEqual(changes(['a', 'b', 'c'], []), { added: [], dropped: ['a', 'b', 'c'] });
+  });
+})
