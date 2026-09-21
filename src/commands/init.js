@@ -7,14 +7,11 @@ import {
   STATE_FILE,
   expandHome,
   findWorkspace,
-  groupDir,
   loadManifest,
-  loadState,
   repoGroup,
   saveState,
 } from '../config.js';
 import { samePath } from '../adopt.js';
-import { machineRepos } from '../workspace.js';
 import { c, context, fail, heading, info, ok, plain, skip, warn } from '../log.js';
 import { run as discover } from './discover.js';
 import { run as sync } from './sync.js';
@@ -129,13 +126,13 @@ export async function run(opts, positionals = []) {
     ['groups', `${groups.length}`],
   ]);
 
-  // The group folders for the repos this machine will actually hold — not one
-  // per owner in the catalogue. A collaborator repo you never clone should not
-  // leave an empty folder in the tree forever.
-  const mine = machineRepos(manifest, loadState(target));
-  for (const g of new Set(mine.map((r) => repoGroup(r)))) {
-    mkdirSync(path.join(target, groupDir(manifest, g)), { recursive: true });
-  }
+  // No group folders are created here. `init` runs before the picker — the
+  // checklist lives in `sync` — so anything made at this point is made from the
+  // catalogue's defaults, which is every owner the discovery found. Picking
+  // four repos out of 228 then left 18 empty owner folders in the tree, and an
+  // empty folder is indistinguishable from a checkout somebody deleted.
+  // `cloneMissing` creates the parent of each repo it is about to clone, so the
+  // only folders that ever appear are the ones with something in them.
 
   if (opts.clone === false) {
     plain(`\n${c.dim('Workspace ready. Run `talea sync` when you want the repos.')}`);
