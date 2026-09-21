@@ -136,3 +136,37 @@ export function centerVisible(s, width) {
 
 /** Terminal width, clamped to something a human can read across. */
 export const columns = () => Math.max(40, Math.min(process.stdout.columns || 80, 120));
+
+/**
+ * Cut a string to `width` visible columns, leaving its escape codes intact.
+ *
+ * The live block redraws by counting the lines it wrote and climbing back up
+ * that many. A line wider than the window wraps onto two rows, so the count is
+ * short by one and every redraw lands a row lower — the block duplicates itself
+ * down the screen. Truncating keeps one line to one row.
+ */
+export function truncVisible(s, width) {
+  const str = String(s);
+  if (width <= 0) return '';
+  if (visibleWidth(str) <= width) return str;
+  let left = width;
+  let out = '';
+  // eslint-disable-next-line no-control-regex
+  for (const part of str.split(/(\x1b\[[0-9;?]*[A-Za-z])/)) {
+    if (!part) continue;
+    if (part.startsWith('\x1b[')) {
+      out += part;
+      continue;
+    }
+    const chars = [...part];
+    if (chars.length <= left) {
+      out += part;
+      left -= chars.length;
+    } else {
+      out += chars.slice(0, left).join('');
+      left = 0;
+    }
+  }
+  // Cut mid-colour, so close it — otherwise the colour bleeds down the screen.
+  return out + (useColor ? '\x1b[0m' : '');
+}

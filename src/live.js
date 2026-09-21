@@ -19,6 +19,7 @@ import {
   paint,
   spinner,
   statusLine,
+  truncVisible,
   visibleWidth,
 } from './log.js';
 
@@ -95,10 +96,18 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
     drawn = 0;
   };
 
+  // One line, one row. A line wider than the window wraps, and then `drawn` —
+  // a count of lines, not of rows — climbs back too few rows and the next frame
+  // is drawn below the last one instead of over it. That is how the block ends
+  // up repeating itself down the screen with half-cleared remnants in between.
+  // The last column is left empty: a line filling the row exactly leaves some
+  // terminals in a deferred-wrap state that the following newline then spends.
+  const fitRow = (l) => truncVisible(l, Math.max(1, (process.stdout.columns || 80) - 1));
+
   const draw = () => {
     const body = lines();
     let s = (drawn ? ansi.up(drawn) : '') + ansi.cr;
-    for (const l of body) s += ansi.clearLine + l + '\n';
+    for (const l of body) s += ansi.clearLine + fitRow(l) + '\n';
     // The previous block may have been taller — clear what is left of it, then
     // put the cursor back under the new one.
     const extra = Math.max(0, drawn - body.length);

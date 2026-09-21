@@ -9,6 +9,7 @@ import {
   glyph,
   padEndVisible,
   stripAnsi,
+  truncVisible,
   visibleWidth,
 } from '../src/theme.js';
 import { statusLine, verdict } from '../src/log.js';
@@ -405,4 +406,29 @@ test('the board stops listening once it is done', () => {
   assert.equal(process.listenerCount('exit'), before.exit);
   assert.equal(process.listenerCount('SIGINT'), before.sigint);
   assert.equal(process.stdout.listenerCount('resize'), before.resize);
+});
+
+test('the live board never writes a line wider than the window', () => {
+  // A line that wraps costs a screen row the block does not count, so
+  // `ansi.up(drawn)` lands one row low and the next frame is drawn under the
+  // last instead of over it — the block repeats itself down the screen. The
+  // labels and notes here are long enough to wrap an 80-column window.
+  const { out } = onFakeTerminal(40, 4, (view, items) => {
+    for (const it of items) {
+      view.set(it.id, 'busy', 'fetching feature/a-very-long-descriptive-branch-name-from-a-ticket (not main)');
+    }
+    view.set(items[0].id, 'ok', 'feature/a-very-long-descriptive-branch-name-from-a-ticket (not main) up to date');
+    view.stop();
+  });
+
+  for (const row of stripAnsi(out).split('\n')) {
+    assert.ok(row.length <= 79, `line of ${row.length} columns wraps an 80-column window`);
+  }
+});
+
+test('truncation counts columns, not escape codes, and closes the colour', () => {
+  assert.equal(truncVisible('abcdef', 10), 'abcdef');
+  assert.equal(visibleWidth(truncVisible(coloured, 5)), 5);
+  // Cut mid-colour: the reset has to go back on or it bleeds down the screen.
+  assert.match(truncVisible(coloured, 5), /\x1b\[0m$/);
 });

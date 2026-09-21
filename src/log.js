@@ -17,11 +17,12 @@ import {
   padEndVisible,
   spinner,
   stripAnsi,
+  truncVisible,
   useColor,
   visibleWidth,
 } from './theme.js';
 
-export { ansi, glyph, padEndVisible, paint, spinner, useColor, visibleWidth };
+export { ansi, glyph, padEndVisible, paint, spinner, truncVisible, useColor, visibleWidth };
 
 /**
  * Named colours, kept because every command's `help` string and most inline
