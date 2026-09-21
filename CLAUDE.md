@@ -133,12 +133,37 @@ without `gh`.
 `--slurp` is mandatory — stitching the pages back together by string surgery
 breaks on a repo whose description contains `] [`.
 
-## Distribution
+## Distribution and releasing
 
 Public package `talea` on the public npm registry, installed with
 `npm install -g talea`. `upgrade` reads the registry's `latest` and reinstalls.
 A copy that is a git checkout refuses to self-upgrade — replacing somebody's
 working branch with a release is data loss with a friendly name.
+
+A release is two commands:
+
+```
+npm version patch|minor|major     # bumps package.json, commits, tags v<x.y.z>
+git push --follow-tags
+```
+
+`.github/workflows/ci.yml` does the rest: the matrix runs on every push, and a
+`v*` tag additionally publishes to npm with `--provenance` and cuts a GitHub
+release. **Never publish from a laptop.** Two reasons, both real:
+
+- `--provenance` needs the OIDC token only a workflow has, so a local publish
+  silently ships an unattested tarball.
+- npm on a machine behind TLS interception dies with
+  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` before it reaches the registry at all.
+
+The publish job checks the tag against `package.json` and fails if they differ.
+Without that, `v0.2.0` happily publishes `0.1.0` and the registry and the git
+history disagree forever.
+
+The one secret is `NPM_TOKEN` (a granular automation token, publish scope, this
+package only). Once `talea@0.1.0` exists on the registry, switch the package to
+npm **trusted publishing** and delete the secret — it is the same workflow with
+no long-lived credential.
 
 ## Current status
 

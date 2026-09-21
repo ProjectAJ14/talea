@@ -156,6 +156,17 @@ If `gh` is installed, talea uses it for API calls. That is deliberate beyond the
 token: `gh` trusts your system's certificate store, so talea keeps working on a
 machine behind a corporate proxy or VPN where Node's own HTTPS would fail.
 
+## Contributing
+
+```sh
+git clone git@github.com:ProjectAJ14/talea.git
+cd talea
+npm test          # no install step — there are no dependencies
+node bin/talea.js --help
+```
+
+Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every push.
+
 ## Licence
 
 MIT.
