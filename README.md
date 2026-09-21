@@ -25,8 +25,10 @@ Same paths on every machine. `cd $(talea where eklavya)` works everywhere.
 ## Install
 
 ```sh
-npm install -g talea
+npm install -g @ajaykumarnpm/talea
 ```
+
+The package is scoped; the command it installs is just `talea`.
 
 Node 20 or newer. No other dependencies — not at runtime, not to build it.
 

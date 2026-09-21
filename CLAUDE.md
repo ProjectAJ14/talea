@@ -135,8 +135,13 @@ breaks on a repo whose description contains `] [`.
 
 ## Distribution and releasing
 
-Public package `talea` on the public npm registry, installed with
-`npm install -g talea`. `upgrade` reads the registry's `latest` and reinstalls.
+Public package `@ajaykumarnpm/talea` on the public npm registry, installed with
+`npm install -g @ajaykumarnpm/talea`. **Scoped because npm refused the bare
+name** — its typo-squatting filter called `talea` too similar to `tape`, `taze`,
+`table` and `jaltea`. That filter only fires at publish time, so there is no way
+to test an unscoped name in advance. The binary is still `talea`, and
+`publishConfig.access` is pinned to `public` because a scoped package defaults
+to restricted and would otherwise publish private by accident. `upgrade` reads the registry's `latest` and reinstalls.
 A copy that is a git checkout refuses to self-upgrade — replacing somebody's
 working branch with a release is data loss with a friendly name.
 
@@ -167,7 +172,8 @@ Without that, `v0.2.0` happily publishes `0.1.0` and the registry and the git
 history disagree forever.
 
 The one secret is `NPM_TOKEN` (a granular automation token, publish scope, this
-package only). Once `talea@0.1.0` exists on the registry, switch the package to
+package only — which is possible precisely because 0.1.0 was published by hand
+first, and npm can only scope a token to a package that already exists). Once `talea@0.1.0` exists on the registry, switch the package to
 npm **trusted publishing** and delete the secret — it is the same workflow with
 no long-lived credential.
 
