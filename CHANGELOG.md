@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-09-21
+
+### Documentation
+- the skip marker is read from the commit body too
+
+### Chores
+- publish before pushing the tag
+- the pipeline cuts the release, not a laptop
+
 ## [0.2.1] - 2026-09-21
 
 ### Fixed
