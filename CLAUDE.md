@@ -178,11 +178,18 @@ version, writes `CHANGELOG.md`, bumps `package.json`, tags, pushes, and creates
 the GitHub release. By hand it is:
 
 ```
-git add CHANGELOG.md
-npm version patch|minor|major     # bumps package.json, commits, tags v<x.y.z>
+npm version <x.y.z> --no-git-tag-version   # bumps package.json and stops
+git add CHANGELOG.md package.json
+git commit -m "release: <x.y.z>"
+git tag -a v<x.y.z> -m "v<x.y.z>"
 git push --follow-tags
 gh release create v<x.y.z> --notes "<the changelog section>"
 ```
+
+Plain `npm version` would do the bump, commit and tag in one step, but it
+refuses to run with anything staged — so it can never carry the changelog edit
+into the release commit. `--no-git-tag-version` and a commit by hand keeps the
+two files in one commit, which is the point.
 
 **The GitHub release is what publishes**, not the tag. `.github/workflows/publish.yml`
 runs on `release: published`; `ci.yml` only ever runs tests, so a green run on

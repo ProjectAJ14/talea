@@ -43,10 +43,17 @@ over OIDC.
   changed for them, in plain words.
 
 ### 4. Bump, commit, tag, push
-- `npm version <new>` does the bump, the commit and the `v<x.y.z>` tag in one
-  step — but it will not include your CHANGELOG edit, so stage that first and
-  let `npm version` amend nothing: commit `CHANGELOG.md` as part of the release
-  commit by running `git add CHANGELOG.md` before `npm version`.
+- `npm version <new> --no-git-tag-version` bumps `package.json` and stops. Plain
+  `npm version` refuses to run with anything staged ("Git working directory not
+  clean"), so it cannot carry the changelog edit with it — do the bump, then
+  commit both files together and tag by hand:
+
+  ```
+  npm version <new> --no-git-tag-version
+  git add CHANGELOG.md package.json
+  git commit -m "release: <x.y.z>"
+  git tag -a v<x.y.z> -m "v<x.y.z>"
+  ```
 - `git push --follow-tags`. Never force-push. If the push is rejected, stop and
   report it — do not rebase your way out.
 
