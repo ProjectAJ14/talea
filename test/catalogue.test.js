@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
+import path from 'node:path';
 
 import { defaultBranch, repoDir, repoGroup, repoUrl } from '../src/config.js';
 import { merge, parseSince } from '../src/commands/discover.js';
@@ -50,9 +51,12 @@ describe('one catalogue, many owners', () => {
 
   test('the folder is group/name, and a group dir may be a nested path', () => {
     const m = { ...MANIFEST, groups: { work: { dir: 'work/backend' } } };
+    // Built with path.join rather than written out, because the separator is
+    // the platform's: this same call returns \ws\work\backend\eklavya on
+    // Windows and a literal forward-slash expectation fails there.
     assert.equal(
       repoDir(m, '/ws', repo({ group: 'work' })),
-      '/ws/work/backend/eklavya',
+      path.join('/ws', 'work', 'backend', 'eklavya'),
     );
   });
 
