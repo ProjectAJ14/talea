@@ -60,20 +60,35 @@ jobs:
       - id: plan
         run: node scripts/release.mjs "${{ inputs.bump || 'auto' }}"
 
-      - name: commit, tag and push
+      # Local only, on purpose. Everything below is ordered so that a failed
+      # publish leaves nothing behind: no pushed bump commit, no tag, no
+      # release for a version that is not on the registry. v0.2.1 is what the
+      # other order costs — tagged, released, and never published, because the
+      # registry rejected it after the tag was already public.
+      - name: commit and tag
         if: steps.plan.outputs.release == 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add CHANGELOG.md package.json
-          # [skip ci] on the bump commit: the matrix already ran on the commits
-          # that earned this release, and without it this push starts the whole
-          # thing again.
+          # The skip marker keeps this push from starting the whole thing over.
+          # The matrix already ran on the commits that earned this release.
           git commit -m "release: $VERSION [skip ci]"
           git tag -a "v$VERSION" -m "v$VERSION"
-          git push --follow-tags
         env:
           VERSION: ${{ steps.plan.outputs.version }}
+
+      - name: publish to npm
+        if: steps.plan.outputs.release == 'true'
+        run: npm publish --provenance --access public
+
+      # Past this line the version exists on the registry and cannot be taken
+      # back, so the tag and the release follow it rather than lead it. A push
+      # that fails here leaves a published version with no tag — recoverable by
+      # hand, unlike the reverse.
+      - name: push the bump and the tag
+        if: steps.plan.outputs.release == 'true'
+        run: git push --follow-tags
 
       - name: github release
         if: steps.plan.outputs.release == 'true'
@@ -81,7 +96,3 @@ jobs:
         env:
           VERSION: ${{ steps.plan.outputs.version }}
           GH_TOKEN: ${{ github.token }}
-
-      - name: publish to npm
-        if: steps.plan.outputs.release == 'true'
-        run: npm publish --provenance --access public

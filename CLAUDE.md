@@ -238,6 +238,15 @@ both. That used to be a check; now it is not a thing that can happen.
 `CHANGELOG.md` is prepended to, never rewritten. A published entry is a record
 of what somebody installed, and editing it makes the record a guess.
 
+**The publish goes before the push.** The run bumps, commits and tags locally,
+publishes to npm, and only then pushes the tag and cuts the release — so a
+registry that refuses the package leaves nothing behind to clean up. The other
+order is what produced `v0.2.1`: tagged and released on GitHub, rejected by npm,
+and now a version that exists in the history and has never existed on the
+registry. Past the publish step the version is public and cannot be withdrawn,
+which is why the tag follows it; a push that fails after a successful publish
+leaves a published version with no tag, and that is recoverable by hand.
+
 ## Current status
 
 - **Ported from a private workspace manager** that did the same job for one
