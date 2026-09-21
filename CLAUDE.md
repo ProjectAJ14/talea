@@ -203,6 +203,12 @@ there and never run. The bump commit carries `[skip ci]` for the same family of
 reasons: the matrix already ran on the commits that earned the release, and
 without it the push starts the whole thing again.
 
+Which is a trap worth knowing about: GitHub reads that marker anywhere in the
+commit message, **body included**. A commit whose body merely mentions it — a
+message explaining this very mechanism did — is pushed with no workflow run at
+all, and the push looks like CI is broken. Write it as "the skip marker" in
+prose and only ever put the literal token in the release commit.
+
 **There is no npm token.** The workflow authenticates with npm **trusted
 publishing** over OIDC: npm mints a short-lived credential for this repository
 and this workflow file, checked against the publisher configured on the package.
