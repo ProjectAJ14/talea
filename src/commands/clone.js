@@ -20,7 +20,7 @@ ${c.bold('talea clone')} — clone what is missing, and nothing else
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
+  -r, --repo <names>    comma-separated repo names; a bare name works too
       --pick            choose what this machine keeps before cloning
       --protocol <p>    ssh (default) or https
       --from <path>     also search here for existing checkouts (repeatable)

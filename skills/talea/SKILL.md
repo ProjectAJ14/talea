@@ -74,7 +74,7 @@ skipped, and saying so up front is better than reporting it afterwards.
 talea sync                   # clone what is missing, fast-forward what is there
 talea clone                  # clone only — never fetches or merges
 talea sync -g NonStop        # one group
-talea sync -r eklavya        # one repo
+talea sync eklavya           # one repo — same as -r eklavya
 ```
 
 `sync` is safe to run unattended. It fast-forwards **the branch you are on** and
@@ -162,8 +162,11 @@ cloned — `talea init` or `talea select` after it is what fills the tree.
 ## Narrowing any run
 
 Every command takes `-g <group>` and `-r <repo>`, both repeatable, and `--help`
-for its own examples. An unknown group or repo name **exits non-zero** rather
-than quietly doing nothing, so a typo is loud.
+for its own examples. For `sync`, `clone`, `status`, `list` and `tree` a bare
+name is the same as `-r`. `adopt` is the exception: it refuses a bare name,
+because `-r` there lifts the name-only guard and must be typed on purpose. An
+unknown group or repo name **exits non-zero** rather than quietly doing nothing,
+so a typo is loud.
 
 ## Rules
 

@@ -4,7 +4,7 @@ sidebar:
   order: 8
 ---
 
-Every command takes `--help` for its own examples. Every command that works on more than one repo takes `-g <group>` and `-r <repo>` — both repeatable — to narrow the run, and **exits non-zero if any repo failed**.
+Every command takes `--help` for its own examples. Every command that works on more than one repo takes `-g <group>` and `-r <repo>` — both repeatable — to narrow the run, and **exits non-zero if any repo failed**. For `sync`, `clone`, `status`, `list` and `tree` a bare name is the same as `-r` — `talea sync eklavya` syncs one repo. `adopt` refuses a bare name, because `-r` there lifts the name-only guard. A command that takes no names stops on a stray word rather than ignoring it.
 
 An unknown group or repo name exits non-zero rather than quietly doing nothing. A bulk command that silently does nothing is worse than one that stops.
 

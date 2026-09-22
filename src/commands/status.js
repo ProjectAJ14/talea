@@ -22,7 +22,7 @@ Columns
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
+  -r, --repo <names>    comma-separated repo names; a bare name works too
       --drift           only repos on some other branch
       --missing         only repos not cloned yet
       --all             ignore this machine's selection

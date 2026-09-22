@@ -66,6 +66,24 @@ const ALIASES = {
   'self-update': 'upgrade',
 };
 
+// Bare words after these commands are repo names: `talea sync PiDom` is
+// `talea sync -r PiDom`. Dropping them instead ran the command over every repo
+// on the machine, which is a typo guard failing in the worst direction.
+const TAKES_REPOS = new Set(['sync', 'clone', 'status', 'list', 'tree']);
+
+// These read their own positionals. Everything else takes none, and a stray
+// word stops the run. `adopt` is left out on purpose: an explicit -r there lifts
+// the name-only guard, and a bare word must not do that by accident.
+const TAKES_WORDS = new Set(['init', 'select', 'add', 'rm', 'manifest', 'exec', 'skill', 'where']);
+
+/** Fold a command's bare words into -r, pass them through, or refuse them. */
+export function routeWords(key, words, repo) {
+  if (!words.length || TAKES_WORDS.has(key)) return { repo, words };
+  if (TAKES_REPOS.has(key)) return { repo: [...(repo ?? []), ...words], words: [] };
+  const hint = key === 'adopt' ? `\n  To name a repo: talea adopt -r ${words.join(',')}` : '';
+  return { error: `\`${key}\` takes no arguments, got ${words.map((w) => `"${w}"`).join(' ')}.${hint}` };
+}
+
 const OPTIONS = {
   group: { type: 'string', short: 'g', multiple: true },
   repo: { type: 'string', short: 'r', multiple: true },
@@ -203,6 +221,12 @@ export async function main(argv) {
     }
   }
 
+  const routed = routeWords(key, rest, values.repo?.length ? values.repo : undefined);
+  if (routed.error) {
+    fail(routed.error);
+    process.exit(1);
+  }
+
   const opts = {
     ...values,
     jobs,
@@ -216,10 +240,10 @@ export async function main(argv) {
     // selectRepos to flatten, but normalise "not passed" to undefined.
     group: values.group?.length ? values.group : undefined,
     from: values.from?.length ? values.from : undefined,
-    repo: values.repo?.length ? values.repo : undefined,
+    repo: routed.repo,
   };
 
-  await command.run(opts, key === 'exec' ? tail : rest);
+  await command.run(opts, key === 'exec' ? tail : routed.words);
 
   // After the real work, never before it, and never able to fail it.
   if (key !== 'upgrade') {

@@ -23,6 +23,7 @@ ${c.bold('talea sync')} — make this machine match the list
 
   ${c.dim('talea sync')}                      clone what is missing, fast-forward the rest
   ${c.dim('talea sync --pick')}               change what this machine keeps, then sync
+  ${c.dim('talea sync eklavya')}              only that repo (same as -r eklavya)
   ${c.dim('talea sync -g nonstopio')}         only that owner
   ${c.dim('talea sync --no-clone')}           fast-forward only, clone nothing
 
@@ -36,7 +37,7 @@ the workspace ${c.dim('talea init')} made, or asks which when this machine has s
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
+  -r, --repo <names>    comma-separated repo names; a bare name works too
       --pick            re-open the checklist before syncing
       --no-clone        do not clone anything new
       --no-adopt        do not look for checkouts to move into place
