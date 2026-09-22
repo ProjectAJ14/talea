@@ -6,6 +6,7 @@ export const help = `
 ${c.bold('talea upgrade')} — update the CLI itself
 
   ${c.dim('talea upgrade')}                    reinstall from npm at the latest version
+  ${c.dim('talea update')}                     the same thing
   ${c.dim('talea upgrade --check')}            only report whether one is available
   ${c.dim('talea upgrade --on')}               turn the daily update notice on
   ${c.dim('talea upgrade --off')}              turn the daily update notice off

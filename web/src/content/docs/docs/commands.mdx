@@ -81,7 +81,10 @@ talea status --all              # the whole catalogue
 ```bash
 talea select                    # reopen the checklist, then clone what is new
 talea select --no-clone         # change the list only
+talea pick PiDom                # keep that repo; no such name opens the checklist
 ```
+
+A name that matches exactly one repo is `talea add`. A name that matches none — or two owners' repos — opens the checklist instead.
 
 Space toggles, Enter saves, Esc cancels and changes nothing. Needs a terminal; in a non-interactive session it prints a summary instead of hanging.
 
@@ -175,7 +178,7 @@ Muscle memory from git and from every other tool that does one of these jobs.
 | Alias | Runs |
 |---|---|
 | `setup`, `bootstrap` | `init` |
-| `pull`, `update` | `sync` |
+| `pull` | `sync` |
 | `refresh` | `discover` |
 | `pick`, `choose` | `select` |
 | `ls` | `list` |
@@ -184,4 +187,4 @@ Muscle memory from git and from every other tool that does one of these jobs.
 | `run` | `exec` |
 | `remove` | `rm` |
 | `skills` | `skill` |
-| `self-update` | `upgrade` |
+| `update`, `self-update` | `upgrade` |

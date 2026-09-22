@@ -34,12 +34,17 @@ Options
   -j, --jobs <n>        parallel clones
 `;
 
-/** Resolve `name` or `owner/name` against the catalogue, or exit saying why. */
-export function resolve(manifest, name) {
+/** Every catalogue entry `name` or `owner/name` could mean, ignoring case. */
+export function lookup(manifest, name) {
   const wanted = String(name).toLowerCase();
-  const matches = manifest.repos.filter(
+  return manifest.repos.filter(
     (r) => r.name.toLowerCase() === wanted || `${r.owner}/${r.name}`.toLowerCase() === wanted,
   );
+}
+
+/** Resolve `name` or `owner/name` against the catalogue, or exit saying why. */
+export function resolve(manifest, name) {
+  const matches = lookup(manifest, name);
 
   if (!matches.length) {
     fail(`No repo called "${name}" in the catalogue.`);

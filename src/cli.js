@@ -52,7 +52,6 @@ const ALIASES = {
   setup: 'init',
   bootstrap: 'init',
   pull: 'sync',
-  update: 'sync',
   refresh: 'discover',
   pick: 'select',
   choose: 'select',
@@ -63,6 +62,7 @@ const ALIASES = {
   run: 'exec',
   skills: 'skill',
   remove: 'rm',
+  update: 'upgrade',
   'self-update': 'upgrade',
 };
 
@@ -110,7 +110,7 @@ ${c.bold('Commands')}
   ${c.cyan('clone')}      clone only — never fetches or merges
   ${c.cyan('adopt')}      move repos you already have into the right place
   ${c.cyan('status')}     one table: branch, clean/dirty, ahead/behind
-  ${c.cyan('select')}     reopen the checklist — what this machine keeps
+  ${c.cyan('select')}     reopen the checklist — or ${c.dim('talea pick <repo>')} for one
   ${c.cyan('add')}        keep another repo on this machine (${c.dim('rm')} to drop one)
   ${c.cyan('where')}      print a repo's path — ${c.dim('cd $(talea where eklavya)')}
   ${c.cyan('list')}       show the catalogue

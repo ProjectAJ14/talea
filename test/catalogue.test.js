@@ -9,7 +9,7 @@ import os from 'node:os';
 
 import { defaultBranch, repoDir, repoGroup, repoUrl } from '../src/config.js';
 import { merge, parseSince } from '../src/commands/discover.js';
-import { changes } from '../src/commands/select.js';
+import { changes, unresolved } from '../src/commands/select.js';
 import { toEntry } from '../src/github.js';
 import { buildTree, selectedRepos, toggle } from '../src/prompt.js';
 import { adoptable, machineRepos } from '../src/workspace.js';
@@ -284,4 +284,17 @@ describe('reselecting what this machine keeps', () => {
     // `select` has to report three removals rather than no change at all.
     assert.deepEqual(changes(['a', 'b', 'c'], []), { added: [], dropped: ['a', 'b', 'c'] });
   });
-})
+
+  test('`pick <name>` adds only when every name pins down one repo', () => {
+    // Anything else opens the checklist: a typo, or a name two owners share.
+    const manifest = {
+      repos: [
+        { name: 'PiDom', owner: 'me' },
+        { name: 'dup', owner: 'a' },
+        { name: 'dup', owner: 'b' },
+      ],
+    };
+    assert.deepEqual(unresolved(manifest, ['pidom', 'me/PiDom', 'b/dup']), []);
+    assert.deepEqual(unresolved(manifest, ['PiDomm', 'dup']), ['PiDomm', 'dup']);
+  });
+});

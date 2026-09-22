@@ -117,11 +117,17 @@ and nothing in talea will do it for them.
 talea add some-repo     # keep one more here, and clone it now
 talea rm some-repo      # stop keeping it — the checkout stays exactly where it is
 talea select            # reopen the whole checklist, interactively
+talea pick some-repo    # = add when the name is exact; otherwise the checklist
 ```
 
 `talea select` needs a terminal. In a non-interactive session it prints a
 summary instead of hanging, so prefer `add` and `rm` when acting on the
 developer's behalf and leave `select` as something to suggest they run.
+`pick <name>` falls back to that same checklist on a typo, so an agent uses
+`add`, which fails loudly instead.
+
+`talea update` reinstalls the CLI (it is `upgrade`), not `sync`. Never run it
+to refresh repos.
 
 `rm` does **not** delete the checkout. Say that plainly when you run it, or it
 reads like data loss.
