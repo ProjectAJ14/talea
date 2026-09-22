@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>talea — one folder structure for every machine</title>
+<meta name="description" content="talea gives every machine you work on the same folder structure. It builds a catalogue of your GitHub repos, moves the checkouts you already have into place, clones what is missing, and fast-forwards the lot. It never pushes and it never deletes.">
+<link rel="canonical" href="https://talea-run.web.app/">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="talea — one folder structure for every machine">
+<meta property="og:description" content="One catalogue of your GitHub repos, one tree, and a command that makes any machine match it. Nothing is ever deleted.">
+<meta property="og:url" content="https://talea-run.web.app/">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#17171a">
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<script>
+/* Ground selection. Runs before the stylesheets so the page never
+   paints one ground and then swaps — custom properties inherit, so
+   setting this one attribute resolves every role for the whole tree.
+   `ink` is the default and an absent choice stays ink: that is a
+   presentation decision, deliberately not the reader's OS setting.
+   The key is shared with the docs, so a choice made on either page
+   carries to the other. */
+(function () {
+  window.taleaGround = {
+    read: function () {
+      try { return localStorage.getItem('talea-ground') === 'paper' ? 'paper' : 'ink'; }
+      catch (e) { return 'ink'; }
+    },
+    apply: function (mode) {
+      document.documentElement.setAttribute('data-mode', mode);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', mode === 'paper' ? '#f0ede6' : '#17171a');
+      document.querySelectorAll('[data-ground]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.ground === mode));
+      });
+    },
+    set: function (mode) {
+      try { localStorage.setItem('talea-ground', mode); } catch (e) {}
+      window.taleaGround.apply(mode);
+    }
+  };
+  window.taleaGround.apply(window.taleaGround.read());
+}());
+</script>
+
+<link rel="stylesheet" href="tokens.css?v=1">
+<link rel="stylesheet" href="styles.css?v=1">
+<script type="module" src="analytics.js?v=1"></script>
+</head>
+<body>
+<div class="frame">
+
+<!-- ============================ NAV ============================ -->
+<nav class="nav">
+  <div class="wrap nav__inner">
+    <a class="brand" href="#top" aria-label="talea, home">
+      <span class="brand__mark">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V7"/><path d="M12 13c0-3.3 2.6-5.5 6.5-5.5C18.5 10.8 15.9 13 12 13Z"/><path d="M12 17.6c0-2.7-2.1-4.5-5.3-4.5C6.7 15.8 8.8 17.6 12 17.6Z"/></svg>
+      </span>
+      <span class="brand__name">talea</span>
+    </a>
+    <div class="nav__links">
+      <a class="nav__link" href="#name">The name</a>
+      <a class="nav__link" href="#agents">For agents</a>
+      <a class="nav__link" href="/docs/">Docs</a>
+      <a class="star" href="https://github.com/ProjectAJ14/talea" target="_blank" rel="noopener"
+         aria-label="Star talea on GitHub">
+        <svg class="star__mark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        <span class="star__label">Star</span>
+        <b class="star__n" data-stars hidden></b>
+      </a>
+      <div class="ground" role="group" aria-label="Colour ground">
+        <button type="button" data-ground="ink" aria-pressed="true">ink</button>
+        <button type="button" data-ground="paper" aria-pressed="false">paper</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================ HERO ============================ -->
+<header class="hero" id="top">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="hero__glow hero__glow--low" aria-hidden="true"></div>
+
+  <div class="wrap hero__grid">
+    <div>
+      <div class="badge fade-up">
+        <span class="badge__dot" aria-hidden="true"></span>
+        A command-line tool for your GitHub repos
+      </div>
+
+      <h1 class="hero__title fade-up fade-up--1">One folder structure<br>for <em>every machine.</em></h1>
+
+      <p class="hero__lede pretty fade-up fade-up--2">
+        Laptop, desktop, work machine — on each one the repo you want is either missing or somewhere you have to go and find. talea keeps one catalogue of your GitHub repos, one tree, and one command that makes any machine match it.
+      </p>
+
+      <!-- No install command in the hero. There is a catalogue to build before
+           the first sync means anything, and the docs carry that; this is the
+           one door into them. -->
+      <div class="hero__actions fade-up fade-up--3">
+        <a class="btn btn--brand" href="/docs/installing/">
+          Get started
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a class="btn btn--ghost" href="https://github.com/ProjectAJ14/talea" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <p class="hero__note fade-up fade-up--4">Node 20+ &middot; macOS, Linux and Windows &middot; zero dependencies, runtime and dev. It never pushes, and it never deletes anything.</p>
+    </div>
+
+    <!-- ========================= THE TERMINAL =========================
+         A real talea run, replayed. It boots itself (types the command),
+         then stops and hands the keyboard over: the visitor picks what
+         this machine keeps with the arrows and the space bar the real
+         picker takes, presses enter, and watches the live block fill.
+         Every glyph, colour and count here is what the CLI actually
+         prints — the glyphs are in src/theme.js, the row format in
+         src/log.js, and the summary box in summary(). -->
+    <div class="term-shell fade-up fade-up--term">
+      <div class="term" data-term>
+        <div class="term__bar">
+          <!-- macOS window controls, in the colours macOS actually uses:
+               this is a picture of a terminal, not a talea surface. -->
+          <span class="term__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="term__title">talea &mdash; ~/Workspace &mdash; zsh</span>
+          <a class="term__by" href="https://github.com/ProjectAJ14" target="_blank" rel="noopener">
+            <span>built by <b>Ajay Kumar</b></span>
+            <img src="https://github.com/ProjectAJ14.png?size=64" width="18" height="18"
+                 alt="" loading="lazy" decoding="async">
+          </a>
+        </div>
+
+        <div class="term__screen" data-screen role="group"
+             aria-label="An interactive talea run. Send the command, tick what this machine should keep, and watch talea clone what is missing and move what is already there into place.">
+          <!-- only this scrolls; the composer below is fixed furniture -->
+          <div class="term__log" data-log>
+            <div class="term__lines">
+
+            <!-- the shell, before talea has been asked for anything -->
+            <div class="ln ln--shell is-on" data-line="shell">
+              <span class="ln__cwd">~</span>
+              <span class="ln__p">&#10095;</span><span data-boot></span><span class="cur" data-boot-cur hidden>&#9613;</span>
+            </div>
+
+            <div class="ln ln--head" data-line="head" hidden>talea init</div>
+            <div class="ln ln--ctx" data-line="ctx" hidden>workspace <span class="ln__cwd">~/Workspace</span> &middot; catalogue 6 repos &middot; jobs 8</div>
+
+            <!-- the picker, drawn the way src/prompt.js draws it -->
+            <div class="ln" data-line="pick" hidden>
+              <div class="box box--ask">
+                <div class="ask__head">
+                  <span class="ask__chip">talea</span>
+                </div>
+                <p class="ask__stem">What should this machine keep?</p>
+                <div class="ask__opts" data-opts role="group" aria-label="Choose the repos this machine keeps">
+                  <div class="ask__grp" data-group="ProjectAJ14"><span class="ask__cur" aria-hidden="true">&nbsp;</span><span class="ask__box" aria-hidden="true">&#9680;</span><span class="ask__txt">ProjectAJ14</span></div>
+                  <button class="ask__opt is-picked" type="button" data-repo="eklavya"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">eklavya</span></button>
+                  <button class="ask__opt is-picked" type="button" data-repo="talea"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">talea</span></button>
+                  <button class="ask__opt" type="button" data-repo="Morph"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">Morph</span></button>
+                  <div class="ask__grp" data-group="nonstopio"><span class="ask__cur" aria-hidden="true">&nbsp;</span><span class="ask__box" aria-hidden="true">&#9680;</span><span class="ask__txt">nonstopio</span></div>
+                  <button class="ask__opt is-picked" type="button" data-repo="flutter_forge"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">flutter_forge</span></button>
+                  <button class="ask__opt is-picked" type="button" data-repo="json-viewer"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">json-viewer</span></button>
+                  <button class="ask__opt" type="button" data-repo="ns_puzzle"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">ns_puzzle</span></button>
+                </div>
+              </div>
+              <div class="ask__keys" data-keys>&#8593;&#8595; move &middot; space toggle &middot; a all &middot; n none &middot; <kbd>&#9166;</kbd> ok &middot; q cancel</div>
+              <div class="ask__count" data-count>4 of 6 selected</div>
+              <!-- the same nudge the prompt gets, for the same reason: nothing
+                   moves until the list is accepted -->
+              <button class="nudge" type="button" data-nudge-pick hidden>
+                <span class="nudge__arrow" aria-hidden="true"></span>
+                Your turn &mdash; tick what to keep, then <kbd>&#9166;</kbd>
+              </button>
+            </div>
+
+            <!-- the live block; app.js fills this from whatever was ticked -->
+            <div class="ln" data-line="work" hidden><div data-board></div></div>
+
+            <div class="ln" data-line="done" hidden>
+              <div class="box box--results">
+                <div class="box__title">R E S U L T S</div>
+                <div class="box__counts" data-counts></div>
+              </div>
+            </div>
+            <div class="ln ln--done" data-line="after" hidden><span class="done__tick">&#10003;</span> <span data-after></span></div>
+            </div>
+          </div>
+
+          <!-- the shell prompt sits on the last row of the window and stays
+               there while the transcript scrolls behind it -->
+          <div class="term__dock" data-dock hidden>
+            <div class="box box--composer" data-composer>
+              <span class="box__p">&#10095;</span>
+              <span class="composer__echo" data-echo></span><span class="cur" data-echo-cur>&#9613;</span>
+              <label class="visually-hidden" for="term-input">Type a talea command</label>
+              <input class="composer__ghost" id="term-input" data-input type="text"
+                     autocomplete="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <div class="composer__foot">
+              <span class="dim">zsh &middot; node v22.3.0</span>
+              <span class="composer__hint" data-hint hidden>press <kbd>&#9166;</kbd> to run</span>
+            </div>
+            <button class="nudge" type="button" data-nudge hidden>
+              <span class="nudge__arrow" aria-hidden="true"></span>
+              Your turn &mdash; press <kbd>&#9166;</kbd> to run it
+            </button>
+          </div>
+        </div>
+
+        <!-- the status line, the way a terminal multiplexer paints one -->
+        <div class="term__status" aria-hidden="true">
+          <span class="term__st">~/Workspace</span>
+          <span class="term__st dim">node v22.3.0</span>
+          <span class="term__gap"></span>
+          <span class="term__st term__st--ek" data-status>[TALEA 4 of 6 kept &middot; 2 groups]</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ WHY / THE STORY ============================ -->
+<!-- The copy stays put; a 14s loop behind it acts the problem out: the same
+     three repos in three places nobody meant, lifting away, and one tree
+     writing itself where they were. -->
+<section class="why story" aria-label="Why talea exists" data-shoot>
+  <div class="story__bg" data-anim aria-hidden="true">
+    <div class="story__grid"></div>
+    <div class="story__glow"></div>
+
+    <div class="story__path story__path--1">
+      <span class="story__host">laptop</span>
+      <span>~/dev/<span class="story__stray">eklavya-old</span></span>
+    </div>
+    <div class="story__path story__path--2">
+      <span class="story__host">desktop</span>
+      <span>~/tmp/<span class="story__stray">clone2/eklavya</span></span>
+    </div>
+    <div class="story__path story__path--3">
+      <span class="story__host">work</span>
+      <span>~/Desktop/<span class="story__stray">eklavya</span></span>
+    </div>
+
+    <div class="story__tree">
+      <div class="story__root">~/Workspace</div>
+      <div class="story__row"><span class="story__branch">&#9500;&#9472;</span> <span class="story__group">ProjectAJ14</span></div>
+      <div class="story__row"><span class="story__branch">&#9474;&nbsp;&nbsp;&#9500;&#9472;</span> eklavya</div>
+      <div class="story__row"><span class="story__branch">&#9474;&nbsp;&nbsp;&#9492;&#9472;</span> talea</div>
+      <div class="story__row"><span class="story__branch">&#9492;&#9472;</span> <span class="story__group">nonstopio</span></div>
+      <div class="story__row"><span class="story__branch">&nbsp;&nbsp;&nbsp;&#9492;&#9472;</span> flutter_forge</div>
+    </div>
+  </div>
+  <div class="why__inner">
+    <p class="why__statement pretty" data-reveal data-anim>
+      <span class="hl hl--a">Every machine ends up its own private filing system.</span>
+      <span class="hl hl--b">The same repo lives in three places,</span>
+      and <em class="hl hl--c">none of them is the one you remember.</em>
+    </p>
+    <p class="why__body pretty" data-reveal data-delay="150" data-anim>
+      <span class="hl hl--d">A tool that fixed this by re-cloning would throw away your branches, your stashes and your uncommitted work.</span>
+      <span class="hl hl--e">talea moves what is already there instead,</span>
+      <span class="hl hl--f">matching every checkout by its git remote rather than its folder name &mdash;</span>
+      <span class="hl hl--g">and it deletes nothing, ever.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============================ THE NAME ============================ -->
+<section class="legend" id="name" aria-labelledby="name-title">
+  <div class="legend__glow" aria-hidden="true"></div>
+  <div class="wrap legend__inner">
+    <p class="eyebrow eyebrow--dark center" data-reveal>The name</p>
+    <h2 class="h2 legend__title center" id="name-title" data-reveal data-delay="100">A cutting, taken and replanted</h2>
+
+    <div class="legend__cols">
+      <div data-reveal>
+        <span class="legend__idx">01</span>
+        <h3 class="legend__head">A talea is a cutting</h3>
+        <p class="legend__body pretty">Latin, and still the word gardeners use: a shoot taken off a living plant so it can be rooted somewhere else. Not a seed, and not a drawing of the plant &mdash; a piece of the plant itself.</p>
+      </div>
+      <div data-reveal data-delay="150">
+        <span class="legend__idx">02</span>
+        <h3 class="legend__head">Planted, it grows the same</h3>
+        <p class="legend__body pretty">A cutting is not a copy that resembles the original. It carries the whole thing with it and grows into the same plant in new ground, which is exactly what a catalogue on a new laptop has to do.</p>
+      </div>
+      <div data-reveal data-delay="300">
+        <span class="legend__idx">03</span>
+        <h3 class="legend__head">Here, the cutting is your tree</h3>
+        <p class="legend__body pretty">Publish the catalogue from one machine, pull it on the next, and the same structure grows there. What you keep on each machine stays that machine's business.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ HOW IT WORKS ============================ -->
+<section class="how" id="how" aria-labelledby="how-title">
+  <div class="wrap how__grid">
+    <div>
+      <p class="eyebrow eyebrow--light" data-reveal>The run</p>
+      <h2 class="h2" id="how-title" data-reveal data-delay="100">What one command does</h2>
+      <p class="how__body pretty" data-reveal data-delay="200">
+        Before talea clones anything it scans the workspace &mdash; and any folder you name with <code class="code-inline">--from</code> &mdash; and matches every checkout it finds by its <em>git remote</em>, not by folder name. A repo cloned into <code class="code-inline">~/tmp/clone2/whatever</code> is recognised as the repo it holds and moved into place.
+      </p>
+      <p class="how__body pretty" data-reveal data-delay="250">
+        That distinction is the whole safety story. A move keeps branches, stashes, the reflog and your uncommitted changes. A re-clone silently throws all of it away, so talea does not do one.
+      </p>
+
+      <ul class="dash__list" data-reveal data-delay="300">
+        <li><b>Matched on the remote URL.</b> A name-only match &mdash; a fork, a mirror, an SDK cache &mdash; is listed and left alone until you say otherwise.</li>
+        <li><b>Worktrees travel with their repo.</b> The sibling <code class="code-inline">&lt;repo&gt;-worktrees/</code> folder moves too, and every link is repaired afterwards.</li>
+        <li><b>A second copy is parked, not deleted.</b> It goes to <code class="code-inline">.talea-duplicates/</code> with everything in it; clearing that folder is your call.</li>
+        <li><b>Paths that pointed at the old location are repaired.</b> Claude Code session history, project settings, <code class="code-inline">.idea</code>, <code class="code-inline">.vscode</code>.</li>
+      </ul>
+    </div>
+
+    <ol class="steps">
+      <div class="steps__spine" aria-hidden="true"></div>
+      <li data-reveal>
+        <span class="steps__n">1</span>
+        <h3>It asks GitHub what you have</h3>
+        <p><code class="code-inline">talea discover</code> reads your own repos, every org you belong to, and anything shared with you directly. That list is the catalogue, and it is yours.</p>
+      </li>
+      <li data-reveal data-delay="100">
+        <span class="steps__n">2</span>
+        <h3>You tick what this machine keeps</h3>
+        <p class="has-chips">Once, in a checklist. A different machine can keep a different set, and neither fights the other.</p>
+        <div class="chips">
+          <span class="chip">laptop: 6 repos</span>
+          <span class="chip">desktop: 40</span>
+          <span class="chip">work: 3</span>
+        </div>
+      </li>
+      <li data-reveal data-delay="200">
+        <span class="steps__n">3</span>
+        <h3>It finds the checkouts you already have</h3>
+        <p>Every git directory in the tree is read for its remote and matched against the catalogue. Nothing that matches is ever cloned a second time.</p>
+      </li>
+      <li data-reveal data-delay="300">
+        <span class="steps__n">4</span>
+        <h3>It moves them into place</h3>
+        <p>A <code class="code-inline">rename</code>, not a copy &mdash; so it is instant and keeps everything. A cross-device move is refused and reported rather than turned into a copy-then-delete.</p>
+      </li>
+      <li data-reveal data-delay="400">
+        <span class="steps__n">5</span>
+        <h3>It clones what is genuinely missing</h3>
+        <p>On the default branch GitHub recorded for that repo, never an assumed <code class="code-inline">main</code>. A repo with none recorded is cloned on whatever the server hands over.</p>
+      </li>
+      <li data-reveal data-delay="500">
+        <span class="steps__n steps__n--solid">6</span>
+        <h3>And fast-forwards the rest</h3>
+        <p>The branch you are on, or nothing at all with a line saying why. A dirty repo is fetched and left alone. It never merges a divergence, and it never pushes.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================ THE PROMISE ============================ -->
+<section class="promise seam" aria-labelledby="promise-title">
+  <div class="wrap section">
+    <p class="eyebrow eyebrow--light center" data-reveal>The promise</p>
+    <h2 class="h2 center" id="promise-title" data-reveal data-delay="100">Nothing you have is ever destroyed</h2>
+    <p class="promise__sub" data-reveal data-delay="200">There is no <code class="code-inline">rm</code> in the part of talea that moves things, and that is enforced rather than intended.</p>
+
+    <div class="cards">
+      <div class="card" data-reveal>
+        <span class="icon-tile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </span>
+        <h3>Moved, never re-cloned</h3>
+        <p>A repo in the wrong place is renamed into the right one. Branches, stashes, the reflog and your uncommitted work come with it, because none of them ever left the directory.</p>
+      </div>
+      <div class="card" data-reveal data-delay="120">
+        <span class="icon-tile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="1"/><path d="M3 7l2-3h6l1.5 3"/></svg>
+        </span>
+        <h3>Duplicates are parked</h3>
+        <p>If the same repo turns up twice, the copy at the catalogue path wins and the other moves to <code class="code-inline">.talea-duplicates/</code> intact. Emptying that folder is a decision you make, not one talea makes for you.</p>
+      </div>
+      <div class="card" data-reveal data-delay="240">
+        <span class="icon-tile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+        </span>
+        <h3>It stays off your branch</h3>
+        <p>No <code class="code-inline">reset --hard</code>, no <code class="code-inline">clean -fd</code>, no <code class="code-inline">checkout --force</code>, and no <code class="code-inline">push</code>. A tool that moves you off a feature branch mid-task is no better than one that clobbers your changes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ THE THREE FILES ============================ -->
+<section class="modes" id="files" aria-labelledby="files-title">
+  <div class="wrap section">
+    <p class="eyebrow eyebrow--dark" data-reveal>The data model</p>
+    <h2 class="h2" id="files-title" data-reveal data-delay="100">Three files, and only one travels</h2>
+    <p class="dials__sub" data-reveal data-delay="200">
+      The split everything hangs off: <b>the catalogue is shared, the selection is not.</b> Pulling the catalogue onto a new laptop hands you the full list to choose from &mdash; never the last machine's choices.
+    </p>
+
+    <div class="dials">
+      <div class="dial" data-reveal>
+        <div class="dial__head">
+          <code class="dial__key">~/.talea/talea.repos.json</code>
+          <span class="dial__q">Your catalogue</span>
+        </div>
+        <div class="dial__opt dial__opt--default">
+          <span class="dial__pill">travels</span>
+          <code class="dial__val">shared</code>
+          <p>Every repo you can reach, its owner, its folder and its default branch. Written by <code class="code-inline">talea discover</code>, moved between machines through a private gist.</p>
+        </div>
+        <div class="dial__opt dial__opt--note">
+          <p>Discovery refreshes <em>facts</em> and never <em>choices</em>. A repo the API stops returning is kept and marked missing &mdash; a narrower token and a deleted repo look identical from here, and forgetting it is the one unrecoverable reading.</p>
+        </div>
+      </div>
+
+      <div class="dial" data-reveal data-delay="120">
+        <div class="dial__head">
+          <code class="dial__key">&lt;workspace&gt;/.talea.json</code>
+          <span class="dial__q">What this machine keeps</span>
+        </div>
+        <div class="dial__opt dial__opt--default">
+          <span class="dial__pill">never</span>
+          <code class="dial__val">local</code>
+          <p>A list of names, written when you tick the checklist. Your work laptop can keep three repos while the desktop keeps forty.</p>
+        </div>
+        <div class="dial__opt dial__opt--note">
+          <p>A list of names rather than a filter over the catalogue, deliberately: a filter would re-evaluate, and marking a repo as a default would then start cloning it on every machine you own.</p>
+        </div>
+      </div>
+
+      <div class="dial" data-reveal data-delay="240">
+        <div class="dial__head">
+          <code class="dial__key">&lt;workspace&gt;/talea.repos.json</code>
+          <span class="dial__q">A catalogue for one tree</span>
+        </div>
+        <div class="dial__opt dial__opt--default">
+          <span class="dial__pill">optional</span>
+          <code class="dial__val">local</code>
+          <p>Drop one next to a workspace and it wins over the one in your home directory. For a tree that is not yours &mdash; a shared machine, a container, a client's set of repos.</p>
+        </div>
+        <div class="dial__opt dial__opt--note">
+          <p>Nearest catalogue wins. The one packaged with talea is last, and ships empty on purpose: talea is the machinery, not a list of anybody's repositories.</p>
+        </div>
+      </div>
+
+      <div class="dial" data-reveal data-delay="360">
+        <div class="dial__head">
+          <code class="dial__key">ignore: true</code>
+          <span class="dial__q">Hands off entirely</span>
+        </div>
+        <div class="dial__opt dial__opt--default">
+          <span class="dial__pill">opt-in</span>
+          <code class="dial__val">ignored</code>
+          <p>One flag on a catalogue entry and no command touches that checkout &mdash; not <code class="code-inline">sync</code>, not <code class="code-inline">adopt</code>, not an explicit selection.</p>
+        </div>
+        <div class="dial__opt dial__opt--note">
+          <p>For repos another tool already organises. Without it, two tools that both arrange repositories each drag the same checkout back where it thinks it belongs, on every run, forever.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="modes__foot" data-reveal data-delay="300">
+      The gist is private, but it still holds the names of your private repositories. Treat the id like a bookmark you would not paste into a public channel. <code class="code-inline">talea manifest push</code> prints it once.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ COMMANDS + DATA ============================ -->
+<section class="commands seam" id="commands" aria-labelledby="commands-title">
+  <div class="wrap commands__grid">
+    <div>
+      <h2 class="h2" id="commands-title" data-reveal>Sixteen commands</h2>
+      <div class="cmd-table" data-reveal data-delay="100">
+        <div class="cmd-row"><code>talea init [dir]</code><span>Create the workspace on this machine and fill it</span></div>
+        <div class="cmd-row"><code>talea discover</code><span>Build or refresh the catalogue from GitHub</span></div>
+        <div class="cmd-row"><code>talea sync</code><span>Clone what is missing, fast-forward what is there</span></div>
+        <div class="cmd-row"><code>talea adopt</code><span>Move checkouts you already have into place</span></div>
+        <div class="cmd-row"><code>talea status</code><span>Branch, clean or dirty, ahead or behind, in one table</span></div>
+        <div class="cmd-row"><code>talea select</code><span>Reopen the checklist &mdash; what this machine keeps</span></div>
+        <div class="cmd-row"><code>talea where &lt;repo&gt;</code><span>Print a repo's path, for <code>cd $( )</code></span></div>
+        <div class="cmd-row"><code>talea exec -- &lt;cmd&gt;</code><span>Run one command in every repo</span></div>
+        <div class="cmd-row"><code>talea manifest push/pull</code><span>Move the catalogue between machines</span></div>
+        <div class="cmd-row"><code>talea skill</code><span>Install the skill that lets your coding agent drive talea</span></div>
+      </div>
+      <p class="cmd-ask" data-reveal data-delay="150">
+        Plus <code>clone</code>, <code>add</code>, <code>rm</code>, <code>list</code>, <code>tree</code>, <code>doctor</code> and <code>upgrade</code>.
+        Every one takes <code>-g &lt;group&gt;</code> and <code>-r &lt;repo&gt;</code> to narrow the run, and <code>--help</code> for its own
+        examples. An unknown group or repo name exits non-zero rather than quietly doing nothing.
+        <a href="/docs/commands/">The full reference</a>
+      </p>
+    </div>
+
+    <div class="data-card" data-reveal data-delay="200">
+      <span class="icon-tile icon-tile--dark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+      </span>
+      <h3>Zero dependencies</h3>
+      <p>Not at runtime, not to build it. Argument parsing, subprocesses, the filesystem, colour and HTTP all come out of Node's standard library, so a tool you install globally carries no supply chain with it.</p>
+      <p>Reading the catalogue prefers the <code>gh</code> CLI when it is installed. That is not only about the token: <code>gh</code> trusts your system certificate store, so talea keeps working behind a corporate proxy or VPN where Node's own HTTPS would fail.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ AGENTS ============================ -->
+<section class="dash" id="agents" aria-labelledby="agents-title">
+  <div class="wrap section dash__grid">
+    <div>
+      <p class="eyebrow" data-reveal>For your coding agent</p>
+      <h2 class="h2" id="agents-title" data-reveal data-delay="100">&ldquo;Where is eklavya?&rdquo;</h2>
+      <p class="dash__sub" data-reveal data-delay="150">
+        One command installs a skill into Claude Code at user scope, so every project
+        you open has it. Your agent then knows which talea command answers a
+        question &mdash; and, more to the point, which flags it must never reach for on
+        your behalf.
+      </p>
+      <div class="dash__cmd" data-reveal data-delay="200">
+        <div><span>$</span> talea skill install</div>
+        <div class="dash__cmd-out">&#9635; Installed ~/.claude/skills/talea/SKILL.md</div>
+        <div class="dash__cmd-out">==&gt; Restart Claude Code to pick it up</div>
+      </div>
+      <ul class="dash__list" data-reveal data-delay="250">
+        <li>An adopt is always shown as a dry run first &mdash; a move relocates directories you may have open</li>
+        <li><code class="code-inline">--loose</code> is never taken on your behalf, because a name-only match is how an SDK cache gets adopted and breaks a toolchain</li>
+        <li>A removal is reported as <em>taken off the list</em>, never as a delete, because that is what it is</li>
+        <li>The gist id never lands in a message going somewhere shared</li>
+      </ul>
+      <p class="dash__note" data-reveal data-delay="300">
+        User scope, not per-repo: your workspace spans every project, so the agent
+        needs the same instructions in all of them. <code>talea skill uninstall</code> takes it
+        back out, and it refuses to overwrite a skill called <code>talea</code> that talea did
+        not write.
+      </p>
+    </div>
+
+    <div class="dash__preview" data-reveal data-delay="200">
+      <div class="talk">
+        <div class="talk__turn">
+          <span class="talk__who">You</span>
+          <p class="talk__you">where's the eklavya repo on this machine?</p>
+        </div>
+        <div class="talk__turn">
+          <span class="talk__who">Claude</span>
+          <div class="talk__cmd">talea where eklavya</div>
+          <div class="talk__out">~/Workspace/ProjectAJ14/eklavya</div>
+        </div>
+        <div class="talk__rule" aria-hidden="true"></div>
+        <div class="talk__turn">
+          <span class="talk__who">You</span>
+          <p class="talk__you">my repos are scattered all over, tidy them up</p>
+        </div>
+        <div class="talk__turn">
+          <span class="talk__who">Claude</span>
+          <div class="talk__cmd">talea adopt --from ~/Desktop</div>
+          <div class="talk__out">10 would move, 1 name-only match left alone.</div>
+          <div class="talk__out">Nothing has changed yet &mdash; shall I apply it?</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ DOCS ============================ -->
+<section class="docs" id="docs" aria-labelledby="docs-title">
+  <div class="wrap section docs__grid">
+    <div class="docs__head">
+      <p class="eyebrow eyebrow--light" data-reveal>Documentation</p>
+      <h2 class="h2" id="docs-title" data-reveal data-delay="100">The manual, not the tour</h2>
+      <p class="docs__sub" data-reveal data-delay="150">
+        This page is the overview. The docs are the step-by-step version &mdash; the first
+        machine, every machine after it, what adoption actually does, every command,
+        and what to do when a clone fails.
+      </p>
+      <div class="docs__actions" data-reveal data-delay="200">
+        <a class="btn btn--brand" href="/docs/">
+          Read the docs
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <div class="docs__cards" data-reveal data-delay="250">
+      <a class="docs__card" href="/docs/installing/">
+        <span class="docs__n">01</span>
+        <b>Installing</b>
+        <span>One npm command, the two things it needs, and the check that proves it worked.</span>
+      </a>
+      <a class="docs__card" href="/docs/adopting/">
+        <span class="docs__n">02</span>
+        <b>Adopting what you have</b>
+        <span>How matching works, why a name-only match is never moved, and where duplicates go.</span>
+      </a>
+      <a class="docs__card" href="/docs/commands/">
+        <span class="docs__n">03</span>
+        <b>Command reference</b>
+        <span>Every command, its flags and its exit code &mdash; the thing a script depends on.</span>
+      </a>
+      <a class="docs__card" href="/docs/troubleshooting/">
+        <span class="docs__n">04</span>
+        <b>Troubleshooting</b>
+        <span>Clone failures, SSH, a repo that will not move &mdash; symptom, cause, fix.</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CTA ============================ -->
+<section class="cta" aria-labelledby="cta-title">
+  <div class="cta__glow" aria-hidden="true"></div>
+  <div class="cta__inner">
+    <h2 class="cta__title" id="cta-title" data-reveal>Same paths<br>on <em>every machine.</em></h2>
+    <div class="cta__code" data-reveal data-delay="150">
+      <div><span>$</span> npm install -g @ajaykumarnpm/talea</div>
+      <div><span>$</span> talea init ~/Workspace</div>
+    </div>
+    <div class="cta__actions" data-reveal data-delay="300">
+      <a class="btn btn--brand" href="https://github.com/ProjectAJ14/talea" target="_blank" rel="noopener">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        Star on GitHub
+      </a>
+    </div>
+    <p class="cta__note" data-reveal data-delay="400">Node 20+ · macOS, Linux and Windows · the package is scoped, the command is just <code class="code-inline">talea</code></p>
+    <p class="cta__note" data-reveal data-delay="450">Then <code class="code-inline">cd $(talea where eklavya)</code> works everywhere.</p>
+  </div>
+</section>
+
+<!-- ============================ FOOTER ============================ -->
+<footer class="footer seam">
+  <div class="wrap footer__inner">
+    <div class="footer__left">
+      <div class="brand">
+        <span class="footer__mark">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V7"/><path d="M12 13c0-3.3 2.6-5.5 6.5-5.5C18.5 10.8 15.9 13 12 13Z"/><path d="M12 17.6c0-2.7-2.1-4.5-5.3-4.5C6.7 15.8 8.8 17.6 12 17.6Z"/></svg>
+        </span>
+        <span class="footer__name">talea</span>
+      </div>
+      <p class="footer__quote pretty">A talea is a cutting taken off a living plant so it can be rooted somewhere else. It does not resemble the plant; it grows into it.</p>
+    </div>
+    <div class="footer__right">
+      <a href="https://github.com/ProjectAJ14/talea" target="_blank" rel="noopener" class="footer__link">github.com/ProjectAJ14/talea</a>
+      <span>MIT License · Built by Ajay Kumar</span>
+    </div>
+  </div>
+</footer>
+
+<script src="app.js?v=1" defer></script>
+</div><!-- /.frame -->
+</body>
+</html>

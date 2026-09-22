@@ -1,0 +1,1179 @@
+/* ============================================================
+   talea landing page — component styles.
+
+   Every colour here names a ROLE from tokens.css (--ink, --dim,
+   --line, --spot). Nothing names a scale step or a raw hex: those
+   pin a component to one ground and break the ink/paper toggle.
+   The one exception is the terminal, below.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   THE TERMINAL'S OWN PALETTE
+   The hero terminal is a picture of a terminal, and terminals are
+   dark — so it keeps one palette on both grounds instead of
+   flipping. Its block (from "THE TERMINAL" down to the picker) is
+   preserved verbatim from before the ground rework and still names
+   these; they are declared here, once, rather than in tokens.css,
+   so nothing else can reach for them by accident.
+   The greens are the verdigris ramp, the same one the CLI prints
+   in; the neutrals are ordinary terminal chrome.
+   ------------------------------------------------------------ */
+:root {
+  --neutral-400: #9AA6AF;
+  --neutral-500: #6B7780;
+  --neutral-600: #4D575F;
+  --neutral-700: #363F45;
+  --neutral-800: #21282D;
+  --green-200: var(--vd-100);
+  --green-300: var(--vd-200);
+  --green-400: var(--vd-300);  /* prompt, cursor — the brightest */
+  --green-500: var(--vd-400);
+  --green-600: var(--vd-500);
+  --radius-xs: 4px;
+  --radius-xl: var(--radius-term);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.65;
+  /* No `antialiased`: grayscale smoothing thins light-on-dark
+     glyphs, and ink is the default ground. */
+  overflow-x: clip;
+  /* the rule grid, herdr's device: it gives the flat ground a
+     measure without adding another surface colour */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+a { color: inherit; text-decoration: none; }
+
+::selection { background: var(--spot); color: var(--spot-ink); }
+
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 0; }
+
+/* ------------------------------------------------------------
+   THE FRAME
+   One continuous ground inside a ruled frame. Sections are
+   separated by hairlines, never by a change of background — that
+   is what makes a single theme toggle possible at all.
+   ------------------------------------------------------------ */
+.frame {
+  max-width: var(--max); margin: 0 auto; background: var(--bg);
+  position: relative;
+  border-left: 1px solid var(--line-2);
+  border-right: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+}
+
+.wrap { max-width: 1140px; margin: 0 auto; padding: 0 32px; }
+.section { padding: 96px 0; }
+
+/* one hairline between every band — no background changes anywhere */
+.frame > * + * { border-top: 1px solid var(--line-2); }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- shared type ---------- */
+.eyebrow {
+  margin: 0; font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+  letter-spacing: var(--tracking-caps-wide); text-transform: uppercase;
+  color: var(--spot);
+}
+.eyebrow--dark, .eyebrow--light { color: var(--spot); }
+
+.h2 {
+  margin: 14px 0 0; font-family: var(--font-disp); font-weight: var(--weight-extra);
+  font-size: var(--display-2); line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+}
+.center { text-align: center; }
+.pretty { text-wrap: pretty; }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-body); font-weight: 700; font-size: 15px;
+  padding: 12px 22px; border-radius: 0;
+  transition: background 160ms var(--ease), color 160ms var(--ease),
+              box-shadow 160ms var(--ease), border-color 160ms var(--ease);
+}
+.btn--brand { background: var(--spot); color: var(--spot-ink); }
+.btn--brand:hover { background: var(--spot); color: var(--spot-ink); }
+.btn--ghost { color: var(--ink); border: 1px solid var(--line-2); padding: 12px 18px; }
+.btn--ghost:hover { background: var(--panel); color: var(--ink); }
+.btn--white {
+  background: var(--panel); color: var(--ink);
+  font-size: 14px; padding: 9px 16px;
+}
+.btn--white:hover { background: var(--mass); color: var(--ink); }
+
+/* ============================================================
+   NAV
+   ============================================================ */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line-2);
+}
+.nav__inner {
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.brand { display: flex; align-items: center; gap: 10px; flex: none; }
+.brand__mark {
+  width: 30px; height: 30px; border-radius: 0;
+  background: var(--spot); color: var(--spot-ink);
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+
+/* ---------- copy a command ----------
+   Injected by app.js into every block that holds a shell command, so a reader
+   never has to select text by hand. Sits in the block's top-right corner and
+   only fills in on hover or focus, so it is out of the way while reading and
+   obvious the moment you reach for it. */
+.cmd-block { position: relative; }
+.cmd-copy {
+  position: absolute; top: 8px; right: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--faint); background: var(--bg);
+  border: 1px solid var(--line-2); padding: 5px 9px; cursor: pointer;
+  opacity: 0; transition: opacity 140ms var(--ease), color 140ms var(--ease),
+                          border-color 140ms var(--ease);
+}
+.cmd-block:hover .cmd-copy,
+.cmd-copy:focus-visible { opacity: 1; }
+.cmd-copy:hover { color: var(--spot); border-color: var(--spot); }
+.cmd-copy.is-done { opacity: 1; color: var(--spot); border-color: var(--spot); }
+/* a touch screen has no hover, so the button is simply always there */
+@media (hover: none) { .cmd-copy { opacity: 1; } }
+
+/* ---------- the star count ----------
+   The number is the ask. A live count reads as "other people did this" where
+   "please star the repo" reads as begging, so the figure carries it and the
+   label stays a verb. It is hidden until the fetch lands, so a rate-limited
+   or offline visitor gets a clean button rather than a zero. */
+.star {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line-2); padding: 6px 12px; flex: none;
+  font-family: var(--font-mono); font-size: 11.5px;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--ink);
+  transition: border-color 140ms var(--ease), color 140ms var(--ease);
+}
+.star:hover { border-color: var(--spot); color: var(--spot); }
+.star__mark { flex: none; }
+.star__n {
+  font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--line-2);
+  color: var(--spot);
+}
+.star__n[hidden] { display: none; }
+
+/* ---------- the ground toggle ----------
+   Two states, both always visible and labelled, so the current
+   ground is readable rather than inferred from an icon. */
+.ground { display: flex; border: 1px solid var(--line-2); flex: none; }
+.ground button {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+  letter-spacing: .12em; text-transform: uppercase;
+  background: none; border: 0; color: var(--faint);
+  padding: 6px 11px; cursor: pointer; line-height: 1.4;
+  transition: background 140ms var(--ease), color 140ms var(--ease);
+}
+.ground button:hover { color: var(--ink); }
+.ground button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.brand__name { font-family: var(--font-disp); font-weight: var(--weight-extra); font-size: 19px; letter-spacing: var(--tracking-tight); color: var(--ink); }
+.nav__links { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.nav__link {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 400;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+  transition: color 140ms var(--ease); white-space: nowrap; flex: none;
+}
+.nav__link:hover { color: var(--spot); }
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero { position: relative; overflow: hidden; }
+.hero__glow {
+  position: absolute; top: -200px; right: -100px; width: 720px; height: 720px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow) 0%, transparent 65%);
+  animation: glow 7s ease-in-out infinite;
+}
+.hero__glow--low {
+  position: absolute; top: auto; bottom: -260px; left: -180px; right: auto;
+  width: 600px; height: 600px; animation: none;
+  background: radial-gradient(circle, var(--glow-low) 0%, transparent 65%);
+}
+.hero__grid {
+  position: relative;
+  /* wider than .wrap on purpose: the terminal is the demo, and a real one is
+     ~100 columns. The copy column is capped so it never stretches with it. */
+  max-width: 1400px; padding: 108px 32px 100px;
+  display: grid; grid-template-columns: minmax(0, 500px) minmax(0, 1fr);
+  gap: 56px; align-items: center;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid rgba(25,150,136,.45); background: rgba(25,150,136,.12);
+  color: var(--spot); border-radius: 0; padding: 6px 14px;
+  font-size: 12px; font-weight: 700; letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.badge__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--spot); }
+
+.hero__title {
+  margin: 22px 0 0; font-family: var(--font-disp); font-weight: var(--weight-extra);
+  font-size: clamp(38px, 4.2vw, 62px); line-height: .92;
+  letter-spacing: var(--tracking-display); color: var(--ink);
+  text-wrap: balance;
+}
+.hero__title em { font-style: normal; color: var(--spot); }
+.hero__lede {
+  margin: 24px 0 0; font-size: 19px; line-height: 1.6;
+  color: var(--dim); max-width: 520px;
+}
+.hero__note { margin: 22px 0 0; font-size: 13.5px; color: var(--faint); }
+.hero__actions { margin-top: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+/* ============================================================
+   THE TERMINAL
+   A picture of a real terminal running a real Claude Code
+   session, so it is built on a character grid: one line-height
+   for every row, no flex gaps, boxes drawn with borders rather
+   than box-drawing glyphs so they reflow instead of overflowing.
+   ============================================================ */
+.term-shell { position: relative; min-width: 0; }
+.term-shell::before {
+  content: ""; position: absolute; inset: -28px; border-radius: 28px;
+  background: radial-gradient(circle, rgba(25,150,136,.20) 0%, rgba(25,150,136,0) 70%);
+}
+.term {
+  position: relative; background: #0E1214; border-radius: var(--radius-xl);
+  box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 4px 10px rgba(0,0,0,.35),
+              inset 0 1px 0 rgba(255,255,255,.05);
+  overflow: hidden; border: 1px solid var(--neutral-700);
+}
+.term__bar {
+  display: flex; align-items: center; gap: 8px;
+  /* The 98x34 badge used to be the tallest thing in here and set the bar's
+     height at 45px. Removing it would have shrunk the bar and moved the whole
+     terminal up, so the height it always had is stated outright. */
+  min-height: 45px;
+  padding: 11px 14px; border-bottom: 1px solid var(--neutral-800);
+  background: linear-gradient(180deg, #1B2125 0%, #161B1E 100%);
+}
+/* macOS window controls in the colours macOS uses. This is a depiction of
+   another application's chrome, not a talea surface, so the tokens do
+   not apply — dimmed while the window is "inactive", full on hover. */
+.term__lights { display: flex; gap: 8px; margin-right: 6px; }
+.term__lights i {
+  width: 11px; height: 11px; border-radius: 50%; display: block;
+  opacity: .55; transition: opacity 200ms var(--ease);
+}
+.term__lights i:nth-child(1) { background: #FF5F57; }
+.term__lights i:nth-child(2) { background: #FEBC2E; }
+.term__lights i:nth-child(3) { background: #28C840; }
+.term:hover .term__lights i, .term:focus-within .term__lights i { opacity: 1; }
+.term__title {
+  flex: 1; text-align: center; font-family: var(--font-mono);
+  font-size: 12px; color: var(--neutral-500);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* ---------- who built it ----------
+   Sits in the title bar because that is where a window says whose window it is.
+   Deliberately quiet: it takes the terminal's own muted chrome colour rather
+   than the accent, and only comes up to full strength on hover.
+
+   The height is the constraint: the bar is 45px, set by its 11px padding and
+   the title's line box, so the avatar is 18px and every box in here is given an
+   explicit line-height — inheriting the page's 1.65 is what pushed the bar
+   taller on the first attempt. */
+.term__by {
+  display: flex; align-items: center; gap: 7px; flex: none;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1;
+  color: var(--neutral-600); white-space: nowrap;
+  transition: color 160ms var(--ease);
+}
+.term__by span { line-height: 1; }
+.term__by b { font-weight: 400; color: var(--neutral-500); transition: color 160ms var(--ease); }
+.term__by img {
+  width: 18px; height: 18px; border-radius: 50%; display: block; flex: none;
+  opacity: .55; filter: grayscale(1);
+  transition: opacity 160ms var(--ease), filter 160ms var(--ease);
+}
+.term__by:hover { color: var(--neutral-500); }
+.term__by:hover b { color: var(--green-300); }
+.term__by:hover img { opacity: 1; filter: none; }
+
+/* Fixed height, and the transcript scrolls inside it: the session runs to
+   about twice this and the hero must not grow a screen taller as it plays. */
+.term__screen {
+  padding: 18px 20px 16px; font-family: var(--font-mono);
+  font-size: 13px; line-height: 1.7; height: 476px;
+  color: #AEB8C0; cursor: text;
+  /* Two parts: a scroller, and a prompt bolted to the last row. */
+  display: flex; flex-direction: column; min-height: 0;
+}
+.term__screen:focus-visible { outline: none; }
+/* the transcript — the only thing that moves */
+.term__log {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--neutral-800) transparent;
+  overscroll-behavior: contain;
+  /* A short transcript sits on the floor of the scroller rather than the
+     ceiling, the way a fresh terminal does. `margin-top: auto` on the inner
+     wrapper does that without breaking scrolling once it overflows, which
+     `justify-content: flex-end` on the scroller itself would. */
+  display: flex; flex-direction: column;
+}
+.term__lines { margin-top: auto; }
+.term__log::-webkit-scrollbar { width: 8px; }
+.term__log::-webkit-scrollbar-thumb { background: var(--neutral-800); border-radius: var(--radius-pill); }
+.term__log::-webkit-scrollbar-thumb:hover { background: var(--neutral-700); }
+
+/* the prompt: pinned, never scrolls, dimmed while Claude is working */
+.term__dock { flex: none; padding-top: 4px; }
+.term__dock[hidden] { display: none; }
+.term__dock.is-busy { opacity: .4; pointer-events: none; }
+
+/* tmux-style status line: it uses the extra width the hero now has, and it
+   is where the four dials actually live. */
+.term__status {
+  display: flex; align-items: center; gap: 14px;
+  padding: 7px 14px; border-top: 1px solid var(--neutral-800);
+  background: #12171A; font-family: var(--font-mono); font-size: 11px;
+  color: var(--neutral-400); white-space: nowrap; overflow: hidden;
+}
+.term__gap { flex: 1; }
+.term__st--ek { color: var(--green-400); }
+
+/* ---------- lines ---------- */
+/* Every line starts `hidden`; app.js unhides it and adds .is-on a frame later
+   so the transition has two states to run between. */
+.ln,
+.term__dock { opacity: 0; transform: translateY(4px); transition: opacity 220ms var(--ease), transform 220ms var(--ease); }
+.ln.is-on,
+.term__dock.is-on { opacity: 1; transform: none; }
+/* No JS, no [data-ready]: nothing will ever unhide the lines, so print the
+   whole transcript and drop the parts only a keyboard could have driven. */
+.term__screen:not([data-ready]) .ln[hidden] { display: block; opacity: 1; transform: none; }
+/* The class-plus-attribute selector above is the one to beat, hence .ln here. */
+.term__screen:not([data-ready]) .term__dock,
+.term__screen:not([data-ready]) .ln[data-line="work"],
+.term__screen:not([data-ready]) .ask__keys,
+.term__screen:not([data-ready]) .cur { display: none; }
+/* The parts JS would have filled in, printed as a real run prints them. */
+.term__screen:not([data-ready]) [data-boot]::after { content: "talea init ~/Workspace"; }
+.term__screen:not([data-ready]) [data-counts]::after {
+  content: "2 cloned \00b7 1 adopted \00b7 1 skipped";
+}
+.term__screen:not([data-ready]) [data-after]::after {
+  content: "cd $(talea where eklavya)  \2192  ~/Workspace/ProjectAJ14/eklavya";
+}
+
+.dim { color: var(--neutral-600); }
+.cur { color: var(--green-400); animation: blink 1.06s steps(1) infinite; }
+.cur[hidden] { display: none; }
+
+.ln--shell { color: var(--neutral-400); white-space: nowrap; overflow: hidden; }
+.ln__cwd { color: var(--green-300); }
+.ln__branch { color: #B48EAD; margin-left: 8px; }
+.ln__p { color: var(--green-400); margin: 0 8px 0 10px; }
+.ln--user { color: #E8EDEF; margin-top: 4px; }
+.ln--user .ln__p { margin-left: 0; }
+.ln--ctx { color: var(--neutral-500); font-size: 12px; }
+.ln--head { color: #E8EDEF; font-weight: 500; margin-top: 8px; }
+.ln--note { color: var(--neutral-600); font-size: 11.5px; }
+.ln--think { color: var(--green-300); margin: 6px 0; }
+.think__g { display: inline-block; width: 1ch; color: var(--green-400); }
+.ln--done { color: var(--green-300); margin-top: 8px; }
+.done__tick { color: var(--green-400); }
+
+/* ---------- boxes ---------- */
+/* Claude Code draws these with box-drawing characters; a 1px border is the
+   same picture and survives a 320px screen, which ─────╮ does not. */
+.box {
+  border: 1px solid var(--neutral-700); border-radius: var(--radius-sm);
+  padding: 8px 12px; margin: 10px 0 2px; background: rgba(24, 30, 34, .6);
+}
+.box__row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.box__row b { color: #E8EDEF; font-weight: 500; }
+
+/* ---------- the composer: where the visitor actually types ---------- */
+.box--composer {
+  display: flex; align-items: baseline; position: relative;
+  border-color: var(--neutral-600); background: rgba(18, 22, 25, .8);
+  transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.box--composer:focus-within,
+[data-composer].is-armed { border-color: var(--green-600); box-shadow: 0 0 0 1px rgba(25,150,136,.25); }
+.box__p { color: var(--green-400); margin-right: 1ch; flex: none; }
+.composer__echo { color: #E8EDEF; white-space: pre-wrap; word-break: break-word; min-width: 0; }
+/* A real input so phones raise a keyboard and screen readers see a field —
+   invisible, laid over the box, with the block cursor standing in for its
+   caret. 16px keeps iOS from zooming the page on focus. */
+.composer__ghost {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; border: 0; padding: 0; font-size: 16px;
+  background: transparent; color: transparent; caret-color: transparent;
+}
+.composer__foot {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 11.5px; color: var(--neutral-600); padding: 2px 2px 0;
+}
+.composer__hint { color: var(--green-500); }
+.composer__hint[hidden] { display: none; }
+kbd {
+  font-family: var(--font-mono); font-size: 11px; color: var(--green-300);
+  border: 1px solid rgba(25,150,136,.4); border-radius: var(--radius-xs);
+  padding: 0 5px; background: rgba(25,150,136,.12);
+}
+
+/* the nudge, if the visitor just watches */
+.nudge {
+  position: relative; margin: 14px 0 2px; display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--green-200);
+  background: rgba(25,150,136,.18); border: 1px solid rgba(25,150,136,.45);
+  border-radius: var(--radius-pill); padding: 6px 14px; cursor: pointer;
+  animation: nudge-in 320ms var(--ease) both, nudge-pulse 2.4s var(--ease) 320ms infinite;
+}
+.nudge[hidden] { display: none; }
+.nudge:hover { background: rgba(25,150,136,.3); border-color: var(--green-500); }
+.nudge__arrow {
+  position: absolute; top: -5px; left: 22px; width: 8px; height: 8px;
+  background: rgba(25,150,136,.18); border-left: 1px solid rgba(25,150,136,.45);
+  border-top: 1px solid rgba(25,150,136,.45); transform: rotate(45deg);
+}
+@keyframes nudge-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes nudge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(25,150,136,0); }
+  50% { box-shadow: 0 0 0 6px rgba(25,150,136,.12); }
+}
+
+/* ---------- the picker, as AskUserQuestion draws it ---------- */
+.box--ask { border-left: 2px solid var(--green-500); background: rgba(25,150,136,.06); padding: 10px 12px 8px; }
+.ask__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.ask__chip {
+  color: var(--green-300); background: rgba(25, 150, 136, .18);
+  border: 1px solid rgba(25, 150, 136, .35);
+  padding: 0 8px; border-radius: var(--radius-pill);
+  font-size: 11.5px; letter-spacing: .02em;
+}
+.ask__stem { margin: 0 0 8px; color: #E8EDEF; }
+.ask__ref { color: var(--green-300); }
+.ask__opts { display: flex; flex-direction: column; }
+.ask__opt {
+  width: 100%; font: inherit; text-align: left; border: 0; background: none;
+  color: #AEB8C0; padding: 1px 4px; border-radius: var(--radius-xs);
+  display: flex; align-items: flex-start; gap: 1ch; cursor: default;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.ask__opt--other { color: var(--neutral-600); }
+.ask__cur { flex: none; width: 1ch; color: var(--green-400); opacity: 0; }
+.ask__n { flex: none; color: var(--neutral-600); }
+.ask__txt { flex: 1; }
+.ask__mark { flex: none; width: 2ch; text-align: right; }
+
+/* .is-live is on only while the question is open — afterwards the rows stop
+   reacting to the pointer, the way a resolved picker does. */
+.ask__opts.is-live .ask__opt { cursor: pointer; }
+.ask__opts.is-live .ask__opt:hover,
+.ask__opts.is-live .ask__opt.is-cur {
+  background: rgba(25, 150, 136, .16); color: #E8EDEF; outline: none;
+}
+.ask__opts.is-live .ask__opt:hover .ask__cur,
+.ask__opts.is-live .ask__opt.is-cur .ask__cur { opacity: 1; }
+.ask__opt:focus-visible { outline: 1px solid var(--green-400); outline-offset: 0; }
+.ask__opt.is-right { background: rgba(25, 150, 136, .18); color: #E8EDEF; }
+.ask__opt.is-right .ask__n, .ask__opt.is-right .ask__mark { color: var(--green-300); }
+.ask__opt.is-wrong { background: rgba(229, 72, 77, .14); color: #E8EDEF; }
+.ask__opt.is-wrong .ask__n, .ask__opt.is-wrong .ask__mark { color: var(--error); }
+.ask__opt.is-blank { background: rgba(107, 119, 128, .18); color: #C7CFD4; }
+.ask__opt.is-blank .ask__mark { color: var(--neutral-400); }
+.ask__keys { color: var(--neutral-600); font-size: 11.5px; padding: 4px 0 0 2px; }
+.ask__keys[hidden] { display: none; }
+
+/* ---------- the checklist, as prompt.js draws it ----------
+   talea's picker is a list of checkboxes driven from raw mode: space toggles,
+   arrows walk, enter accepts. The rows reuse the picker chrome above; the only
+   additions are the box on the left, which is the state a keystroke changes,
+   and the group rows, which `renderRow` indents its repos two columns past. */
+.ask__box { flex: none; width: 1ch; color: var(--neutral-500); }
+.ask__opt .ask__box { margin-left: 2ch; }
+.ask__opt.is-picked .ask__box { color: var(--green-400); }
+.ask__opt.is-picked .ask__txt { color: #E8EDEF; }
+.ask__grp {
+  display: flex; align-items: flex-start; gap: 1ch;
+  padding: 1px 4px; color: var(--green-300);
+}
+.ask__grp .ask__box { color: var(--green-400); }
+.ask__count { color: var(--neutral-500); font-size: 11.5px; padding: 6px 0 0 2px; }
+
+/* ---------- the live block, as live.js paints it ----------
+   One row per repo, a glyph carrying the outcome and a note after it. The
+   glyphs are the ones the CLI actually prints — they are content, not
+   decoration, which is why they survive with colour stripped. */
+.grp { color: var(--green-300); margin: 10px 0 2px; }
+.grp__rule { color: var(--neutral-700); }
+.grp__n { color: var(--neutral-600); }
+.row { display: flex; align-items: baseline; gap: 1ch; }
+.row__g { flex: none; width: 1ch; color: var(--neutral-500); }
+.row--ok .row__g { color: var(--green-400); }
+.row--skip .row__g { color: #E8920C; }
+.row--fail .row__g { color: var(--error); }
+.row--busy .row__g { color: var(--green-600); }
+.row__name { color: #D6DDE2; }
+.row__note { color: var(--neutral-500); }
+.row--fail .row__note { color: var(--error); }
+
+/* the results box, drawn with a border rather than the CLI's box-drawing
+   glyphs — same picture, and it survives a 320px screen */
+.box--results { border-color: var(--green-600); background: rgba(25,150,136,.06); text-align: center; }
+.box__title {
+  color: var(--green-300); font-size: 11px; letter-spacing: .28em;
+  text-transform: uppercase;
+}
+.box__counts { color: #E8EDEF; margin-top: 2px; }
+.box__counts b { color: var(--green-300); font-weight: 500; }
+
+/* ============================================================
+   WHY
+   ============================================================ */
+
+.why__inner { max-width: 860px; margin: 0 auto; padding: 96px 32px; text-align: center; }
+.why__statement {
+  margin: 0; font-family: var(--font-disp); font-weight: var(--weight-bold);
+  font-size: clamp(26px, 2.6vw, 38px); line-height: 1.15;
+  letter-spacing: var(--tracking-tight); text-wrap: balance;
+}
+.why__statement em { font-style: normal; color: var(--spot); }
+.why__body {
+  margin: 24px auto 0; font-size: 18px; line-height: 1.65;
+  color: var(--dim); max-width: 640px;
+}
+
+/* ============================================================
+   LEGEND
+   ============================================================ */
+.legend { position: relative; overflow: hidden; }
+.legend__glow {
+  position: absolute; top: -160px; left: 30%; width: 640px; height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow) 0%, transparent 65%);
+}
+.legend__inner { position: relative; padding: 96px 32px 88px; }
+.legend__title { color: var(--ink); font-size: var(--display-2); margin-left: auto; margin-right: auto; }
+.legend__cols {
+  margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px;
+}
+.legend__idx { font-family: var(--font-mono); font-size: 13px; color: var(--spot); }
+.legend__head { margin: 12px 0 8px; font-family: var(--font-disp); font-size: 19px; font-weight: var(--weight-bold); letter-spacing: var(--tracking-snug); color: var(--ink); }
+.legend__body { margin: 0; font-size: 15px; line-height: 1.65; color: var(--dim); }
+
+/* ============================================================
+   HOW IT WORKS
+   ============================================================ */
+
+.how__grid {
+  padding: 96px 32px; display: grid; grid-template-columns: .9fr 1.1fr; gap: 72px;
+}
+.how__body { margin: 18px 0 0; font-size: 17px; line-height: 1.6; color: var(--dim); }
+
+.steps { list-style: none; margin: 0; padding: 0; position: relative; }
+.steps__spine {
+  position: absolute; left: 19px; top: 20px; bottom: 20px;
+  width: 2px; background: var(--mass);
+}
+.steps li { position: relative; padding: 0 0 36px 64px; }
+.steps li:last-child { padding-bottom: 0; }
+.steps__n {
+  position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%;
+  background: var(--spot-soft); border: 1px solid var(--spot); color: var(--spot);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+}
+.steps__n--solid { background: var(--spot); border-color: var(--spot); color: var(--spot-ink); }
+.steps h3 { margin: 8px 0 6px; font-family: var(--font-disp); font-size: 19px; font-weight: var(--weight-bold); letter-spacing: var(--tracking-snug); }
+.steps p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--dim); }
+.steps p.has-chips { margin-bottom: 10px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  font-family: var(--font-mono); font-size: 12px; color: var(--spot);
+  background: var(--spot-soft); border: 1px solid var(--spot);
+  padding: 3px 10px; border-radius: 0;
+}
+
+/* ============================================================
+   NEVER THE SAME QUESTION TWICE
+   ============================================================ */
+
+.promise__sub {
+  margin: 16px auto 0; font-size: 17px; color: var(--dim);
+  text-align: center; max-width: 560px;
+}
+.cards { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 0; padding: 28px;
+  transition: box-shadow 200ms var(--ease);
+}
+.card:hover { }
+.card h3 { margin: 18px 0 8px; font-family: var(--font-disp); font-size: 18px; font-weight: var(--weight-bold); letter-spacing: var(--tracking-snug); }
+.card p { margin: 0; font-size: 14.5px; line-height: 1.6; color: var(--dim); }
+.icon-tile {
+  width: 44px; height: 44px; border-radius: 0; background: var(--spot-soft);
+  display: flex; align-items: center; justify-content: center; color: var(--spot);
+}
+.icon-tile--dark { background: var(--spot-soft); color: var(--spot); }
+
+/* ============================================================
+   DIALS
+   ============================================================ */
+.modes { position: relative; overflow: hidden; }
+.modes .section { position: relative; }
+.modes .h2 { color: var(--ink); }
+/* #modes was the section's original id and may already be in a shared link */
+.anchor-alias { display: block; position: relative; top: -80px; visibility: hidden; }
+.dials__sub {
+  margin: 18px 0 0; font-size: 17px; line-height: 1.6;
+  color: var(--dim); max-width: 720px;
+}
+.dials { margin-top: 48px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+.dial {
+  background: var(--panel);
+  border: 1px solid var(--line); border-radius: 0;
+  padding: 24px; display: flex; flex-direction: column; gap: 16px;
+}
+.dial__head { display: flex; flex-direction: column; gap: 4px; padding-bottom: 4px; }
+.dial__key {
+  font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--spot);
+}
+.dial__q { font-size: 14px; font-weight: 700; color: var(--ink); }
+.dial__sep { color: var(--dim); font-size: 13px; }
+.dial__opt {
+  position: relative; border-top: 1px solid var(--line); padding-top: 14px;
+}
+.dial__opt--default {
+  border-top: 0; background: var(--spot-soft); border: 1px solid var(--spot);
+  border-radius: 0; padding: 14px 16px;
+}
+.dial__pill {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--spot); background: var(--spot-soft);
+  border: 1px solid var(--spot);
+  padding: 2px 8px; border-radius: 0;
+}
+.dial__val {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--ink);
+}
+.dial__opt--default .dial__val { color: var(--spot); }
+.dial__opt p { margin: 6px 0 0; font-size: 14px; line-height: 1.6; color: var(--dim); }
+.dial__opt--note p { font-size: 13.5px; color: var(--faint); }
+.code-inline {
+  font-family: var(--font-mono); font-size: 13px; color: var(--dim);
+  background: var(--mass); padding: 1px 5px; border-radius: 0;
+}
+.modes .code-inline { background: var(--mass); color: var(--spot); }
+.modes .dial__opt--default .code-inline { background: var(--bg); }
+.modes__foot { margin: 28px 0 0; font-size: 14px; line-height: 1.6; color: var(--faint); max-width: 860px; }
+.modes__foot .code-inline { color: var(--spot); padding: 2px 8px; }
+
+/* ============================================================
+   COMMANDS + DATA
+   ============================================================ */
+
+.commands__grid {
+  padding: 96px 32px; display: grid; grid-template-columns: 1.1fr .9fr;
+  gap: 72px; align-items: start;
+}
+.commands .h2 { margin: 0 0 36px; }
+.cmd-table {
+  display: flex; flex-direction: column; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 0; overflow: hidden;
+}
+.cmd-row {
+  display: grid; grid-template-columns: 220px 1fr; gap: 16px;
+  padding: 16px 22px; border-bottom: 1px solid var(--line);
+}
+.cmd-row:last-child { border-bottom: 0; }
+.cmd-row code { font-family: var(--font-mono); font-size: 13.5px; color: var(--spot); }
+.cmd-row span { font-size: 14px; color: var(--dim); }
+.cmd-ask { margin: 20px 0 0; font-size: 14px; line-height: 1.7; color: var(--dim); }
+.cmd-ask code { font-family: var(--font-mono); font-size: 13px; color: var(--spot); }
+.cmd-ask em { font-style: normal; color: var(--ink); }
+.cmd-ask a { color: var(--spot); text-decoration: none; border-bottom: 1px solid var(--spot); }
+.cmd-ask a:hover { border-bottom-color: var(--spot); }
+
+.data-card {
+  background: var(--bg); border-radius: var(--radius-xl); padding: 36px;
+  color: var(--ink); position: sticky; top: 96px;
+}
+.data-card h3 { margin: 20px 0 10px; font-family: var(--font-disp); font-size: 24px; font-weight: var(--weight-extra); letter-spacing: var(--tracking-tight); }
+.data-card p { margin: 0; font-size: 15px; line-height: 1.65; color: var(--dim); }
+.data-card p + p { margin-top: 16px; }
+.data-card code { font-family: var(--font-mono); font-size: 13px; color: var(--spot); }
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+
+.dash__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.dash__sub { margin: 16px 0 0; font-size: 17px; line-height: 1.65; color: var(--dim); }
+.dash__cmd {
+  margin-top: 28px; background: var(--bg); border-radius: 0;
+  padding: 18px 20px; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.9;
+}
+.dash__cmd div { color: var(--ink); }
+.dash__cmd span { color: var(--spot); margin-right: 10px; }
+.dash__cmd-out { color: var(--dim) !important; }
+.dash__list { margin: 24px 0 0; padding: 0; list-style: none; }
+.dash__list li {
+  position: relative; padding-left: 26px; margin-bottom: 10px;
+  font-size: 15px; line-height: 1.6; color: var(--dim);
+}
+.dash__list li::before {
+  content: ""; position: absolute; left: 4px; top: 9px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--spot);
+}
+.dash__note { margin: 22px 0 0; font-size: 14px; line-height: 1.6; color: var(--faint); }
+.dash__note code { font-family: var(--font-mono); font-size: 13px; color: var(--spot); }
+
+.dash__preview {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-xl);
+  padding: 24px;
+}
+@media (max-width: 900px) {
+  .dash__grid { grid-template-columns: 1fr; gap: 40px; }
+}
+/* ---------- the agent exchange ----------
+   What the skill actually turns into. Two turns, quoted rather than animated:
+   the question a developer types, and the command the agent reaches for. */
+.talk { display: flex; flex-direction: column; gap: 14px; }
+.talk__turn { display: flex; flex-direction: column; gap: 6px; }
+.talk__who {
+  font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--faint);
+}
+.talk__you { font-size: 15px; line-height: 1.5; color: var(--ink); }
+.talk__cmd {
+  font-family: var(--font-mono); font-size: 13px; color: var(--spot);
+  background: var(--bg); border: 1px solid var(--line-2); padding: 9px 12px;
+  overflow-x: auto; white-space: nowrap;
+}
+.talk__out { font-family: var(--font-mono); font-size: 12.5px; color: var(--dim); }
+.talk__rule { height: 1px; background: var(--line); }
+
+/* ============================================================
+   DOCS — the pointer to /docs
+   ============================================================ */
+
+.docs__grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 64px; align-items: start; }
+.docs__sub { margin: 16px 0 0; font-size: 17px; line-height: 1.65; color: var(--dim); }
+.docs__actions { margin-top: 28px; }
+
+.docs__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.docs__card {
+  display: block; padding: 22px 22px 24px;
+  border: 1px solid var(--line); border-radius: 0;
+  background: var(--panel);
+  transition: border-color 160ms var(--ease), background 160ms var(--ease),
+              transform 160ms var(--ease);
+}
+.docs__card:hover {
+  border-color: var(--spot); background: var(--bg);
+  transform: translateY(-2px);
+}
+.docs__n {
+  display: block; font-family: var(--font-mono); font-size: 12px;
+  color: var(--spot); margin-bottom: 12px;
+}
+.docs__card b {
+  display: block; font-size: 16px; font-weight: 700;
+  color: var(--ink); margin-bottom: 6px;
+}
+.docs__card span:last-child {
+  display: block; font-size: 14px; line-height: 1.6; color: var(--dim);
+}
+
+/* ============================================================
+   CTA
+   ============================================================ */
+.cta { position: relative; overflow: hidden; }
+.cta__glow {
+  position: absolute; top: -220px; left: 50%; margin-left: -360px;
+  width: 720px; height: 720px; border-radius: 50%;
+  background: radial-gradient(circle, var(--glow) 0%, transparent 65%);
+}
+.cta__inner {
+  position: relative; max-width: 860px; margin: 0 auto;
+  padding: 104px 32px; text-align: center;
+}
+.cta__title {
+  margin: 0; font-family: var(--font-disp); font-weight: var(--weight-extra);
+  font-size: var(--display-1); line-height: .92;
+  letter-spacing: var(--tracking-display); color: var(--ink); text-wrap: balance;
+}
+.cta__title em { font-style: normal; color: var(--spot); }
+.cta__code {
+  margin: 40px auto 0; max-width: 520px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 0; padding: 22px 26px;
+  font-family: var(--font-mono); font-size: 13.5px; line-height: 2; color: var(--ink);
+  overflow-x: auto;
+}
+.cta__code span { color: var(--faint); }
+.cta__actions { margin-top: 36px; display: flex; justify-content: center; gap: 14px; }
+.cta__note { margin: 28px 0 0; font-size: 13.5px; color: var(--faint); }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.footer__inner {
+  padding: 56px 32px; display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 48px;
+}
+.footer__left { max-width: 520px; }
+.footer__mark {
+  width: 26px; height: 26px; border-radius: 0; background: var(--spot);
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.footer__quote {
+  margin: 16px 0 0; font-size: 14px; line-height: 1.65;
+  color: var(--faint); font-style: italic;
+}
+.footer__right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+  font-size: 14px; color: var(--faint); text-align: right;
+}
+
+/* ============================================================
+   MOTION
+   ============================================================ */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes glow { 0%, 100% { opacity: .55; } 50% { opacity: .9; } }
+/* hero entrance */
+.fade-up { animation: fadeUp .7s var(--ease) both; }
+.fade-up--1 { animation-delay: .1s; }
+.fade-up--2 { animation-delay: .2s; }
+.fade-up--3 { animation-delay: .3s; }
+.fade-up--4 { animation-delay: .4s; }
+.fade-up--5 { animation-delay: .5s; }
+.fade-up--term { animation-duration: .8s; animation-delay: .25s; }
+
+/* scroll reveals — JS flips [data-reveal] to .is-visible */
+[data-reveal] {
+  opacity: 0; transform: translateY(18px);
+  transition: opacity .7s var(--ease), transform .7s var(--ease);
+}
+[data-reveal].is-visible { opacity: 1; transform: none; }
+
+/* A looping scene holds until its section is scrolled into view, and restarts
+   from frame zero the next time it comes back. Only the story uses this now. */
+[data-shoot] [data-anim],
+[data-shoot] [data-anim] * { animation-play-state: paused; }
+[data-shoot].is-firing [data-anim],
+[data-shoot].is-firing [data-anim] * { animation-play-state: running; }
+
+/* ============================================================
+   THE STORY — the loop that plays behind the WHY copy.
+   One 14s clock, four beats: the same three repos scattered
+   across a machine, the paths lifting away, the tree writing
+   itself in their place, hold. Every element below is a
+   percentage window on that clock, the same way the hero
+   terminal is written, so nothing needs JavaScript to stay in
+   sync.
+   ============================================================ */
+.story { position: relative; overflow: hidden; }
+.story .why__inner { position: relative; z-index: 1; }
+/* the copy is never covered: the props are all one layer behind it */
+.story__bg {
+  position: absolute; inset: 0; z-index: 0; opacity: 0; pointer-events: none;
+  animation: storyBg 14s linear infinite;
+}
+.story__grid {
+  position: absolute; inset: -40px;
+  background-image: radial-gradient(circle, var(--line-2) 1px, transparent 1px);
+  background-size: 34px 34px; opacity: .5;
+  animation: gridDrift 26s linear infinite;
+}
+/* the brand glow drifts from the mess on the left to the tree on the right */
+.story__glow {
+  position: absolute; top: 50%; left: 50%;
+  width: 1040px; height: 672px; margin: -336px 0 0 -520px;
+  background: radial-gradient(ellipse at center, var(--glow-low), transparent 65%);
+  animation: storyGlow 14s ease-in-out infinite;
+}
+
+/* ---------- the same repo, three places nobody meant ---------- */
+.story__path {
+  position: absolute; display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono); font-size: 13px; color: var(--dim);
+  background: var(--panel); border: 1px solid var(--line);
+  padding: 9px 14px; white-space: nowrap;
+  opacity: 0; animation: storyPath 14s var(--ease) infinite;
+}
+.story__path--1 { left: 3%;  top: 20%; }
+.story__path--2 { left: 8%;  top: 47%; animation-delay: .35s; }
+.story__path--3 { left: 2%;  top: 72%; animation-delay: .7s; }
+/* the machine the stray checkout is on — the label, not the path */
+.story__host {
+  font-size: 10.5px; letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--faint); border-right: 1px solid var(--line-2); padding-right: 10px;
+}
+.story__stray { color: var(--warning); }
+
+/* ---------- and afterwards, one tree ---------- */
+.story__tree {
+  position: absolute; right: 2.5%; top: 26%; width: 260px;
+  background: var(--panel); border: 1px solid var(--line); padding: 16px 18px;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.85;
+  opacity: 0; animation: storyTree 14s var(--ease) infinite;
+}
+.story__root { color: var(--spot); }
+.story__row { color: var(--dim); opacity: 0; animation: storyRow 14s var(--ease) infinite; }
+.story__row:nth-of-type(2) { animation-delay: .18s; }
+.story__row:nth-of-type(3) { animation-delay: .36s; }
+.story__row:nth-of-type(4) { animation-delay: .54s; }
+.story__row:nth-of-type(5) { animation-delay: .72s; }
+.story__row:nth-of-type(6) { animation-delay: .9s; }
+.story__branch { color: var(--faint); }
+.story__group { color: var(--ink); }
+
+/* ---------- the marker sweep over each phrase ---------- */
+/* An inline phrase can wrap, and a wrapped span is several boxes: a
+   background paints into every fragment (box-decoration-break: clone),
+   where one positioned pseudo-element would only cover the bounding box. */
+.hl {
+  background-image: linear-gradient(var(--spot-soft), var(--spot-soft));
+  background-repeat: no-repeat;
+  background-size: 0% 78%; background-position: 0 60%;
+  border-radius: 0;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  animation: storySweep 14s var(--ease) infinite;
+}
+.hl--a { animation-delay: .7s; }
+.hl--b { animation-delay: 2.9s; }
+.hl--c { animation-delay: 5.2s; }
+.hl--d { animation-delay: 7.2s; }
+.hl--e { animation-delay: 8.6s; }
+.hl--f { animation-delay: 10.4s; }
+.hl--g { animation-delay: 11.7s; }
+
+/* ---------- the clock ---------- */
+@keyframes storyBg {
+  0% { opacity: 0; transform: scale(1.045); }
+  3% { opacity: 1; }
+  96% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes storyGlow {
+  0%    { transform: translate(-28vw, 10px); }
+  30%   { transform: translate(-22vw, 60px); }
+  58%   { transform: translate(26vw, -30px); }
+  88%   { transform: translate(28vw, 10px); }
+  100%  { transform: translate(-28vw, 10px); }
+}
+/* in, sit there being wrong, then lift away — they are not deleted, they move */
+@keyframes storyPath {
+  0%, 4% { opacity: 0; transform: translateX(-24px); }
+  11%, 38% { opacity: 1; transform: translateX(0); }
+  46%, 100% { opacity: 0; transform: translateX(64px) scale(.96); }
+}
+@keyframes storyTree {
+  0%, 44% { opacity: 0; transform: translateY(18px); }
+  52%, 93% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+@keyframes storyRow {
+  0%, 50% { opacity: 0; }
+  58%, 93% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* on over 1.1s, hold 1.3s, then retract to the right over 0.6s */
+@keyframes storySweep {
+  0%    { background-size: 0% 78%;   background-position: 0 60%; }
+  7.9%  { background-size: 100% 78%; background-position: 0 60%; }
+  17.1% { background-size: 100% 78%; background-position: 100% 60%; }
+  21.4%, 100% { background-size: 0% 78%; background-position: 100% 60%; }
+}
+
+/* ============================================================
+   PAGE MOTION — the shuttle.
+   A single emerald beam that travels out and back along the
+   page's own lines: section seams, the loop's spine, the tier
+   bars. Slow, low-contrast, and always the same gesture, so the
+   page reads as alive rather than as decorated.
+   ============================================================ */
+.seam { position: relative; }
+.seam::before {
+  content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 1px;
+  --beam: 240px;
+  background-image: linear-gradient(90deg, transparent, var(--spot), transparent);
+  background-repeat: no-repeat; background-size: var(--beam) 100%;
+  background-position: calc(-1 * var(--beam)) 0;
+  animation: shuttle 13s var(--ease) infinite;
+}
+.commands.seam::before { animation-delay: 2.5s; }
+.footer.seam::before { animation-delay: 5s; }
+
+.steps__spine { overflow: hidden; }
+.steps__spine::after {
+  content: ""; position: absolute; left: 0; width: 2px; height: 72px; top: -72px;
+  background: linear-gradient(to bottom, transparent, var(--spot), transparent);
+  animation: spineShuttle 10s var(--ease) infinite;
+}
+
+/* the dark bands breathe: dot grids drift a tile, glows wander */
+.hero__glow { animation: glow 7s ease-in-out infinite, glowDrift 21s ease-in-out infinite; }
+.hero__glow--low { animation: glowDrift 26s ease-in-out infinite reverse; }
+.legend__glow { animation: glowDrift 24s ease-in-out infinite; }
+.cta__glow { animation: glowDrift 23s ease-in-out infinite reverse; }
+.badge__dot { animation: pipPulse 3.4s ease-in-out infinite; }
+
+@keyframes shuttle {
+  0%, 100% { background-position: calc(-1 * var(--beam)) 0; }
+  50% { background-position: calc(100% + var(--beam)) 0; }
+}
+@keyframes spineShuttle { 0%, 100% { top: -72px; } 50% { top: 100%; } }
+@keyframes gridDrift { to { background-position: 34px 34px; } }
+@keyframes gridDrift26 { to { background-position: 26px 26px; } }
+@keyframes glowDrift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-70px, 46px); }
+}
+@keyframes pipPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--spot); }
+  50% { box-shadow: 0 0 0 6px transparent; }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+/* only where the cards fit: below this the section keeps its natural height */
+@media (min-width: 1241px) {
+  .story { min-height: 576px; display: grid; align-content: center; }
+  .story .why__inner { padding: 70px 32px; }
+  /* a little narrower than the page default, so the props keep their gutters */
+  .story .why__statement { max-width: 780px; margin-left: auto; margin-right: auto; }
+}
+
+@media (max-width: 1240px) {
+  /* the tree is the one opaque prop that would land on the copy */
+  .story__tree { display: none; }
+}
+
+@media (max-width: 1180px) {
+  .dials { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 1040px) {
+  .legend__cols { gap: 32px; }
+  .how__grid { gap: 48px; }
+  .commands__grid { gap: 48px; }
+}
+
+@media (max-width: 1000px) {
+  .story__bg { display: none; }
+}
+
+@media (max-width: 900px) {
+  .section { padding: 72px 0; }
+  .nav__links { gap: 14px; }
+  .nav__link { display: none; }
+
+  .hero__grid { grid-template-columns: 1fr; gap: 48px; padding: 64px 32px 80px; }
+  .hero__lede { font-size: 17px; }
+
+  .why__inner { padding: 72px 32px; }
+  .why__body { font-size: 16px; }
+
+  .legend__inner { padding: 72px 32px 64px; }
+  .legend__cols { grid-template-columns: 1fr; gap: 36px; margin-top: 40px; }
+
+  .how__grid { grid-template-columns: 1fr; padding: 72px 32px; }
+
+  .cards { grid-template-columns: 1fr; margin-top: 40px; }
+  .dials { grid-template-columns: 1fr; }
+
+  .commands__grid { grid-template-columns: 1fr; padding: 72px 32px; }
+  .data-card { position: static; }
+
+  .docs__grid { grid-template-columns: 1fr; gap: 40px; }
+
+  .cta__inner { padding: 80px 32px; }
+
+  .footer__inner { flex-direction: column; gap: 28px; }
+  .footer__right { align-items: flex-start; text-align: left; }
+}
+
+@media (max-width: 560px) {
+  .wrap, .hero__grid, .why__inner, .legend__inner, .how__grid,
+  .commands__grid, .cta__inner, .footer__inner { padding-left: 20px; padding-right: 20px; }
+  .term__screen { font-size: 12px; padding: 14px 14px 12px; height: 470px; }
+  .term__status .dim { display: none; }
+  .box { padding: 7px 9px; }
+  .ask__opt { padding-left: 0; gap: .5ch; }
+  .cmd-row { grid-template-columns: 1fr; gap: 6px; }
+  .docs__cards { grid-template-columns: 1fr; }
+  .hero__actions, .cta__actions { flex-direction: column; align-items: stretch; }
+  .hero__actions .btn, .cta__actions .btn { width: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+  /* Several loops end their cycle at opacity 0. Killing the animation would
+     leave that content invisible, so land every animated element in the state
+     a reader should see. */
+  .ln.is-on,
+  .cur,
+  [data-reveal] { opacity: 1 !important; transform: none !important; }
+  .fade-up { opacity: 1; }
+  /* the story is pure background: with no clock to run it, it does not play,
+     and the copy it was illustrating is left to speak for itself. */
+  .story__bg { display: none; }
+  .hl { background-image: none; }
+}
+
+.footer__name { font-weight: 800; font-size: 16px; }
+.footer__link { font-weight: 600; }
+
+@media (max-width: 640px) {
+  .star__label { display: none; }
+  .star__n { padding-left: 0; margin-left: 0; border-left: 0; }
+}
+
+/* ---------- nav crowding ----------
+   The bar now carries six links, the ground toggle, a star count and a byline.
+   Things leave in order of how much they earn their place: the tagline first
+   (the byline says who made it better), then the section links, then the
+   byline's words, then the byline. The star count never leaves. */
+@media (max-width: 1120px) {
+  .nav__link { display: none; }
+  .nav__links { gap: 14px; }
+}
+
+@media (max-width: 720px) {
+  .term__by span { display: none; }
+}

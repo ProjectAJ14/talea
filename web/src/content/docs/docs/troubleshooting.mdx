@@ -1,0 +1,49 @@
+---
+title: "Troubleshooting"
+sidebar:
+  order: 13
+---
+
+Start here:
+
+```bash
+talea doctor
+```
+
+It checks Node, git, SSH to GitHub, the API token and the workspace, and exits non-zero when something is genuinely broken.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Every clone fails with a permission error | SSH is configured but your key is not reaching GitHub | `ssh -T git@github.com` and read the text, not the exit code. `ssh-add ~/.ssh/your_key`, or use `talea sync --protocol https` |
+| A named SSH key exists but is not used | It is not in a default location and not in the agent, so a bare `git@github.com` never offers it | `ssh-add` it, or add a `Host github.com` block to `~/.ssh/config` |
+| `talea discover` finds only public repos | No token | Install `gh` and `gh auth login`, or set `GITHUB_TOKEN` |
+| `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` | TLS interception — a proxy, a VPN, a security agent — re-signing with a root Node does not trust | Install `gh`. talea prefers it, and `gh` trusts the system certificate store |
+| A repo is cloned twice under different folder names | Its remote URL did not normalise to the same string as the catalogue's | Compare `git remote get-url origin` with the `url` in the catalogue. On Windows, mismatched slashes are the usual reason |
+| `talea adopt` lists a repo but will not move it | Only the **name** matched, not the remote | Look at what it is first. If it really is the repo, `-r <repo> --apply` or `--loose` |
+| An adopt says a repo cannot be moved | It is itself a linked worktree, the destination is occupied, or the move crosses a filesystem | The printed reason says which. A cross-device move is refused rather than turned into a copy and a delete |
+| A repo is never touched by anything | `ignore: true` in the catalogue | Remove it if another tool no longer owns that checkout |
+| `talea select` prints a summary and exits | No TTY — a pipe, a CI job, a non-interactive session | Use `talea add` and `talea rm` instead |
+| `cd $(talea where thing)` puts you in your home directory | It should not, and does not: `where` exits non-zero and writes to stderr | If it happens, you are not running talea's `where` — check `command -v talea` |
+| A `sync` looks fine but a script treats it as failed | One repo failed. Bulk commands exit non-zero when any repo did | Read the per-repo errors above the summary box |
+| No colour in the output | Not a TTY, or `NO_COLOR` is set | `FORCE_COLOR=1 talea status \| less -R` |
+| Boxes and glyphs render as squares | The terminal font has no glyph for them | They are all BMP characters; a font with reasonable coverage fixes it. `NO_COLOR` does not help — the glyphs are content |
+
+### When a move has already happened
+
+```bash
+talea adopt --fix-paths
+```
+
+Re-runs only the path repair — Claude Code session history and settings, `.idea`, `.vscode`, `.claude`, `CLAUDE.md` — and moves nothing.
+
+### When you want to see what would happen
+
+Nothing in this list changes anything on disk:
+
+```bash
+talea adopt            # the move plan
+talea discover         # the catalogue diff
+talea status --drift
+talea status --missing
+talea list --json
+```

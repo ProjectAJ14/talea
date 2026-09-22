@@ -1,0 +1,39 @@
+---
+title: "What talea is"
+sidebar:
+  order: 1
+---
+
+talea is a command-line tool. It gives every machine you work on the **same folder structure** for your GitHub repositories, so a path you learn on one laptop is the same path on the next.
+
+You keep one catalogue of your repos. On any machine, one command reads it, finds the checkouts you already have wherever they ended up, moves them into place, clones what is missing, and fast-forwards the rest.
+
+```
+~/Workspace/
+  ProjectAJ14/
+    eklavya/
+    talea/
+  nonstopio/
+    flutter_forge/
+    json-viewer/
+```
+
+Same paths everywhere, so `cd $(talea where eklavya)` works on all of them.
+
+### What you need
+
+**Node 20 or newer.** Check it with `node --version`. That is the whole list, on macOS, Linux and Windows alike — talea has no dependencies at runtime and none to build it either.
+
+**git**, and a way to reach GitHub. Cloning uses SSH by default; `--protocol https` is there if you prefer it. Reading your repo list uses the GitHub API, through the `gh` CLI if you have it, else `GITHUB_TOKEN`, else public repos only — which is a working state, not an error. [Auth](/docs/auth/) has the detail.
+
+### The two promises
+
+Everything else in this manual is downstream of these.
+
+**It never pushes.** talea reads and checks out. There is no `git push` in it, anywhere.
+
+**It never deletes.** A repo in the wrong place is *moved*, which keeps your branches, stashes, reflog and uncommitted work. A second copy of a repo is *parked* in `.talea-duplicates/` with everything in it. A repo you take off this machine's list is *left exactly where it is*. Emptying any of that is your decision.
+
+---
+
+Next: **[Installing](/docs/installing/)**. If you want to see the machinery first, [How it works](/docs/how-it-works/) is the parts underneath.

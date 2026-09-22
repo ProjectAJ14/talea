@@ -1,0 +1,52 @@
+---
+title: "Every machine after that"
+sidebar:
+  order: 4
+---
+
+```bash
+npm install -g @ajaykumarnpm/talea
+talea manifest pull <gist-id>   # the id `manifest push` printed
+talea init ~/Workspace
+```
+
+You are handed the full list with your defaults already ticked. Tick the extras this machine needs, untick what it does not, press Enter.
+
+### Why you are asked again
+
+Because the catalogue travels and the selection does not. That is the one design decision everything else hangs off.
+
+| | Where it lives | Travels |
+|---|---|---|
+| **The catalogue** — every repo, its owner, its folder, its default branch | `~/.talea/talea.repos.json` | yes, through the gist |
+| **What this machine keeps** | `<workspace>/.talea.json` | **never** |
+
+Pulling the catalogue onto a new laptop gives you the full list to *choose* from — not the last machine's choices. Your work laptop can keep three repos while the desktop keeps forty, and neither fights the other.
+
+It also means `manifest pull` on its own changes nothing on disk. It updates the list of what *exists*; `talea init` or `talea select` is what decides what this machine holds.
+
+### Keeping the catalogue current
+
+Run `talea discover --apply` on whichever machine is convenient, then `talea manifest push`. On the others, `talea manifest pull`.
+
+Discovery refreshes **facts** and never **choices**:
+
+| GitHub owns | You own |
+|---|---|
+| `owner`, `defaultBranch`, `fork`, `pushedAt` | `default`, `group`, `dir`, `url`, `ignore` |
+
+A repo the API does not return is **kept and marked missing**, not dropped. A narrower token, a revoked org grant and a deleted repository look identical from here, and forgetting the repo is the only reading you cannot undo.
+
+### If the catalogue and the tree disagree
+
+```bash
+talea status --missing   # in the catalogue, not on disk
+talea status --drift     # on disk, not on its default branch
+talea adopt              # on disk, in the wrong folder — dry run
+```
+
+None of those three change anything.
+
+---
+
+Next: **[Every day](/docs/every-day/)**.

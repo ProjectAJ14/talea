@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -24,13 +24,21 @@ describe('init leaves the tree empty until something is cloned', () => {
   test('no group folder is created for a repo the machine never picked', async () => {
     const target = path.join(mkdtempSync(path.join(os.tmpdir(), 'talea-init-')), 'Workspace');
 
+    // The catalogue goes in FIRST, and it is a workspace-local one so the
+    // nearest-wins lookup never reaches ~/.talea. Without that, `init` on a
+    // machine with no catalogue runs `discover` — which on a machine with no
+    // GitHub token exits non-zero and takes the test runner with it. That is
+    // correct behaviour for `discover` and a bug in a test: it made this case
+    // pass on the author's laptop, where ~/.talea/talea.repos.json happens to
+    // exist, and fail on every CI runner and every new contributor's machine.
+    mkdirSync(target, { recursive: true });
+    writeFileSync(path.join(target, 'talea.repos.json'), JSON.stringify(CATALOGUE));
+
     const log = console.log;
     console.log = () => {};
     try {
       // --no-clone stops before `sync`, which is the only thing entitled to
       // create a folder, and only for a repo it is about to clone into it.
-      await init({ clone: false }, [target]);
-      writeFileSync(path.join(target, 'talea.repos.json'), JSON.stringify(CATALOGUE));
       await init({ clone: false }, [target]);
     } finally {
       console.log = log;

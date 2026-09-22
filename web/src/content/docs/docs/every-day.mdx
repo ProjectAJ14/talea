@@ -1,0 +1,88 @@
+---
+title: "Every day"
+sidebar:
+  order: 5
+---
+
+```bash
+talea sync                   # clone the new, fast-forward the rest
+talea status                 # branch, clean/dirty, ahead/behind, in one table
+cd $(talea where eklavya)
+```
+
+### `talea sync`
+
+Clones what is missing, fast-forwards what is there. Safe to run unattended, and safe to run twice.
+
+What it will **not** do, and this is the whole of it:
+
+- **It will not merge a divergence.** Fast-forwards only. Anything else is reported for you to deal with.
+- **It will not move you off your branch.** It fast-forwards the branch you are *on*, or leaves it alone and says why. A branch with no upstream is fetched and left.
+- **It will not touch a dirty repo.** Uncommitted changes mean it fetches and stops, with a line saying so.
+- **It will not push.**
+
+```bash
+talea sync -g nonstopio      # one group
+talea sync -r eklavya        # one repo
+talea sync --no-clone        # fast-forward only, clone nothing
+talea sync --no-adopt        # skip the existing-checkout scan
+```
+
+`talea clone` is the first half on its own — clone what is missing and never fetch or merge. It is what you want on a slow connection.
+
+### `talea status`
+
+| Column | What it shows |
+|---|---|
+| `REPO` | repository name |
+| `BRANCH` | the branch checked out right now |
+| `DEFAULT` | the repo's default branch, blank when you are already on it |
+| `STATE` | clean or dirty, and commits ahead or behind origin |
+
+```bash
+talea status --drift         # only repos on some other branch
+talea status --missing       # only repos not cloned yet
+talea status --all           # the whole catalogue, not just this machine
+```
+
+### `talea where`
+
+```bash
+talea where eklavya          # the absolute path, one line, nothing else
+cd $(talea where eklavya)    # what it is actually for
+talea where                  # the workspace root
+```
+
+The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** — so `cd $(talea where typo)` fails rather than landing you in your home directory.
+
+If two owners have a repo of the same name it says so and exits non-zero rather than picking one. Pass `owner/name`.
+
+### Changing what this machine keeps
+
+```bash
+talea add some-repo          # keep one more here, and clone it now
+talea rm some-repo           # take it off the list
+talea select                 # reopen the whole checklist
+```
+
+`talea rm` removes the repo from this machine's list and **leaves the checkout exactly where it is**, printing the path. Deleting it is your call — `rm -rf` already exists for when you mean it.
+
+`talea select` opens the checklist with your current selection ticked. Everything in the catalogue is listed, including archived repos and forks: this machine is allowed to keep something the default set does not have. `--no-clone` saves the list without filling it.
+
+### Running one command everywhere
+
+```bash
+talea exec -- git log --oneline -1
+talea exec -g nonstopio -- npm install
+talea exec --all -- git branch --show-current
+```
+
+Everything after `--` is the command, run once per repo with that repo as the working directory. Repos are processed one at a time so the output stays readable and attributable.
+
+### Exit codes
+
+Every bulk command exits **non-zero if any repo failed**. Per-repo errors are printed and the run keeps going, so without checking the exit code a partial failure reads as success to a script. A *skip* is not a failure — a `sync` over a workspace you are working in still exits 0.
+
+---
+
+Next: **[Adopting what you have](/docs/adopting/)**.
