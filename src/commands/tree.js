@@ -24,7 +24,7 @@ their docs come from the CLI — run \`talea sync\` to drop in any that are new.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
+  -r, --repo <names>    comma-separated repo names; a bare name works too
       --all             the whole catalogue, not just what this machine keeps
 `;
 

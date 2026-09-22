@@ -146,6 +146,11 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
 
 9. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
    bulk command that quietly does nothing is worse than one that stops.
+   A bare word is never dropped: after `sync`, `clone`, `status`, `list` and
+   `tree` it is a repo name (`-r`), after a command that reads its own words it
+   goes to that command, and anywhere else it stops the run. Dropping it made
+   `talea sync PiDom` sync every repo on the machine. `adopt` refuses one,
+   because `-r` there lifts rule 3's guard and must be typed on purpose.
    `talea where` is the sharp case: it exits non-zero and writes every
    diagnostic to **stderr**, because `cd $(talea where typo)` must fail rather
    than land you in your home directory.

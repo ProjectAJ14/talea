@@ -181,7 +181,11 @@ export async function currentBranch(dir) {
   const { code, stdout } = await git(['rev-parse', '--abbrev-ref', 'HEAD'], {
     cwd: dir,
   });
-  return code === 0 ? stdout : null;
+  if (code === 0) return stdout;
+  // A repo with no commits yet has no HEAD to resolve, so rev-parse fails and
+  // the caller printed "null". symbolic-ref still knows the branch's name.
+  const born = await git(['symbolic-ref', '--short', 'HEAD'], { cwd: dir });
+  return born.code === 0 ? born.stdout : null;
 }
 
 /** True when the working tree has uncommitted changes (tracked or untracked). */

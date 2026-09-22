@@ -180,7 +180,9 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea upgrade` | update the CLI itself (also `talea update`) |
 
 Every one of them takes `-g <group>` and `-r <repo>` to narrow the run, and
-`--help` for its own examples.
+`--help` for its own examples. For `sync`, `clone`, `status`, `list` and `tree`
+a bare name means the same as `-r`, so `talea sync eklavya` syncs that one repo.
+A command that takes no names refuses a stray word instead of ignoring it.
 
 ---
 

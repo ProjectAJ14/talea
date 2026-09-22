@@ -15,7 +15,7 @@ the catalogue's opinion — what a brand new machine would start with.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
+  -r, --repo <names>    comma-separated repo names; a bare name works too
       --all             include archived and quiet repos (default: hidden)
       --groups          show groups only
       --json            emit JSON
