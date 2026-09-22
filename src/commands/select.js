@@ -48,7 +48,7 @@ export function changes(before, after) {
 }
 
 export async function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   requireCatalogue(manifest);
 
   // -g/-r narrow a run; they cannot narrow a decision about the whole machine.

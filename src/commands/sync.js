@@ -31,6 +31,9 @@ your default set, or a checklist of everything in the catalogue with those
 defaults already ticked. The answer is remembered in ${c.dim('.talea.json')}, so every run
 after that is a bare ${c.dim('talea sync')}.
 
+It runs from anywhere. Inside a workspace it uses that one; outside, it uses
+the workspace ${c.dim('talea init')} made, or asks which when this machine has several.
+
 Options
   -g, --group <names>   comma-separated groups
   -r, --repo <names>    comma-separated repo names
@@ -53,7 +56,7 @@ leaves it alone, and says which.
 `;
 
 export async function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   requireCatalogue(manifest);
 
   const protocol = opts.protocol ?? state.protocol ?? 'ssh';

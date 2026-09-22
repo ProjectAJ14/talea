@@ -200,7 +200,7 @@ export function writeDocs(manifest, root, repos) {
 }
 
 export async function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   requireCatalogue(manifest);
 
   const protocol = opts.protocol ?? state.protocol ?? 'ssh';

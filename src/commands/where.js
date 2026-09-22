@@ -17,10 +17,13 @@ composes with ${c.dim('cd')}, ${c.dim('code')}, ${c.dim('open')} and anything el
 
 Exits non-zero if the repo is not in the catalogue, so ${c.dim('cd $(talea where typo)')}
 fails loudly instead of landing you in your home directory.
+
+Works from outside a workspace too: with one on this machine it uses that, with
+several it asks — on stderr, so the answer never ends up in the path.
 `;
 
-export function run(opts, positionals = []) {
-  const { root, manifest } = requireWorkspace();
+export async function run(opts, positionals = []) {
+  const { root, manifest } = await requireWorkspace();
   const name = positionals[0];
 
   if (!name) {

@@ -54,7 +54,11 @@ Yes. Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every pu
 
 ### Where does my data live?
 
-`~/.talea/talea.repos.json` is the catalogue, `~/.talea/state.json` remembers the gist id and the update check, and `<workspace>/.talea.json` is what this machine keeps. Delete the `~/.talea` directory and talea has forgotten everything except the checkouts, which are still where they were.
+`~/.talea/talea.repos.json` is the catalogue, `~/.talea/state.json` remembers the gist id, the update check and which workspaces this machine has, and `<workspace>/.talea.json` is what this machine keeps. Delete the `~/.talea` directory and talea has forgotten everything except the checkouts, which are still where they were.
+
+### Can I have more than one workspace?
+
+Yes — `talea init ~/work` and `talea init ~/personal` each make one, with their own `.talea.json` and their own selection. Inside either, commands use that one. Outside both, talea asks which; a script with no terminal gets the list and a non-zero exit, and should `cd` into the one it means.
 
 ### How do I uninstall it?
 

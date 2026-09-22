@@ -33,7 +33,7 @@ export const USER_STATE = path.join(USER_DIR, 'state.json');
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 
-/** Machine-wide state: the update-check stamp, the gist id. Not per workspace. */
+/** Machine-wide state: the update-check stamp, the gist id, the workspace list. Not per workspace. */
 export function readUserState() {
   try {
     return readJson(USER_STATE);
@@ -48,7 +48,8 @@ export function writeUserState(state) {
     writeFileSync(USER_STATE, JSON.stringify(state, null, 2) + '\n');
   } catch {
     // A read-only home directory must not break the actual command. The only
-    // things kept here are a cache stamp and a gist id.
+    // things kept here are a cache stamp, a gist id and the workspace list,
+    // and a lost list re-fills itself the next time a command runs inside one.
   }
 }
 
@@ -94,6 +95,19 @@ export function findWorkspace(start = process.cwd()) {
     dir = parent;
   }
 }
+
+/**
+ * Every workspace this machine has set up, as recorded in ~/.talea/state.json.
+ *
+ * This is what lets `talea sync` run from anywhere: outside a workspace the
+ * upward walk finds nothing, and this list is what is left to ask. Kept in the
+ * machine-wide state rather than the catalogue because a path on this laptop
+ * means nothing on the next one. Entries whose .talea.json has gone are skipped
+ * on read, not dropped on write — a deleted workspace stops being offered, but
+ * an unplugged drive that comes back has not been forgotten.
+ */
+export const knownWorkspaces = () =>
+  (readUserState().workspaces ?? []).filter((dir) => existsSync(path.join(dir, STATE_FILE)));
 
 export function loadState(workspaceRoot) {
   const file = path.join(workspaceRoot, STATE_FILE);

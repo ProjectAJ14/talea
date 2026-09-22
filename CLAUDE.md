@@ -72,6 +72,17 @@ machine you own. The catalogue does not get to make that decision.
 Absent is "never asked" and falls back to the catalogue defaults; empty is "I
 chose nothing". A test pins that.
 
+**Commands run from anywhere.** Inside a workspace the upward walk to
+`.talea.json` wins, as git's does. Outside one, `requireWorkspace()` falls back
+to the workspaces this machine knows: every root `init` recorded in
+`~/.talea/state.json` (and any root a command was run inside, so pre-existing
+workspaces join the list), plus the default `~/Workspace`. One is used with a
+note on stderr; several are asked about **on stderr**, so `cd $(talea where)`
+never swallows the prompt; several with no terminal is a non-zero exit, never
+a pick — a script syncing whichever came first is syncing a tree nobody named.
+That list is machine state, not catalogue: a path on this laptop means nothing
+on the next one, so it never travels with `manifest push`.
+
 ## The rules that matter
 
 These are load-bearing. Breaking one causes data loss or a silent failure.

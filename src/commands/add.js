@@ -54,7 +54,7 @@ export function resolve(manifest, name) {
 }
 
 export async function run(opts, positionals = []) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   requireCatalogue(manifest);
 
   if (!positionals.length) {

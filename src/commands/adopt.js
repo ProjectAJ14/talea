@@ -322,7 +322,7 @@ export function parseFromPaths(from) {
 }
 
 export async function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
 
   if (opts['fix-paths']) {
     heading('Repairing paths for repos already adopted');

@@ -4,9 +4,25 @@
 // Every command that acts on repos goes through here, so `clone`, `sync`,
 // `status` and `exec` filter identically.
 
-import { findWorkspace, loadManifest, loadState, repoDir, repoGroup } from './config.js';
+import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import readline from 'node:readline/promises';
+
+import { samePath } from './adopt.js';
+import {
+  STATE_FILE,
+  findWorkspace,
+  knownWorkspaces,
+  loadManifest,
+  loadState,
+  readUserState,
+  repoDir,
+  repoGroup,
+  writeUserState,
+} from './config.js';
 import { isRepo } from './git.js';
-import { fail } from './log.js';
+import { c, fail } from './log.js';
 
 const csv = (v) =>
   (Array.isArray(v) ? v : [v])
@@ -16,16 +32,87 @@ const csv = (v) =>
     .filter(Boolean);
 
 /**
- * Resolve the workspace, manifest and state, or exit with a useful message.
- * Commands that need an initialised workspace call this first.
+ * Add a workspace to this machine's list, once.
+ *
+ * Compared with samePath, not as strings: on macOS and Windows `~/workspace`
+ * and `~/Workspace` are one folder, and cd-ing in with the other spelling would
+ * otherwise add it again on every run.
  */
-export function requireWorkspace() {
-  const root = findWorkspace();
-  if (!root) {
+export function rememberWorkspace(root) {
+  const state = readUserState();
+  const list = state.workspaces ?? [];
+  if (list.some((dir) => samePath(dir, root))) return;
+  writeUserState({ ...state, workspaces: [...list, root] });
+}
+
+/**
+ * The workspaces a command run from outside any of them could mean: every one
+ * `init` has recorded, plus the default `~/Workspace` — which is how a
+ * workspace made before the list existed is still found from anywhere.
+ */
+export function workspaceCandidates(known = knownWorkspaces(), manifest = loadManifest(null)) {
+  const fallback = path.join(os.homedir(), manifest.workspace || 'Workspace');
+  const all = existsSync(path.join(fallback, STATE_FILE)) ? [...known, fallback] : known;
+  return all.filter((dir, i) => all.findIndex((d) => samePath(d, dir)) === i);
+}
+
+/**
+ * Outside a workspace: one known workspace is used, several are asked about.
+ *
+ * Everything here goes to stderr — `cd $(talea where)` reads stdout, and a
+ * prompt or a note there is a folder the shell tries to enter. With no
+ * terminal to ask on, it stops rather than picks: a script that syncs whichever
+ * workspace happened to be first is running against a tree nobody named.
+ */
+async function pickKnownWorkspace() {
+  const found = workspaceCandidates();
+
+  if (!found.length) {
     fail('Not inside a talea workspace (no .talea.json found).');
     console.error('\n  Run `talea init` to create one, or cd into an existing workspace.');
     process.exit(1);
   }
+  if (found.length === 1) {
+    console.error(c.dim(`Using the workspace at ${found[0]}\n`));
+    return found[0];
+  }
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
+    fail(`Not inside a talea workspace, and this machine has ${found.length}.`);
+    for (const dir of found) console.error(`    ${c.bold(dir)}`);
+    console.error('\n  cd into the one you mean.');
+    process.exit(1);
+  }
+
+  console.error(`\n${c.bold('Which workspace?')}`);
+  found.forEach((dir, i) => console.error(`  ${c.cyan(String(i + 1))}  ${dir}`));
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  const answer = (await rl.question(`\n${c.dim(`[1-${found.length}]`)} `)).trim();
+  rl.close();
+
+  // A wrong answer stops, same as a typo'd repo name: guessing here would run
+  // a bulk command against a tree the developer did not choose.
+  const chosen = found[Number(answer) - 1];
+  if (!/^\d+$/.test(answer) || !chosen) {
+    fail(`"${answer}" is not one of 1-${found.length}.`);
+    process.exit(1);
+  }
+  console.error('');
+  return chosen;
+}
+
+/**
+ * Resolve the workspace, manifest and state, or exit with a useful message.
+ * Commands that need an initialised workspace call this first.
+ *
+ * Inside a workspace the upward walk wins, exactly as git's does. Outside one,
+ * the workspaces this machine knows about are offered instead.
+ */
+export async function requireWorkspace() {
+  const inside = findWorkspace();
+  // Recorded on every run from inside, so a workspace made before the list
+  // existed joins it the first time anything is run there.
+  if (inside) rememberWorkspace(inside);
+  const root = inside ?? (await pickKnownWorkspace());
   const manifest = loadManifest(root);
   const state = loadState(root);
   return { root, manifest, state };

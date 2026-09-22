@@ -46,7 +46,7 @@ export async function run(opts, positionals) {
     process.exit(1);
   }
 
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   const pool = opts.all ? manifest.repos : machineRepos(manifest, state);
   const entries = clonedOnly(withPaths(manifest, root, selectRepos(manifest, opts, pool)));
 

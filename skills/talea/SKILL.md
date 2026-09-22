@@ -46,6 +46,10 @@ It exits **non-zero** on an unknown name and writes every diagnostic to stderr,
 so `cd "$(talea where typo)"` fails instead of landing in the home directory.
 Never `cd` to a path it did not print.
 
+Outside a workspace it falls back to the ones this machine has. With several
+and no terminal — which is how you run it — it lists them and exits non-zero.
+`cd` into the workspace the user means rather than guessing from the list.
+
 Two owners can own a repo of the same name. When that happens it says so and
 exits non-zero — pass `owner/name` rather than picking one.
 
