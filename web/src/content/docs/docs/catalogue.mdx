@@ -1,0 +1,71 @@
+---
+title: "The catalogue and the state"
+sidebar:
+  order: 9
+---
+
+Three files, and confusing them is how this tool would go wrong.
+
+| File | Holds | Travels |
+|---|---|---|
+| `<workspace>/talea.repos.json` | a catalogue for this tree only | no |
+| `~/.talea/talea.repos.json` | **your** catalogue — what `discover` writes | yes, through the gist |
+| `<workspace>/.talea.json` | what **this machine** keeps, and what it has moved | **never** |
+
+**Nearest catalogue wins.** A `talea.repos.json` sitting next to a workspace beats the one in your home directory. The catalogue packaged with talea is last, and ships empty on purpose — a published package carrying the author's repo list would be a personal tool wearing a general one's name.
+
+### A catalogue entry
+
+```json
+{
+  "name": "eklavya",
+  "owner": "ProjectAJ14",
+  "url": "git@github.com:ProjectAJ14/eklavya.git",
+  "defaultBranch": "main",
+  "group": "ProjectAJ14",
+  "default": true,
+  "fork": false,
+  "pushedAt": "2026-09-21T18:02:11Z"
+}
+```
+
+| Field | Owned by | Meaning |
+|---|---|---|
+| `name`, `owner` | GitHub | identity |
+| `url` | you | where to clone from |
+| `defaultBranch` | GitHub | recorded per repo, because GitHub is the only thing that knows. A repo with none is cloned on whatever the server hands over — never on an assumed `main` |
+| `group` | you | the folder it lives in. Falls back to `owner`, then to `repos` |
+| `dir` | you | an explicit folder name, when the repo name is not the one you want |
+| `default` | you | whether a **brand new** machine starts with it ticked |
+| `ignore` | you | nothing touches this checkout, ever |
+| `fork`, `pushedAt`, `archived` | GitHub | facts, refreshed by `discover` |
+
+### Why the selection is a list of names
+
+`.talea.json` holds `selected`, and it is a list of repo names — not a filter over `default: true`.
+
+A filter would re-evaluate on every run, so adding `default: true` to a repo in the shared catalogue would silently start cloning it on every machine you own. The catalogue does not get to make that decision.
+
+`selected` being **absent** and being **empty** are different things. Absent means "never asked" and falls back to the catalogue defaults; empty means "I chose nothing", and is respected.
+
+### The gist
+
+```bash
+talea manifest push             # publish; prints the id on the first run
+talea manifest pull <gist-id>   # link this machine and fetch
+talea manifest where            # which file is in use, and which gist
+```
+
+The id is remembered in `~/.talea/state.json`, so later pushes and pulls need no argument.
+
+:::caution
+The gist is private. It still holds the names of your private repositories, so treat the id like a bookmark you would not paste into a public channel.
+:::
+
+Only the catalogue is published. What each machine keeps stays in that machine's `.talea.json` and never leaves it.
+
+### Groups are just folders
+
+A group is the directory a repo lives in, resolved in this order: an explicit `group` field, then the repo's `owner`, then `repos`. Two owners can be consolidated into one group by giving both sets of entries the same `group`.
+
+Group folders are created when a repo is cloned into them, not up front — an empty directory for a group this machine keeps nothing from is noise.

@@ -1,0 +1,49 @@
+---
+title: "For your agent"
+sidebar:
+  order: 7
+---
+
+```bash
+talea skill install
+```
+
+That copies one Markdown file into `~/.claude/skills/talea/SKILL.md`. Restart Claude Code — skills are read at session start — and your agent knows which talea command answers which question.
+
+```bash
+talea skill              # is it installed, and where
+talea skill uninstall    # take it back out
+```
+
+### Why user scope
+
+Your workspace spans every project you open, so the instructions have to be there in all of them. A repo-scoped skill would only exist in whichever checkout you happened to be inside, which is the one place the question "where is that other repo?" never gets asked.
+
+If `CLAUDE_CONFIG_DIR` is set, the skill follows it. Installing into a directory nothing reads is worse than not installing at all.
+
+### What it teaches
+
+The skill is mostly about restraint. The commands are easy; the guardrails are the part an agent gets wrong.
+
+| It will | It will not |
+|---|---|
+| Run `talea where` and `cd` to what it printed | `cd` to a path talea did not print — an unknown name exits non-zero for exactly that reason |
+| Show you `talea adopt` as a dry run and ask | Run `--apply` on a plan you have not seen |
+| List name-only matches and leave them | Reach for `--loose` on your behalf |
+| Say "taken off the list" when it runs `talea rm` | Call it a delete, because it is not one |
+| Report a parked duplicate and stop | Empty `.talea-duplicates/` |
+| Read the exit code of a bulk command | Report a run with a failed repo in it as done |
+
+It also knows not to print the gist id into a message going somewhere shared.
+
+### It will not overwrite your own skill
+
+If `~/.claude/skills/talea/SKILL.md` exists and talea did not write it, `install` refuses and changes nothing. Move yours first. `uninstall` has the same rule — it only removes a file carrying talea's own marker.
+
+### Without Claude Code
+
+The skill is a plain Markdown file with YAML frontmatter, and nothing about the CLI depends on it. Every command in it works from a bare terminal, which is where they were designed to be run.
+
+---
+
+Next: **[Command reference](/docs/commands/)**.

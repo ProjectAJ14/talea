@@ -1,0 +1,50 @@
+---
+title: "Auth"
+sidebar:
+  order: 10
+---
+
+Two different things need credentials, and they fail in different ways.
+
+| | Used for | Comes from |
+|---|---|---|
+| **git** | cloning and fetching | SSH keys by default, or HTTPS with `--protocol https` |
+| **the GitHub API** | building the catalogue, the gist | `gh auth token`, then `GITHUB_TOKEN`, then nothing |
+
+### Cloning
+
+SSH is the default. Check it before you blame talea:
+
+```bash
+ssh -T git@github.com
+```
+
+That exits non-zero even when it works — GitHub authenticates you and then refuses the shell — so read the **text**, not the exit code. "successfully authenticated" is the signal. `talea doctor` does exactly this and reports it properly.
+
+If you would rather not use SSH:
+
+```bash
+talea sync --protocol https
+```
+
+The protocol is remembered in `.talea.json`, so it is a one-time choice per machine.
+
+:::caution
+A named SSH key that is not in a default location and not loaded into the agent will not be used for a bare `git@github.com`. That looks exactly like "talea cannot clone". `ssh-add ~/.ssh/your_key`, or a `Host github.com` block in `~/.ssh/config`, is the fix — and `talea doctor` is how you confirm it took.
+:::
+
+### The API
+
+No token is a **working state**, not an error: you get public repos only. With a token you get your private repos, your organisations, and anything shared with you directly.
+
+talea prefers the `gh` CLI over its own `fetch` when `gh` is installed, and that is not only about the token.
+
+`gh` is a Go binary that trusts the **system** certificate store. Node's `fetch` trusts a CA list compiled into Node. On any machine behind TLS interception — a corporate proxy, a VPN, a security agent — `curl` and `gh` work and `fetch` dies with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`. Preferring `gh` means such a machine needs no configuration at all; the `fetch` path stays for machines without it.
+
+### Checking what talea can see
+
+```bash
+talea doctor
+```
+
+The `GitHub API` line names which source the token came from, or says there is none. The `SSH` line says whether GitHub accepted your key.

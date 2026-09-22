@@ -1,0 +1,282 @@
+/* ============================================================
+   Starlight, skinned onto talea's grounds.
+
+   Starlight has its own token scale (--sl-color-*). Rather than
+   restyle its components one by one, this maps that scale onto the
+   roles in tokens.css — so the manual and the landing page are
+   literally the same colours, and one toggle drives both.
+
+   tokens.css is imported first and owns --bg/--ink/--spot/...;
+   everything below only re-points Starlight's names at them.
+   ============================================================ */
+
+@import '/tokens.css';
+
+/* Starlight keys its own rules off data-theme; tokens.css keys off
+   data-mode. GroundToggle.astro sets both, so these two blocks only
+   have to agree about which is which. */
+:root[data-theme='dark'],
+:root:not([data-theme='light']) {
+  --sl-color-accent: var(--spot);
+  --sl-color-accent-low: var(--spot-soft);
+  --sl-color-accent-high: var(--spot);
+  --sl-color-text-accent: var(--spot);
+  --sl-color-text-invert: var(--spot-ink);
+
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: var(--ink);
+  --sl-color-gray-2: var(--dim);
+  --sl-color-gray-3: var(--faint);
+  --sl-color-gray-4: var(--faint-2);
+  --sl-color-gray-5: var(--line-2);
+  --sl-color-gray-6: var(--line);
+  --sl-color-gray-7: var(--mass);
+  --sl-color-black: var(--bg);
+}
+:root[data-theme='light'] {
+  --sl-color-accent: var(--spot);
+  --sl-color-accent-low: var(--spot-soft);
+  --sl-color-accent-high: var(--spot);
+  --sl-color-text-accent: var(--spot);
+  --sl-color-text-invert: var(--spot-ink);
+
+  --sl-color-white: var(--ink);
+  --sl-color-gray-1: var(--ink);
+  --sl-color-gray-2: var(--dim);
+  --sl-color-gray-3: var(--faint);
+  --sl-color-gray-4: var(--faint-2);
+  --sl-color-gray-5: var(--line-2);
+  --sl-color-gray-6: var(--line);
+  --sl-color-gray-7: var(--mass);
+  --sl-color-black: var(--bg);
+}
+
+:root {
+  --sl-color-text: var(--dim);
+  --sl-color-bg: var(--bg);
+  --sl-color-bg-nav: var(--bg);
+  --sl-color-bg-sidebar: var(--bg);
+  --sl-color-bg-inline-code: var(--mass);
+  --sl-color-hairline: var(--line-2);
+  --sl-color-hairline-light: var(--line);
+  --sl-color-hairline-shade: var(--line-2);
+
+  --sl-font: var(--font-body);
+  --sl-font-mono: var(--font-mono);
+
+  --sl-nav-height: 60px;
+  --sl-text-h1: var(--display-2);
+  --sl-text-h2: 26px;
+  --sl-text-h3: 20px;
+  --sl-content-width: 48rem;
+}
+
+/* ---------- the ground ----------
+   No rule grid here. It gives the landing page's short blocks a measure, but
+   behind a column of running prose it reads as ruled paper and fights the text. */
+body { background: var(--bg); }
+::selection { background: var(--spot); color: var(--spot-ink); }
+
+/* ---------- square chrome, hairline rules ---------- */
+:where(.sl-markdown-content) :where(pre, .expressive-code .frame),
+.sl-markdown-content :where(table, th, td),
+.card, dialog, .sidebar-pane, site-search button {
+  border-radius: 0 !important;
+}
+
+header.header {
+  border-bottom: 1px solid var(--line-2);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+.sidebar-pane { border-inline-end: 1px solid var(--line-2); }
+.right-sidebar { border-inline-start: 1px solid var(--line-2); }
+
+/* ---------- type: the display face carries the headings ---------- */
+.sl-markdown-content :where(h1, h2, h3, h4),
+h1, .content-panel h1 {
+  font-family: var(--font-disp);
+  letter-spacing: var(--tracking-tight);
+}
+.sl-markdown-content h1, .content-panel h1 {
+  font-weight: var(--weight-extra);
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+}
+.sl-markdown-content :where(h2, h3, h4) { font-weight: var(--weight-bold); }
+
+/* sidebar groups read as the micro-labels they are on the landing page */
+.sidebar-content > ul > li > details > summary,
+.sidebar-content .large,
+nav.sidebar summary span.large {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 400;
+}
+.right-sidebar h2 {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: var(--tracking-caps-wide);
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---------- our wordmark and toggle in Starlight's header ---------- */
+.site-lock { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.site-lock__mark {
+  width: 28px; height: 28px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--spot); color: var(--spot-ink);
+}
+.site-lock b {
+  font-family: var(--font-disp); font-weight: var(--weight-extra);
+  font-size: 19px; letter-spacing: var(--tracking-tight); color: var(--ink);
+}
+
+.ground { display: flex; border: 1px solid var(--line-2); flex: none; }
+.ground button {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: .12em; text-transform: uppercase;
+  background: none; border: 0; color: var(--faint);
+  padding: 5px 10px; cursor: pointer; line-height: 1.4;
+  transition: background 140ms var(--ease), color 140ms var(--ease);
+}
+.ground button:hover { color: var(--ink); }
+.ground button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
+
+/* ---------- code blocks ---------- */
+.expressive-code .frame pre { border: 1px solid var(--line-2); background: var(--mass); }
+.expressive-code .frame .header { border-color: var(--line-2); }
+.sl-markdown-content code:not(:where(.expressive-code *)) { color: var(--spot); }
+
+/* ---------- tables ----------
+   These are reference tables: a narrow key column and a description that runs
+   long. Two rules do the work — the key column shrinks to its content and does
+   not wrap, the description takes everything left and wraps freely. `nowrap` on
+   anything but the first column clips it, and a table that overflows must
+   scroll in its own box rather than move the page. */
+.sl-markdown-content th {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--faint); border-bottom: 1px solid var(--line-2);
+  text-align: left; vertical-align: bottom;
+}
+.sl-markdown-content :where(td, th) {
+  border-color: var(--line);
+  vertical-align: top;
+  /* `break-word`, never `anywhere`. Both break a long slug rather than let it
+     push the table, but `anywhere` also shrinks the cell's *min-content* to the
+     width of one character — and the key column below asks to be as narrow as
+     it can be, so the browser obliged: the troubleshooting table rendered
+     "S Y M P T O M" one letter per line down the page. `break-word` breaks the
+     same slugs and leaves min-content at the longest word, which is what
+     "shrink to content" was always supposed to mean. */
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+.sl-markdown-content tr:last-child :where(td) { border-bottom: 0; }
+
+.sl-markdown-content table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+/* The key column shrinks to its content — `width: 1%` on an auto-layout table
+   means "as narrow as you can be" — and the description takes what is left.
+   Nothing is told not to wrap except inline code, which is a single token and
+   would be unreadable broken; a prose label like "No profile line at session
+   start" must wrap, and telling the whole column `nowrap` is what clipped it. */
+.sl-markdown-content :where(td, th):first-child { width: 1%; min-width: 14ch; }
+.sl-markdown-content td code { white-space: nowrap; }
+/* A floor under "as narrow as you can be", because that instruction is resolved
+   against whatever the other columns demand: one 38-character `nowrap` command
+   in the description column is enough to squeeze a key column that has nothing
+   left to give. A multi-word command in the description may wrap at its spaces
+   when the room is genuinely not there. */
+.sl-markdown-content td:not(:first-child) code { white-space: normal; }
+
+
+@media (max-width: 50rem) {
+  .ground button { padding: 5px 8px; font-size: 10px; }
+}
+
+/* ---------- badges ----------
+   `.tag` in the old manual became <Badge>. Starlight's variants are its own
+   blues and purples, which are the one thing on the page not in our palette. */
+.sl-badge { border-radius: 0; font-family: var(--font-mono); font-weight: 400; }
+.sl-badge.tip, .sl-badge.note, .sl-badge.default {
+  background: var(--spot-soft);
+  border-color: var(--spot);
+  color: var(--spot);
+}
+
+
+/* ---------- code frames ----------
+   Expressive Code's own themes paint a white (or near-black) ground that sits
+   just off ours. The syntax colours are theirs; the surface is ours. */
+.expressive-code .frame pre,
+.expressive-code .frame .header,
+.expressive-code figure {
+  background: var(--code-bg) !important;
+  border-color: var(--line-2) !important;
+}
+.expressive-code .frame .header { color: var(--faint); font-family: var(--font-mono); }
+.expressive-code code { background: transparent !important; }
+.expressive-code .copy button {
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 0;
+}
+
+/* the search field is chrome, not a card */
+site-search button {
+  background: var(--panel) !important;
+  border: 1px solid var(--line-2) !important;
+  color: var(--faint);
+}
+site-search kbd { background: var(--mass); color: var(--dim); border-radius: 0; }
+
+/* ---------- inline code inside an aside ----------
+   Starlight gives each aside its own tinted inline-code ground. The accent is
+   tuned against our --mass, not against that tint, and lands at 4.26:1 on the
+   caution amber — so in here the code reads in the aside's own colour. */
+.starlight-aside code:not(:where(.expressive-code *)) { color: inherit; }
+
+/* ---------- the product's name ----------
+   Eklavya, the sibling project this design system comes from, paints every
+   prose mention of its name in the accent. talea deliberately does not, and
+   the reason is worth writing down rather than rediscovering: its name is
+   lowercase, it is also the binary, and it is the subject of nearly every
+   sentence in this manual. Accenting all of it would be accent everywhere and
+   therefore accent nowhere. The accent is spent on links, headings and code
+   instead — the things a reader is actually looking for. */
+
+/* ---------- asides ----------
+   Starlight tints each variant with a hue of its own — blue for note, purple
+   for tip, orange for caution, red for danger — and three of those four are
+   colours that appear nowhere else on this site. The design language spends one
+   accent and keeps amber and red for real warnings, so note and tip come back
+   to the accent, caution to --warning and danger to --error, and the tint is a
+   mix against the page rather than a fifth and sixth colour.
+
+   Border and title only carry the hue; the body text stays --ink, because an
+   aside is a paragraph with a flag on it, not a coloured box. */
+.starlight-aside {
+  border-inline-start-width: 2px;
+  color: var(--ink);
+  background-color: color-mix(in srgb, var(--sl-color-asides-border) 8%, transparent);
+}
+.starlight-aside--note,
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--spot);
+  --sl-color-asides-border: var(--spot);
+}
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--warning);
+  --sl-color-asides-border: var(--warning);
+}
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: var(--error);
+  --sl-color-asides-border: var(--error);
+}

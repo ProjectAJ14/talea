@@ -1,0 +1,47 @@
+---
+title: "How it works"
+sidebar:
+  order: 11
+---
+
+talea is Node 20+, ESM, and **zero dependencies** — runtime and dev. Argument parsing (`node:util` `parseArgs`), subprocesses, the filesystem, colour and HTTP all come out of the standard library. A tool you install globally should carry no supply chain with it, so adding a dependency needs a written reason.
+
+### The shape of the code
+
+| Path | What it is |
+|---|---|
+| `bin/talea.js` | entry point; formats top-level errors |
+| `src/cli.js` | arg parsing, the command table, the aliases |
+| `src/config.js` | manifest and state resolution, paths, URLs |
+| `src/workspace.js` | target selection — what this run is about |
+| `src/select.js` | "what does this machine keep?", asked once |
+| `src/github.js` | the two API calls and the gist |
+| `src/git.js` | git plumbing; every spawn is `shell: false` |
+| `src/adopt.js` | match checkouts by remote, move them, repair paths |
+| `src/theme.js` | the look, in one file — palette, glyphs, width maths |
+| `src/log.js` | composes `theme.js` into headings, tables, the box |
+| `src/live.js` | the live block redrawn in place while work is in flight |
+| `src/prompt.js` | the selection tree, and the raw-mode checkbox picker |
+| `src/commands/` | one file per command |
+
+### A run, end to end
+
+1. `cli.js` parses the arguments and picks a command out of one table. One registration point wires dispatch, the help text and the command list, so a command cannot exist in one and not the others.
+2. The command resolves the workspace and the catalogue — nearest first — and works out which repos this run is about, from this machine's selection narrowed by any `-g` and `-r`.
+3. Network work runs through a pool. The default job count is one per core, clamped to **6–12**: more than a dozen simultaneous SSH sessions gets you throttled, and fewer than six is slower than it needs to be.
+4. The live block redraws in place while that happens. Off a terminal — a pipe, a CI log — it prints one line per repo as each settles instead, because a pipe has no cursor to redraw with and a spinner frame per repo per 80ms is not something a log should hold.
+5. `summary()` prints the counts and sets `process.exitCode`. That is the only thing that makes a partial failure visible to a script.
+
+### Why the output is one file
+
+Everything that prints colour goes through `paint` in `src/theme.js`, and every pad, centre and truncation goes through its width maths. Measuring a coloured string with `.length` counts the escape codes, which is the classic way to break a table one release after it was written.
+
+Colour follows TTY detection, with `NO_COLOR` and `FORCE_COLOR` as the overrides. 24-bit colour is gated on `COLORTERM`, with a basic-16 fallback — Apple Terminal, tmux without `-2` and the older Windows consoles all either lie about truecolor or mishandle the escape, and a terminal that mishandles it spills the escape's parameters onto the line as visible text.
+
+The palette is the same verdigris ramp the website is built on, so the CLI and this site are one product rather than two that share a name.
+
+### Cross-platform care
+
+talea runs on macOS, Linux and Windows, and the tests run on all three across Node 20, 22 and 24 on every push.
+
+Treat any new `path.relative`, `startsWith` or `includes` on two paths as a Windows bug until proven otherwise. Node hands out 8.3 short names out of `TEMP` while git prints the long ones, and URL normalisation has to unify `\` with `/` — or a checkout stops matching its own catalogue entry and gets cloned a second time.

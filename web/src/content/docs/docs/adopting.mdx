@@ -1,0 +1,82 @@
+---
+title: "Adopting what you have"
+sidebar:
+  order: 6
+---
+
+This is the part that matters on a machine you have been using for years.
+
+talea never clones a repo you already have. Before cloning anything it scans the workspace — and any folder you name with `--from` — and matches every checkout it finds **by its git remote**, not by folder name. A repo cloned into `~/tmp/clone2/whatever` is recognised as the repo it holds and **moved** into place.
+
+```bash
+talea adopt                      # show what would move, change nothing
+talea adopt --from ~/Desktop     # look there too; the folder is remembered
+talea adopt --apply              # do it
+```
+
+The default is a dry run. Always read it before applying — a move relocates directories you may have open in an editor, a terminal or a long-running process.
+
+### Why a move and not a re-clone
+
+A `rename` keeps branches, stashes, the reflog and your uncommitted changes, because none of them ever leave the directory. It is also instant. A re-clone silently discards all of it.
+
+talea also never copies-then-deletes. A cross-device move is **refused and reported**, not turned into a copy and a delete.
+
+### Exact matches and name-only matches
+
+`matchRepo` returns one of two answers:
+
+| Match | What happens |
+|---|---|
+| `exact` — the remote URL matches | Moved by `clone`, `sync` and `adopt --apply` |
+| `name` — only the repo *name* matches | Listed, and left alone |
+
+`--loose`, or naming the repo with `-r`, is how you include a name-only match once you have looked at it.
+
+:::caution
+That guard is not theoretical. An FVM Flutter SDK cache reports its `origin` as `flutter/flutter`, which name-matches a personal `flutter` fork. Adopting it breaks every Flutter project on the machine. This was found on a real machine, not imagined for a manual.
+:::
+
+### Worktrees travel with their repo
+
+A worktree's link to its repo is an **absolute path**, so renaming the repo breaks every worktree at once.
+
+talea reads the worktree list *before* the rename — afterwards every worktree that moved is reported `prunable`, indistinguishable from a dead one — then moves the sibling `<repo>-worktrees/` folder alongside the repo and runs `git worktree repair` with the new paths. Worktrees that did not move are repaired where they sit.
+
+A linked worktree is never treated as a second copy of the repo, even though git reports the same `origin` for both. Renaming one would unroot its commits.
+
+### Duplicates are parked, not deleted
+
+If the same repo turns up twice, the copy at the catalogue path wins and the other moves into `.talea-duplicates/<GROUP>/<repo>` with everything in it — branches, stashes, uncommitted work — and is listed so you can decide what to do with it.
+
+There is no `rmSync` anywhere in the code that moves things. Clearing that folder is your decision.
+
+### What cannot be moved
+
+A repo that cannot be moved safely is left alone and the reason is printed:
+
+- it is itself a linked worktree
+- the destination is already occupied
+- the move would cross a filesystem
+
+### Paths are repaired afterwards
+
+A repo that moves and loses its history has not really been helped. After a move, absolute paths that pointed at the old location are updated: Claude Code session history and memory, its per-project settings, and config files in the workspace and the repo — `.idea`, `.vscode`, `.claude`, `CLAUDE.md`.
+
+```bash
+talea adopt --fix-paths          # re-run just that repair, moving nothing
+```
+
+### When another tool owns a checkout
+
+Mark it in the catalogue and talea leaves it completely alone — not `sync`, not `adopt`, not even an explicit `-r`:
+
+```json
+{ "name": "some-repo", "owner": "someone", "ignore": true }
+```
+
+Without it, two tools that both organise repositories will each drag the same checkout back to where *it* thinks it belongs, on every run, forever. Use it for repos inside another workspace manager's tree, vendored checkouts and SDK caches.
+
+---
+
+Next: **[For your agent](/docs/agents/)**.

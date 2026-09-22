@@ -1,0 +1,69 @@
+---
+title: "Your first machine"
+sidebar:
+  order: 3
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Three commands, and the first one is the check you just ran.
+
+```bash
+talea doctor                 # git, SSH and GitHub auth all reachable?
+talea init ~/Workspace       # discover, ask what to keep, fill the tree
+talea manifest push          # publish the catalogue for the next machine
+```
+
+### What `init` actually does
+
+<Steps>
+
+1. #### Creates the workspace
+
+   `~/Workspace` by default, or whatever directory you name. It records this machine's preferences — the root, the protocol — in `<workspace>/.talea.json`.
+
+2. #### Builds the catalogue, if there isn't one
+
+   The packaged catalogue ships **empty**, on purpose: talea is the machinery, not a list of anybody's repositories. So on a first machine `init` runs `talea discover` for you.
+
+   Discovery reads your own repos, every organisation you belong to, and anything shared with you directly — `affiliation=owner,organization_member,collaborator`, which reaches further than `gh repo list` does. For each repo it records the owner, the default branch, whether it is a fork and when it was last pushed to.
+
+   It lands in `~/.talea/talea.repos.json`. That file is yours and it travels.
+
+3. #### Asks what this machine should keep
+
+   Your default set, or a checklist of everything in the catalogue with those defaults already ticked. Space toggles, Enter saves, Esc cancels and changes nothing.
+
+   The answer goes in `<workspace>/.talea.json` and **never leaves this machine**.
+
+4. #### Fills the tree
+
+   Existing checkouts are found and moved into place first; only what is genuinely missing is cloned. [Adopting what you have](/docs/adopting/) is that half in full.
+
+</Steps>
+
+### Publishing the catalogue
+
+```bash
+talea manifest push
+```
+
+That writes the catalogue to a **private gist** and prints its id. Every later `push` and `pull` from this machine needs no argument — the id is remembered in `~/.talea/state.json`.
+
+:::caution
+The gist is private, but it still holds the names of your private repositories. Treat the id like a bookmark you would not paste into a public channel.
+:::
+
+### Useful flags on `init`
+
+| Flag | For |
+|---|---|
+| `--no-clone` | Write the config now, fill the tree later |
+| `--pick` | Go straight to the checklist, skipping the defaults offer |
+| `--protocol https` | Clone over HTTPS instead of SSH |
+| `-g <group>` | Restrict the whole run to one group |
+| `-j <n>` | How many git operations run at once (default: one per core, clamped to 6–12) |
+
+---
+
+Next: **[Every machine after that](/docs/every-machine/)**.

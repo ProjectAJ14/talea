@@ -1,0 +1,61 @@
+---
+title: "Installing"
+sidebar:
+  order: 2
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+```bash
+npm install -g @ajaykumarnpm/talea
+```
+
+The package name is scoped; the command it installs is just `talea`. (npm's typo-squatting filter refused the bare name `talea` — it called it too similar to `tape`, `taze`, `table` and `jaltea` — so the package wears a scope and the binary does not.)
+
+### Check it landed
+
+```bash
+talea --version
+talea doctor
+```
+
+`talea doctor` is the one that matters. It checks, in order:
+
+| Check | What a failure means |
+|---|---|
+| **Node.js** | Older than 20. Upgrade before anything else. |
+| **git** | Not on `PATH`. |
+| **SSH to GitHub** | Your key is not reaching GitHub. Cloning will fail until it does, or until you pass `--protocol https`. |
+| **GitHub API** | No token. Not a failure — you get public repos only. |
+| **Workspace** | Which tree talea found, and whether this machine has chosen what to keep yet. |
+
+It exits non-zero if something is actually broken, so it is safe to put in a setup script.
+
+### Upgrading
+
+```bash
+talea upgrade            # reinstall from npm at the latest version
+talea upgrade --check    # report only, change nothing
+```
+
+talea checks for a new version at most once a day and prints a one-line notice. It **never updates itself silently** — it moves checkouts around, and a tool that changes behaviour underneath you mid-session is not one you can trust with that.
+
+`talea upgrade --off` turns the daily notice off, `--on` turns it back on, and `TALEA_NO_UPDATE_CHECK=1` disables it for a single shell.
+
+:::caution
+A copy of talea that is a git checkout refuses to self-upgrade. Replacing somebody's working branch with a release is data loss with a friendly name.
+:::
+
+### Teaching your agent to use it
+
+One more command, if you work in Claude Code:
+
+```bash
+talea skill install
+```
+
+That installs a skill at user scope, so every project you open has it. [For your agent](/docs/agents/) is what it does and what it deliberately refuses to do.
+
+---
+
+Next: **[Your first machine](/docs/first-machine/)**.

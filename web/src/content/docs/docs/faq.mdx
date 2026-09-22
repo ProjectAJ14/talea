@@ -1,0 +1,61 @@
+---
+title: "FAQ"
+sidebar:
+  order: 14
+---
+
+### Will it delete anything?
+
+No. Duplicates are parked in `.talea-duplicates/` with everything in them, and a repo you take off this machine's list is left exactly where it is. Emptying either is your decision.
+
+### Will it push my work?
+
+No. There is no `git push` in talea.
+
+### What happens to my uncommitted changes?
+
+Nothing. A dirty repo is fetched and skipped with a line saying so. A repo that is *moved* keeps its uncommitted changes, because a move is a `rename` and nothing leaves the directory.
+
+### Can two machines keep different repos?
+
+That is the design. The catalogue travels and the selection does not, so your work laptop can keep three repos while the desktop keeps forty.
+
+### Do I have to use `~/Workspace`?
+
+No. `talea init ~/code` uses that instead. The root is recorded per machine, so different machines can use different roots and still agree on the structure inside.
+
+### Does it need GitHub?
+
+For building the catalogue, yes — that is where the repo list, the owners and the default branches come from. Cloning and syncing are ordinary git, so a catalogue you maintain by hand works against any host.
+
+### Does it work without a token?
+
+Yes, with public repos only. That is a working state, not an error.
+
+### Is the gist public?
+
+It is private. It still holds the names of your private repositories, so treat the id like a bookmark you would not paste into a public channel.
+
+### Why is the packaged catalogue empty?
+
+Because talea is the machinery, not a list of anybody's repositories. A published package carrying the author's repo list would be a personal tool wearing a general one's name.
+
+### What if another tool already organises some of my repos?
+
+Mark those entries `"ignore": true` and talea will never touch them. Without it, two tools that both organise repositories each drag the same checkout back where it thinks it belongs, on every run, forever.
+
+### Why is my Flutter SDK cache showing up as a repo?
+
+An FVM Flutter SDK cache reports its `origin` as `flutter/flutter`, which name-matches a personal `flutter` fork. talea lists it and leaves it alone for exactly that reason. Do not `--loose` it.
+
+### Does it work on Windows?
+
+Yes. Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every push.
+
+### Where does my data live?
+
+`~/.talea/talea.repos.json` is the catalogue, `~/.talea/state.json` remembers the gist id and the update check, and `<workspace>/.talea.json` is what this machine keeps. Delete the `~/.talea` directory and talea has forgotten everything except the checkouts, which are still where they were.
+
+### How do I uninstall it?
+
+`npm uninstall -g @ajaykumarnpm/talea`, and `talea skill uninstall` first if you installed the agent skill. Your repos stay where they are — talea does not own them, it only decided where they went.

@@ -1,0 +1,187 @@
+---
+title: "Command reference"
+sidebar:
+  order: 8
+---
+
+Every command takes `--help` for its own examples. Every command that works on more than one repo takes `-g <group>` and `-r <repo>` — both repeatable — to narrow the run, and **exits non-zero if any repo failed**.
+
+An unknown group or repo name exits non-zero rather than quietly doing nothing. A bulk command that silently does nothing is worse than one that stops.
+
+### talea init
+
+```bash
+talea init                      # set up ~/Workspace
+talea init ~/code               # use that folder as the root instead
+talea init --no-clone           # write the config, clone later
+```
+
+Creates the workspace, records this machine's preferences, asks what this machine should keep, and fills it. If the catalogue is empty, `talea discover` runs first — so on a first machine this one command goes from nothing to a folder tree.
+
+`--protocol <ssh|https>` · `--no-clone` · `--pick` · `-g` · `-j`
+
+### talea discover
+
+```bash
+talea discover                  # every repo you can see — a dry run
+talea discover --apply          # write the catalogue
+talea discover --since 6mo      # older repos kept, marked archived
+talea discover --user someone   # public repos of an account, no token needed
+```
+
+Lists your own repos and every org you belong to, then writes each one's owner, default branch and last push into `~/.talea/talea.repos.json`. A repo already in the catalogue keeps its `default`, `group`, `dir` and `ignore` — discovery refreshes facts, never choices.
+
+`--since` takes `6mo`, `90d`, `2y` or an ISO date. Older repos are **marked**, never dropped.
+
+### talea sync
+
+```bash
+talea sync                      # clone what is missing, fast-forward the rest
+talea sync --pick               # change what this machine keeps, then sync
+talea sync --no-clone           # fast-forward only
+```
+
+`-g` · `-r` · `--pick` · `--no-clone` · `--no-adopt` · `--protocol` · `-j`
+
+### talea clone
+
+```bash
+talea clone                     # clone every repo this machine keeps
+talea clone -r eklavya          # a single repo, selected or not
+talea clone --pick              # re-open the checklist first
+```
+
+Clone only — never fetches or merges. Already-cloned repos are left completely alone, so re-running is safe. A repo the server will not hand over is reported and **skipped**, not failed.
+
+`-g` · `-r` · `--pick` · `--protocol` · `--from` · `--no-adopt` · `-j`
+
+### talea adopt
+
+```bash
+talea adopt                     # show what would move
+talea adopt --apply             # actually move it
+talea adopt --from ~/Desktop    # also look there
+```
+
+`-g` · `-r` · `--from` (repeatable, remembered) · `--apply` · `--loose` · `--fix-paths` · `-j`
+
+[Adopting what you have](/docs/adopting/) is this command in full.
+
+### talea status
+
+```bash
+talea status                    # every repo this machine keeps
+talea status --drift            # only repos not on their default branch
+talea status --missing          # only repos not cloned yet
+talea status --all              # the whole catalogue
+```
+
+### talea select
+
+```bash
+talea select                    # reopen the checklist, then clone what is new
+talea select --no-clone         # change the list only
+```
+
+Space toggles, Enter saves, Esc cancels and changes nothing. Needs a terminal; in a non-interactive session it prints a summary instead of hanging.
+
+### talea add / talea rm
+
+```bash
+talea add eklavya                  # add it to the list and clone it now
+talea add nonstopio/json-viewer    # when two owners share a repo name
+talea rm eklavya                   # take it off the list — the folder stays
+```
+
+### talea where
+
+```bash
+talea where eklavya             # the absolute path, one line, nothing else
+cd $(talea where eklavya)
+talea where                     # the workspace root
+```
+
+Exits non-zero on an unknown name, with every diagnostic on stderr.
+
+### talea list
+
+```bash
+talea list                      # every repo, grouped by folder
+talea list --groups             # just the group summary
+talea list --all                # include archived and quiet repos
+talea list --json               # machine-readable
+```
+
+The `KEEP` column is this machine. The `DEFAULT` column is the catalogue's opinion — what a brand new machine would start with.
+
+### talea tree
+
+```bash
+talea tree                      # the whole workspace
+talea tree --all                # the whole catalogue, not just what is kept
+```
+
+Every folder from the workspace root down to each repo, with a marker saying whether a `CLAUDE.md` sits in it.
+
+### talea exec
+
+```bash
+talea exec -- git log --oneline -1
+talea exec -g nonstopio -- npm install
+talea exec --all -- git branch --show-current
+```
+
+Everything after `--` is the command. One repo at a time, so the output stays attributable.
+
+### talea manifest
+
+```bash
+talea manifest push             # publish to a private gist
+talea manifest pull             # fetch the one this machine is linked to
+talea manifest pull <gist-id>   # link this machine to a gist and fetch it
+talea manifest where            # which file is in use, and which gist
+```
+
+`--gist <id>` uses a gist for one command without remembering it.
+
+### talea doctor
+
+```bash
+talea doctor
+```
+
+Node, git, SSH to GitHub, the API token, and the workspace it found. Run this first when a clone fails.
+
+### talea skill
+
+```bash
+talea skill                     # is it installed, and where
+talea skill install             # copy it into ~/.claude/skills/talea/
+talea skill uninstall
+```
+
+### talea upgrade
+
+```bash
+talea upgrade                   # reinstall from npm at the latest version
+talea upgrade --check           # report only
+talea upgrade --on / --off      # the daily update notice
+```
+
+### Aliases
+
+Muscle memory from git and from every other tool that does one of these jobs.
+
+| Alias | Runs |
+|---|---|
+| `setup`, `bootstrap` | `init` |
+| `pull`, `update` | `sync` |
+| `refresh` | `discover` |
+| `pick`, `choose` | `select` |
+| `ls` | `list` |
+| `st` | `status` |
+| `cd`, `path` | `where` |
+| `run` | `exec` |
+| `remove` | `rm` |
+| `skills` | `skill` |
+| `self-update` | `upgrade` |

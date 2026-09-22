@@ -1,0 +1,53 @@
+---
+title: "What it will not do"
+sidebar:
+  order: 12
+---
+
+These are not intentions. Each one is a rule the code is built around, and most of them exist because of something that happened on a real machine.
+
+### It will not push
+
+There is no `git push` anywhere in talea. It reads and checks out.
+
+### It will not destroy uncommitted work
+
+No `reset --hard`, no `clean -fd`, no `checkout --force`. A dirty repo is fetched and skipped, with a line saying so.
+
+This is also why a repo in the wrong place is **moved, not re-cloned**. A `rename` keeps branches, stashes, the reflog and uncommitted work; a re-clone silently discards all of it. talea never copies-then-deletes either — a cross-device move is refused and reported.
+
+### It will not delete anything
+
+A second copy of a repo moves to `.talea-duplicates/<GROUP>/<repo>` with everything in it. `talea rm` takes a repo off this machine's list and leaves the checkout exactly where it is, printing the path.
+
+The module that moves checkouts contains no `rmSync`. That is a property of the file, not a promise in a document.
+
+### It will not merge a divergence
+
+Fast-forwards only. A repo that has diverged is reported for you to deal with.
+
+### It will not switch branches
+
+`talea sync` fast-forwards the branch you are **on**, or leaves it alone and says why. A tool that moves you off a feature branch mid-task is no better than one that clobbers your changes.
+
+This is also why there is no environment or branch-mapping machinery in talea. That belongs to a workspace of deploy branches, not to a person's own repositories.
+
+### It will not guess a branch
+
+`defaultBranch` is recorded per repo by `discover`, because GitHub is the only thing that knows. A repo with none recorded is cloned on whatever the server hands over.
+
+### It will not move a name-only match unattended
+
+The remote URL is the identity. A folder that merely shares a name is listed and left alone until you say otherwise with `--loose` or `-r`.
+
+### It will not touch an ignored checkout
+
+`ignore: true` on a catalogue entry means another tool owns that checkout. No command touches it — not `sync`, not `adopt`, not an explicit selection.
+
+### It will not quietly do nothing
+
+An unknown group or repo name exits non-zero. `talea where` is the sharp case: it exits non-zero and writes every diagnostic to stderr, because `cd $(talea where typo)` must fail rather than land you in your home directory.
+
+### It will not update itself silently
+
+talea tells you an update exists, once a day at most. You choose when. A tool that moves checkouts across every repo you have should not change behaviour underneath you mid-session.

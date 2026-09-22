@@ -1,0 +1,50 @@
+name: Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/firebase.yml'
+  workflow_dispatch:
+
+# A queued deploy waits rather than publishing on top of one that is still
+# uploading. Firebase is the only host, and should stay that way: Astro's
+# `base` is fixed at build time, so one build cannot serve both a root host and
+# a subfolder host. A second host means a second build, which drifts.
+concurrency:
+  group: firebase-hosting
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # The landing page is hand-written HTML in web/public, but the manual is
+      # Starlight, so the site is built before it ships.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+        working-directory: web
+
+      - run: npm run build
+        working-directory: web
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TALEA_RUN }}
+          projectId: talea-run
+          channelId: live
