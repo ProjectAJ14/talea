@@ -4,6 +4,19 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-22
+
+### Added
+- talea skill, and the CLI in the design system's palette
+
+### Fixed
+- **test**: skill.test.js asserted LF against a CRLF checkout
+- **test**: init.test.js depended on the author's own GitHub auth
+- create group folders only when cloning
+
+### Documentation
+- the site and the manual, at talea-run.web.app
+
 ## [0.3.0] - 2026-09-21
 
 ### Added
