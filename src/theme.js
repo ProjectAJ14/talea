@@ -24,18 +24,23 @@ export const useColor =
 // fallback and uses it whenever COLORTERM is not set.
 const trueColor = /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? '');
 
-// ── Phosphor palette ───────────────────────────────────────────
-// [24-bit hex, basic-16 SGR code]. The basic code is what a terminal without
-// COLORTERM gets; it is deliberately the closest *readable* match rather than
-// the closest numerically — `faint` has no bright equivalent, so it falls back
-// to grey rather than a green nobody can read on a light background.
+// ── Verdigris palette ──────────────────────────────────────────
+// [24-bit hex, basic-16 SGR code]. The same accent ramp the website is built
+// on — verdigris, new growth on aged bronze — so the CLI and talea.run are one
+// product rather than two that share a name. The hexes are the `--vd-*` steps in
+// `web/public/tokens.css`; change one and change the other.
+//
+// The basic code is what a terminal without COLORTERM gets. It is deliberately
+// the closest *readable* match rather than the closest numerically — `faint`
+// has no bright equivalent, so it falls back to grey rather than a teal nobody
+// can read on a light background.
 const PALETTE = {
-  green: ['#39ff14', 92], // hot phosphor — something worked
-  aged: ['#1f8a3b', 32], // settled green — a branch, a path, a detail
-  faint: ['#0e3b1c', 90], // barely lit — rules and fills
-  amber: ['#ffb000', 33], // attention, but not a failure
-  red: ['#ff3b30', 31], // failure
-  bone: ['#d6dbd6', 37], // plain text that still wants to be lit
+  green: ['#79D5C4', 96], // --vd-300, the accent — something worked
+  aged: ['#199688', 36], // --vd-500 — a branch, a path, a detail
+  faint: ['#07403C', 90], // --vd-800 — rules and fills
+  amber: ['#E8920C', 33], // --warning: attention, but not a failure
+  red: ['#E5484D', 31], // --error: failure
+  bone: ['#EAE7E1', 37], // --ink: plain text that still wants to be lit
 };
 
 

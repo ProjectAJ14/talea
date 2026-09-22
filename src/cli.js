@@ -20,6 +20,7 @@ import * as manifest from './commands/manifest.js';
 import * as doctor from './commands/doctor.js';
 import * as exec from './commands/exec.js';
 import * as upgrade from './commands/upgrade.js';
+import * as skill from './commands/skill.js';
 import { notifyIfOutdatedAsync } from './update.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ const COMMANDS = {
   manifest,
   doctor,
   exec,
+  skill,
   upgrade,
 };
 
@@ -59,6 +61,7 @@ const ALIASES = {
   cd: 'where',
   path: 'where',
   run: 'exec',
+  skills: 'skill',
   remove: 'rm',
   'self-update': 'upgrade',
 };
@@ -115,6 +118,7 @@ ${c.bold('Commands')}
   ${c.cyan('exec')}       run one command in every repo
   ${c.cyan('manifest')}   push or pull the catalogue through a private gist
   ${c.cyan('doctor')}     check git, SSH, GitHub auth and workspace health
+  ${c.cyan('skill')}      install the skill that lets your coding agent drive talea
   ${c.cyan('upgrade')}    update the CLI itself
 
 ${c.bold('A new machine')}
@@ -129,6 +133,9 @@ ${c.bold('The first machine')}
 ${c.bold('Every day')}
   talea sync                    ${c.dim('# clone the new, fast-forward the rest')}
   talea status --drift          ${c.dim('# what is not where I left it')}
+
+${c.bold('With an agent')}
+  talea skill install           ${c.dim('# then ask Claude Code "where is eklavya?"')}
 
 ${c.bold('Common options')}
   -g, --group <names>   restrict to groups, e.g. -g nonstopio

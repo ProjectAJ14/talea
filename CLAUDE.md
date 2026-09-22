@@ -35,9 +35,16 @@ src/
   update.js                version check against the npm registry
   commands/                one file per command
 manifest/talea.repos.json  the packaged catalogue — SHIPS EMPTY, see below
+skills/talea/SKILL.md      the agent-facing skill `talea skill install` copies
 templates/                 group CLAUDE.md files, dropped in by clone/sync
 test/                      node --test
+web/                       the site and the manual — its own CLAUDE.md
 ```
+
+`web/` is a separate world: Astro, its own `package.json`, its own dependencies,
+deployed to Firebase Hosting. Nothing in `src/` may import from it and nothing in
+it may import from `src/`. **Read `web/CLAUDE.md` before touching it.** The one
+thing that spans both is the palette — see *The look* below.
 
 ## The data model — read this first
 
@@ -145,6 +152,48 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
 12. **No silent self-update.** The tool moves checkouts across every repo a
    developer has. It tells them an update exists; they choose when.
 
+## The look
+
+`src/theme.js` owns every byte of colour this CLI prints, and its `PALETTE` is
+the **verdigris ramp from `web/public/tokens.css`** — the `--vd-*` steps, as
+hexes. That is deliberate: the terminal and talea.run are one product, and a CLI
+in phosphor green beside a website in verdigris reads as two tools that share a
+name. Change one and change the other.
+
+24-bit colour is gated on `COLORTERM`, with a basic-16 fallback per role. That is
+not caution for its own sake: a terminal that does not understand
+`\x1b[38;2;r;g;bm` does not silently drop it — it parses the SGR opener and
+spills the remaining parameters onto the line as visible text.
+
+Both colour paths close with `39` ("default foreground") and never with `0`. A
+full reset also clears bold and dim, so a colour nested inside `dim()` would
+un-dim the rest of the line on a truecolor terminal and not on a basic one — a
+rendering difference gated on an environment variable, which is the worst kind to
+reproduce.
+
+## The agent skill
+
+`skills/talea/SKILL.md` is a single Markdown file that teaches a coding agent to
+drive this CLI. `talea skill install` copies it to
+`~/.claude/skills/talea/SKILL.md` — **user scope**, honouring `CLAUDE_CONFIG_DIR`,
+because a developer's workspace spans every project they open and a repo-scoped
+skill would only exist in the one checkout where the question never gets asked.
+
+Two rules hold it up, and `test/skill.test.js` pins both:
+
+- **It never overwrites a skill it did not write.** Somebody's own
+  `~/.claude/skills/talea/` is their work and there is no undo, so `install`
+  refuses on any file missing talea's own marker, and `uninstall` deletes only a
+  file carrying it.
+- **It reports failure through `process.exitCode`, not `process.exit()`.** Same
+  contract `summary()` uses, and the only one a test can drive without taking the
+  runner down with it.
+
+The skill's content is mostly restraint — never `--apply` an unseen adopt, never
+`--loose`, never call a removal a delete. Those are the same rules as above,
+written for a reader who will act on them without asking. When one of them
+changes here, it changes there.
+
 ## Talking to GitHub
 
 `src/github.js` prefers the `gh` CLI over `fetch` when `gh` is installed, and
@@ -247,6 +296,26 @@ registry. Past the publish step the version is public and cannot be withdrawn,
 which is why the tag follows it; a push that fails after a successful publish
 leaves a published version with no tag, and that is recoverable by hand.
 
+## The site
+
+`web/` is built by Astro and deployed to Firebase Hosting at
+https://talea-run.web.app by `.github/workflows/firebase.yml`, on any push to
+`main` that touches `web/`, `firebase.json` or `.firebaserc`. The Firebase
+project is `talea-run` and the deploy uses a service-account secret,
+`FIREBASE_SERVICE_ACCOUNT_TALEA_RUN`.
+
+The two workflows overlap and that is fine, because they are gated on different
+things. This one is gated on **paths**: it only runs when `web/` (or the Firebase
+config) changed. The release workflow runs on every push to `main` but is gated
+on **commit messages**, and site work is a `docs:` commit, which releases
+nothing. So a site-only push deploys the site and publishes no version — not
+because the release workflow did not run, but because it ran and correctly found
+nothing to ship.
+
+The design system is shared with `eklavya/web` on purpose — same tokens, same
+type scale, same two grounds. `web/CLAUDE.md` says what talea inherits and what
+it deliberately does not.
+
 ## Current status
 
 - **Ported from a private workspace manager** that did the same job for one
@@ -271,13 +340,39 @@ leaves a published version with no tag, and that is recoverable by hand.
   the long ones, and `normalizeUrl` has to unify `\` with `/` or a checkout
   stops matching its own catalogue entry and gets cloned a second time.
 
-## When changing behaviour
+## When changing behaviour — the docs move in the same commit
 
-Update in the same commit:
-- `README.md` (user-facing)
-- the command's own `help` string in `src/commands/<name>.js`
-- `USAGE` in `src/cli.js` if you added a command
-- a test
+**Every change updates its documentation in the same commit. Not the next one,
+not a follow-up, not "I'll do the docs after".** This tool has five places that
+describe it, and a change that lands in one of them is a change that now
+contradicts the other four. There is no reviewer who will catch that, and the
+reader who finds the stale one has no way to tell which is true.
+
+So, in the same commit as the code:
+
+| Update | When |
+|---|---|
+| `README.md` | anything user-facing |
+| the command's own `help` string in `src/commands/<name>.js` | always — it is the first place anybody looks |
+| `USAGE` in `src/cli.js` | a new command, or a changed one-line description |
+| the matching page under `web/src/content/docs/docs/` | always. `web/CLAUDE.md` has the page-to-source table |
+| `web/public/index.html` | the landing page states a fact the change makes false — a count, a flag, a promise |
+| `skills/talea/SKILL.md` | an agent could reach the behaviour, or a guardrail moved |
+| this file | the change was a *decision*, not just code — a new rule, a new trade-off, a new reason |
+| a test | always |
+
+Two of those are easy to forget and both are load-bearing:
+
+- **The manual is a test of the source, not prose about it.** Read the value out
+  of the file — the default, the flag, the path — rather than copying what the
+  page already says, or the page compounds its own drift.
+- **The landing page quotes real CLI output.** The hero terminal's glyphs, row
+  format, picker keys and summary counts all come from `src/theme.js`,
+  `src/log.js` and `src/prompt.js`. Change one of those and the page is printing
+  something the tool does not.
+
+If a change genuinely touches none of the docs, say so in the commit body. That
+is a claim somebody can check; silence is not.
 
 <!-- BEGIN interaction-rules -->
 

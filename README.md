@@ -2,6 +2,8 @@
 
 **One folder structure for every machine you work on.**
 
+[talea-run.web.app](https://talea-run.web.app) — the site, and [the manual](https://talea-run.web.app/docs/).
+
 You have a laptop, a desktop, and a work machine. On each one, the repo you want
 is either missing or somewhere you have to go and find. `talea` fixes that: one
 catalogue of your GitHub repos, one tree, and a command that makes any machine
@@ -63,6 +65,21 @@ talea add some-repo          # keep one more on this machine, and clone it now
 talea select                 # reopen the checklist and change the whole list
 cd $(talea where eklavya)
 ```
+
+## Let your coding agent do it
+
+```sh
+talea skill install
+```
+
+Installs a skill into Claude Code at **user scope**, so every project you open
+has it. After that `"where is eklavya?"` and `"my repos are scattered, tidy them
+up"` reach the right command — with the guardrails attached: an adopt is always
+shown as a dry run first, `--loose` is never taken on your behalf, and a removal
+is reported as *taken off the list* rather than as a delete.
+
+`talea skill` says whether it is installed, `talea skill uninstall` takes it back
+out, and it refuses to overwrite a skill called `talea` that talea did not write.
 
 ---
 
@@ -154,6 +171,7 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea tree` | the folder tree on disk |
 | `talea exec -- <cmd>` | run one command in every repo |
 | `talea manifest push/pull` | move the catalogue between machines |
+| `talea skill` | install the skill that lets your coding agent drive talea |
 | `talea doctor` | check this machine can do the work |
 | `talea upgrade` | update the CLI itself |
 
@@ -194,6 +212,14 @@ node bin/talea.js --help
 ```
 
 Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every push.
+
+The website lives in `web/` and is its own thing — Astro, deployed to Firebase
+Hosting on a push to `main` that touches it. `web/CLAUDE.md` is how to work on
+it.
+
+```sh
+cd web && npm install && npm run dev
+```
 
 ## Licence
 
