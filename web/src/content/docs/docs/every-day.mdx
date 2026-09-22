@@ -65,11 +65,14 @@ If two owners have a repo of the same name it says so and exits non-zero rather 
 talea add some-repo          # keep one more here, and clone it now
 talea rm some-repo           # take it off the list
 talea select                 # reopen the whole checklist
+talea pick some-repo         # keep that one — an unknown name opens the checklist
 ```
 
 `talea rm` removes the repo from this machine's list and **leaves the checkout exactly where it is**, printing the path. Deleting it is your call — `rm -rf` already exists for when you mean it.
 
 `talea select` opens the checklist with your current selection ticked. Everything in the catalogue is listed, including archived repos and forks: this machine is allowed to keep something the default set does not have. `--no-clone` saves the list without filling it.
+
+`talea pick <name>` is `talea add` when the name matches exactly one repo — case does not matter, and `owner/name` works. When it matches none, or two owners share it, the checklist opens instead, so a typo lands you in the list rather than on an error.
 
 ### Running one command everywhere
 

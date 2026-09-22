@@ -162,6 +162,9 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
 
 12. **No silent self-update.** The tool moves checkouts across every repo a
    developer has. It tells them an update exists; they choose when.
+   `talea update` is an alias of `upgrade`, not of `sync` — "update" is what
+   people type to update a tool, and `pull` already covers syncing. Typing it
+   is the choice; nothing reinstalls unasked.
 
 ## The look
 

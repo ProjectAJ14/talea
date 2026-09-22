@@ -9,9 +9,10 @@
 // because `clone` and `sync` ask the same question, and the cloning is
 // `clone.run`, re-entered after the new selection is on disk.
 
-import { c, fail, heading, ok, plain, skip } from '../log.js';
+import { c, fail, heading, ok, plain, skip, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
 import { machineRepos, requireCatalogue, requireWorkspace } from '../workspace.js';
+import * as add from './add.js';
 import * as clone from './clone.js';
 
 export const help = `
@@ -19,6 +20,8 @@ ${c.bold('talea select')} — change what this machine keeps
 
   ${c.dim('talea select')}              reopen the checklist, then clone what is newly ticked
   ${c.dim('talea select --no-clone')}   change the list only, fill it in later
+  ${c.dim('talea pick PiDom')}          keep that one repo and clone it — or, if no repo
+                            has that name, open the checklist instead
 
 The checklist opens with the current selection ticked. Space toggles, Enter
 saves, Esc cancels and changes nothing. Everything in the catalogue is listed,
@@ -29,13 +32,21 @@ It writes ${c.dim('.talea.json')}, which never leaves this machine, so no other 
 selection changes. Unticking a repo takes it off the list and leaves the
 checkout exactly where it is; deleting it is your call.
 
-For one repo, ${c.dim('talea add <repo>')} and ${c.dim('talea rm <repo>')} skip the checklist.
+A name that matches exactly one repo (case does not matter, ${c.dim('owner/name')} works)
+is ${c.dim('talea add <repo>')}. A name that matches none, or two owners' repos, opens the
+checklist, because a typo should land you in the list rather than nowhere.
+${c.dim('talea rm <repo>')} takes one off.
 
 Options
       --no-clone        save the selection, clone nothing
       --protocol <p>    ssh (default) or https
   -j, --jobs <n>        parallel clones
 `;
+
+/** The names that do not pin down exactly one repo — empty means every one does. */
+export function unresolved(manifest, names) {
+  return names.filter((n) => add.lookup(manifest, n).length !== 1);
+}
 
 /** What changed, as two lists of names. Pure, so it can be tested. */
 export function changes(before, after) {
@@ -47,7 +58,7 @@ export function changes(before, after) {
   };
 }
 
-export async function run(opts) {
+export async function run(opts, positionals = []) {
   const { root, manifest, state } = await requireWorkspace();
   requireCatalogue(manifest);
 
@@ -58,6 +69,12 @@ export async function run(opts) {
     fail('`select` is about the whole list — -g/-r do not narrow it.');
     console.error('\n  Use `talea add <repo>` or `talea rm <repo>` for one repo at a time.');
     process.exit(1);
+  }
+
+  if (positionals.length) {
+    const missing = unresolved(manifest, positionals);
+    if (!missing.length) return add.run({ ...opts, removing: false }, positionals);
+    warn(`No single repo called ${missing.map((n) => `"${n}"`).join(', ')} — opening the checklist.`);
   }
 
   const before = machineRepos(manifest, state).map((r) => r.name);
