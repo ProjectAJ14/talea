@@ -46,6 +46,9 @@ talea manifest push          # publish the catalogue so the next machine can rea
 repos, every org you belong to, and anything shared with you directly. It then
 asks what this machine should keep and fills the tree.
 
+Every command works from anywhere after that. Outside the workspace it uses
+the one `init` made; with more than one on the machine, it asks which.
+
 ## Every machine after that
 
 ```sh

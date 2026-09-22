@@ -21,6 +21,8 @@ What it will **not** do, and this is the whole of it:
 - **It will not touch a dirty repo.** Uncommitted changes mean it fetches and stops, with a line saying so.
 - **It will not push.**
 
+Every command runs **from anywhere**. Inside a workspace, that workspace. Outside one, the workspace `talea init` made — and if this machine has several, it asks which. With no terminal to ask on (a script, a pipe) it lists them and exits non-zero rather than picking one for you.
+
 ```bash
 talea sync -g nonstopio      # one group
 talea sync -r eklavya        # one repo

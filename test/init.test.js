@@ -9,7 +9,13 @@ import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { run as init } from '../src/commands/init.js';
+// `init` records every workspace it makes in ~/.talea/state.json. Pointed at a
+// throwaway home so the run never adds a temp folder to the developer's own
+// list — where `talea sync` from outside a workspace would then offer it.
+// Set before the import: config.js reads the home directory when it loads.
+const home = mkdtempSync(path.join(os.tmpdir(), 'talea-home-'));
+process.env.HOME = process.env.USERPROFILE = home;
+const { run: init } = await import('../src/commands/init.js');
 
 const CATALOGUE = {
   workspace: 'Workspace',

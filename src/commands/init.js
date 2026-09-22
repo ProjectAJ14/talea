@@ -15,6 +15,7 @@ import { samePath } from '../adopt.js';
 import { c, context, fail, heading, info, ok, plain, skip, warn } from '../log.js';
 import { run as discover } from './discover.js';
 import { run as sync } from './sync.js';
+import { rememberWorkspace } from '../workspace.js';
 
 export const help = `
 ${c.bold('talea init')} — set this machine up
@@ -105,6 +106,8 @@ export async function run(opts, positionals = []) {
   } else {
     skip(`${STATE_FILE} already here, leaving it alone`);
   }
+  // So `talea sync` run from outside any workspace knows this one exists.
+  rememberWorkspace(target);
 
   let manifest = loadManifest(target);
 

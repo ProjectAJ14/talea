@@ -29,7 +29,7 @@ Options
 `;
 
 export async function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+  const { root, manifest, state } = await requireWorkspace();
   const pool = opts.all ? manifest.repos : machineRepos(manifest, state);
   const entries = withPaths(manifest, root, selectRepos(manifest, opts, pool));
 

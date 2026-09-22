@@ -30,8 +30,8 @@ Options
 
 const hasDoc = (dir) => existsSync(path.join(dir, 'CLAUDE.md'));
 
-export function run(opts) {
-  const { root, manifest, state } = requireWorkspace();
+export async function run(opts) {
+  const { root, manifest, state } = await requireWorkspace();
   const pool = opts.all ? manifest.repos : machineRepos(manifest, state);
   const entries = withPaths(manifest, root, selectRepos(manifest, opts, pool));
 
