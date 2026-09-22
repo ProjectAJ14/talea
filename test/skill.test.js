@@ -30,7 +30,11 @@ function inScratch(fn) {
 }
 
 test('the skill ships with the package and declares itself', () => {
-  const text = readFileSync(source, 'utf8');
+  // Line endings are normalised because git is entitled to translate them on
+  // checkout — a Windows runner hands back CRLF, and an assertion written
+  // against `\n` then fails on a file whose *content* is identical. The
+  // shipped file is never compared byte-for-byte against anything but itself.
+  const text = readFileSync(source, 'utf8').replace(/\r\n/g, '\n');
   // The frontmatter `name` is what Claude Code registers, and the description
   // is the only thing it reads when deciding whether to load the skill at all.
   assert.match(text, /^---\nname: talea\ndescription: "/);
