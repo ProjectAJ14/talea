@@ -5,22 +5,25 @@ import { installKind, installLatest, isNewer, lookupLatestRelease, pkgJson } fro
 export const help = `
 ${c.bold('talea upgrade')} — update the CLI itself
 
-  ${c.dim('talea upgrade')}                    reinstall from npm at the latest version
+  ${c.dim('talea upgrade')}                    reinstall from npm at the latest version, now
   ${c.dim('talea update')}                     the same thing
   ${c.dim('talea upgrade --check')}            only report whether one is available
-  ${c.dim('talea upgrade --on')}               turn the daily update notice on
-  ${c.dim('talea upgrade --off')}              turn the daily update notice off
+  ${c.dim('talea upgrade --on')}               turn automatic updates on (the default)
+  ${c.dim('talea upgrade --off')}              turn automatic updates off
 
-By default the CLI checks for a new version at most once a day and prints a
-one-line notice. It never updates itself silently — this tool moves checkouts
-around, so it should not change behaviour underneath you mid-session.
+Automatic updates are on by default. At most once a day, after a command
+finishes, talea checks npm; if a newer version exists it installs it in the
+background, with the output in ${c.dim('~/.talea/update.log')}. The command you ran
+finishes on the old version, and the next one says it was updated — the
+version never changes mid-run, and never without a line saying so.
 
-Set ${c.dim('TALEA_NO_UPDATE_CHECK=1')} to disable the check for a single shell.
+A copy that is a git checkout is never updated, only told. Set
+${c.dim('TALEA_NO_UPDATE_CHECK=1')} to turn checking off for a single shell.
 
 Options
       --check   report only, change nothing
-      --on      enable the daily update notice
-      --off     disable the daily update notice
+      --on      enable automatic updates
+      --off     disable automatic updates and the check
 `;
 
 export async function run(opts) {
@@ -28,7 +31,7 @@ export async function run(opts) {
 
   if (opts.on || opts.off) {
     writeUserState({ ...state, updateCheck: Boolean(opts.on) });
-    ok(`daily update notice ${opts.on ? c.green('on') : c.dim('off')}`);
+    ok(`automatic updates ${opts.on ? c.green('on') : c.dim('off')}`);
     return;
   }
 
@@ -49,7 +52,7 @@ export async function run(opts) {
   }
 
   // Cached for the passive notice, whatever happens next. A `--check` that
-  // silently refreshed nothing would make the daily notice go stale for a day.
+  // silently refreshed nothing would make the cached version go stale for a day.
   writeUserState({ ...state, lastCheck: Date.now(), latestSeen: latest.version });
 
   if (!isNewer(version, latest.version)) {
@@ -76,6 +79,12 @@ export async function run(opts) {
   const code = await installLatest(name);
   plain('');
   if (code !== 0) {
+    // A background run has nobody watching it. The exit code goes where the
+    // next command will find it and say so.
+    if (process.env.TALEA_BACKGROUND_UPGRADE === '1') {
+      const now = readUserState();
+      if (now.autoUpdate) writeUserState({ ...now, autoUpdate: { ...now.autoUpdate, failed: code } });
+    }
     fail(`npm install exited ${code}.`);
     plain(c.dim(`  Try it yourself: npm install -g ${name}@latest`));
     process.exitCode = code;

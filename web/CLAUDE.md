@@ -69,7 +69,7 @@ Every `.mdx` under `src/content/docs/docs/` has a row here, in sidebar order.
 | Page | Source of truth |
 |---|---|
 | `index.mdx` | `package.json` `engines`, and the two promises in the root `CLAUDE.md` — no push, no delete. Keep it short: it is the page that says what the tool is, not how it works |
-| `installing.mdx` | `package.json` `name`, the checks in `src/commands/doctor.js`, and `src/commands/upgrade.js` for the daily notice and the git-checkout refusal |
+| `installing.mdx` | `package.json` `name`, the checks in `src/commands/doctor.js`, and `src/commands/upgrade.js` and `src/update.js` for the automatic update and the git-checkout refusal |
 | `first-machine.mdx` | `src/commands/init.js` and `src/commands/discover.js` (its affiliation list and what it preserves), plus `src/commands/manifest.js` for the gist |
 | `every-machine.mdx` | `src/config.js` for where each file lives, and rule 11 in the root `CLAUDE.md` for what discovery refreshes |
 | `every-day.mdx` | the `help` strings of `sync`, `status`, `prune`, `where`, `add`, `select` and `exec`, and `summary()` in `src/log.js` for the exit codes |

@@ -39,9 +39,11 @@ talea update             # the same thing
 talea upgrade --check    # report only, change nothing
 ```
 
-talea checks for a new version at most once a day and prints a one-line notice. It **never updates itself silently** — it moves checkouts around, and a tool that changes behaviour underneath you mid-session is not one you can trust with that.
+talea **updates itself automatically**, at most once a day. After a command finishes it checks npm; if a newer version exists, it installs it in the background and writes the output to `~/.talea/update.log`. The command you ran finishes on the old version — talea never changes underneath you mid-run — and the next command prints `Updated 0.7.0 → 0.8.0`, once.
 
-`talea upgrade --off` turns the daily notice off, `--on` turns it back on, and `TALEA_NO_UPDATE_CHECK=1` disables it for a single shell.
+If the background install fails (a global npm folder that needs `sudo`, a proxy that blocks the registry), the next command says so and points at the log. It retries the next day; `talea upgrade` retries now and shows the error.
+
+`talea upgrade --off` turns automatic updates and the check off, `--on` turns them back on, and `TALEA_NO_UPDATE_CHECK=1` disables both for a single shell. Every update message goes to stderr, so `cd $(talea where)` is never affected.
 
 :::caution
 A copy of talea that is a git checkout refuses to self-upgrade. Replacing somebody's working branch with a release is data loss with a friendly name.

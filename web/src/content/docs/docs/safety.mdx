@@ -50,6 +50,6 @@ The remote URL is the identity. A folder that merely shares a name is listed and
 
 An unknown group or repo name exits non-zero. `talea where` is the sharp case: it exits non-zero and writes every diagnostic to stderr, because `cd $(talea where typo)` must fail rather than land you in your home directory.
 
-### It will not update itself silently
+### It never updates itself mid-run, or without saying so
 
-talea tells you an update exists, once a day at most. You choose when. A tool that moves checkouts across every repo you have should not change behaviour underneath you mid-session.
+talea updates itself automatically, at most once a day: after a command finishes it checks npm, and if a newer version exists it installs it in the background. The command you ran finishes on the version it started with, and the next one prints a line saying which version it is now. A tool that moves checkouts across every repo you have should not change behaviour underneath you mid-session, so it never does. `talea upgrade --off` turns it off.

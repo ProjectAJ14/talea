@@ -1,16 +1,17 @@
 // Update checking and self-upgrade.
 //
-// Deliberately NOT a silent auto-updater. This tool moves checkouts around;
-// changing its own behaviour mid-session without the developer knowing is how
-// you get an unreproducible bug report. So: a passive, cached, once-a-day
-// notice plus an explicit `talea upgrade`.
+// Automatic, but never silent and never mid-run. This tool moves checkouts
+// around; changing its behaviour without the developer knowing is how you get
+// an unreproducible bug report. So a newer release is installed in the
+// background once a day, the run that started it finishes on the old version,
+// and the next run says which version it is now. `talea upgrade --off` stops it.
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readUserState, writeUserState } from './config.js';
+import { USER_DIR, readUserState, writeUserState } from './config.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.join(here, '..');
@@ -90,30 +91,98 @@ export function installLatest(name = pkgJson().name) {
 const checksDisabled = () =>
   process.env.TALEA_NO_UPDATE_CHECK === '1' || readUserState().updateCheck === false;
 
+export const UPDATE_LOG = path.join(USER_DIR, 'update.log');
+
 /**
- * Print a one-line notice if a newer version was seen. Uses the *cached* result
- * so it costs nothing, then refreshes the cache at most once a day.
- *
- * Runs after the real work and never throws — an update check must not be able
- * to fail a clone.
+ * What became of the last background update, read on the run after it.
+ *   'updated' — this copy is newer than the one that started it
+ *   'failed'  — the background `talea upgrade` recorded a non-zero npm exit
+ *   null      — still running, or nothing was started
  */
-export async function notifyIfOutdatedAsync() {
+export function autoUpdateOutcome(record, version) {
+  if (!record) return null;
+  if (isNewer(record.from, version)) return 'updated';
+  if (record.failed != null) return 'failed';
+  return null;
+}
+
+/**
+ * Start `talea upgrade` detached, with its output in ~/.talea/update.log.
+ *
+ * The upgrade command rather than a bare `npm install`, because it already
+ * refuses a git checkout and it can record its own exit code — a detached npm
+ * would fail with nobody left to hear it.
+ */
+function spawnBackgroundUpgrade() {
+  mkdirSync(USER_DIR, { recursive: true });
+  const out = openSync(UPDATE_LOG, 'w');
+  const child = spawn(process.execPath, [path.join(PACKAGE_ROOT, 'bin', 'talea.js'), 'upgrade'], {
+    detached: true,
+    stdio: ['ignore', out, out],
+    windowsHide: true,
+    env: { ...process.env, TALEA_BACKGROUND_UPGRADE: '1' },
+  });
+  child.unref();
+  closeSync(out);
+}
+
+/**
+ * After every command: report the last background update, refresh the cached
+ * latest version at most once a day, and when that refresh finds a newer one,
+ * install it in the background.
+ *
+ * The running command never changes version underneath itself — the new copy
+ * is what the *next* run loads, and that run says so, once. Everything here
+ * goes to stderr: `cd $(talea where)` reads stdout, and a notice there is a
+ * directory that does not exist.
+ *
+ * Never throws — an update check must not be able to fail a clone.
+ */
+export async function autoUpdateAsync() {
   if (checksDisabled()) return;
 
   const { version } = pkgJson();
-  const state = readUserState();
+  let state = readUserState();
+  const { c, glyph } = await import('./log.js');
+  const say = (s) => console.error(c.dim(`\n${glyph.rule.repeat(6)}\n`) + s + '\n');
 
-  if (state.latestSeen && isNewer(version, state.latestSeen)) {
-    const { c, glyph } = await import('./log.js');
-    console.log(
-      c.dim(`\n${glyph.rule.repeat(6)}\n`) +
-        `${c.yellow('Update available')} ${c.dim(version)} ${glyph.arrow} ${c.green(state.latestSeen)}  ` +
-        `run ${c.bold('talea upgrade')}\n`,
+  const outcome = autoUpdateOutcome(state.autoUpdate, version);
+  if (outcome === 'updated') {
+    say(`${c.green('Updated')} ${c.dim(state.autoUpdate.from)} ${glyph.arrow} ${c.green(version)}`);
+  } else if (outcome === 'failed') {
+    say(
+      `${c.yellow('Automatic update failed')} ${c.dim(`(npm exited ${state.autoUpdate.failed})`)}  ` +
+        `see ${c.dim(UPDATE_LOG)} or run ${c.bold('talea upgrade')}`,
     );
   }
+  if (outcome) {
+    const { autoUpdate, ...rest } = state;
+    writeUserState((state = rest));
+  }
 
-  if (Date.now() - (state.lastCheck ?? 0) <= CHECK_INTERVAL_MS) return;
+  // Once a day. Only a fresh check starts an install, so a failing one is
+  // retried daily, not on every command.
+  if (Date.now() - (state.lastCheck ?? 0) > CHECK_INTERVAL_MS) {
+    const latest = await latestRelease();
+    state = { ...state, lastCheck: Date.now(), ...(latest ? { latestSeen: latest } : {}) };
+    // A record a day old with no outcome is a background run that died before
+    // it could write one; it must not block every update after it.
+    const pending = state.autoUpdate && Date.now() - state.autoUpdate.at < CHECK_INTERVAL_MS;
+    const due = latest && isNewer(version, latest) && installKind() === 'npm' && !pending;
+    if (due) state.autoUpdate = { from: version, to: latest, at: Date.now() };
+    writeUserState(state);
+    if (due) {
+      spawnBackgroundUpgrade();
+      say(`${c.dim('Updating in the background')} ${c.dim(version)} ${glyph.arrow} ${c.green(latest)}`);
+      return;
+    }
+  }
 
-  const latest = await latestRelease();
-  writeUserState({ ...state, lastCheck: Date.now(), ...(latest ? { latestSeen: latest } : {}) });
+  // A git checkout, or an update already on its way: the notice is all there is.
+  if (!state.autoUpdate && state.latestSeen && isNewer(version, state.latestSeen)) {
+    say(
+      `${c.yellow('Update available')} ${c.dim(version)} ${glyph.arrow} ${c.green(state.latestSeen)}  ` +
+        `run ${c.bold('talea upgrade')}`,
+    );
+  }
 }

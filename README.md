@@ -203,7 +203,7 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea manifest push/pull` | move the catalogue between machines |
 | `talea skill` | install the skill that lets your coding agent drive talea |
 | `talea doctor` | check this machine can do the work |
-| `talea upgrade` | update the CLI itself (also `talea update`) |
+| `talea upgrade` | update the CLI now (also `talea update`); it updates itself daily anyway — `--off` to stop |
 
 Every one of them takes `-g <group>` and `-r <repo>` to narrow the run, and
 `--help` for its own examples. For `sync`, `clone`, `status`, `list`, `tree` and

@@ -167,11 +167,22 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    narrower token, a revoked org grant and a deleted repo look identical from
    here, and forgetting it is the only unrecoverable reading.
 
-12. **No silent self-update.** The tool moves checkouts across every repo a
-   developer has. It tells them an update exists; they choose when.
+12. **Self-update is automatic, but never mid-run and never unannounced.**
+   On by default, as eklavya's is: at most once a day, after a command
+   finishes, a newer release is installed by a detached `talea upgrade` whose
+   output lands in `~/.talea/update.log`. The run that started it finishes on
+   the version it began with, and the next run prints the version change once
+   — so a bug report always names the version that produced it. It was
+   notice-only through 0.8.0 and changed at the developer's request, to match
+   eklavya. A failed install is recorded by
+   the background run itself (a detached npm would fail with nobody to hear)
+   and announced on the next run; it retries daily, never every command. A git
+   checkout is never updated, only told. `talea upgrade --off` or
+   `TALEA_NO_UPDATE_CHECK=1` turns it all off. Every update line goes to
+   **stderr**: it used to go to stdout, where `cd $(talea where)` would read it
+   as part of the path.
    `talea update` is an alias of `upgrade`, not of `sync` — "update" is what
-   people type to update a tool, and `pull` already covers syncing. Typing it
-   is the choice; nothing reinstalls unasked.
+   people type to update a tool, and `pull` already covers syncing.
 
 13. **`prune` deletes, and only what is already on origin.** It is the first
    command that removes anything, and the case for it is disk: thirty forgotten
@@ -268,7 +279,7 @@ name** — its typo-squatting filter called `talea` too similar to `tape`, `taze
 `table` and `jaltea`. That filter only fires at publish time, so there is no way
 to test an unscoped name in advance. The binary is still `talea`, and
 `publishConfig.access` is pinned to `public` because a scoped package defaults
-to restricted and would otherwise publish private by accident. `upgrade` reads the registry's `latest` and reinstalls.
+to restricted and would otherwise publish private by accident. `upgrade` reads the registry's `latest` and reinstalls; the automatic update runs that same command in the background.
 A copy that is a git checkout refuses to self-upgrade — replacing somebody's
 working branch with a release is data loss with a friendly name.
 
