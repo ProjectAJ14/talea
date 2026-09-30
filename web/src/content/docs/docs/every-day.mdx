@@ -56,7 +56,9 @@ Worktrees pile up. Each one carries its own `node_modules`, `build` or `.dart_to
 | `merged` | every commit is on `origin/<default branch>`, or an identical change is (a rebase merge) | removed |
 | `missing` | the folder is already gone | the record is cleared |
 | `dirty` | modified or untracked files | kept |
+| `ignored` | merged, but holds ignored files that are not build output, like a `.env` | kept, unless `--with-ignored` |
 | `nested` | merged, but another worktree or repo sits inside its folder | kept |
+| `fresh` | a branch with no commits of its own yet — a task just started | kept |
 | `locked` | `git worktree lock`ed | kept |
 | `unmerged` | anything else | kept |
 
@@ -65,7 +67,7 @@ talea prune                  # the plan, with sizes; changes nothing
 talea prune --apply          # do it
 ```
 
-The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. Ignored files that are not build output, like a `.env`, go with the folder, so the plan names them first.
+The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`.
 
 A **squash merge** reads as `unmerged`: the squashed commit is a new change, not the ones on the branch, and telling them apart would take asking GitHub. Remove those worktrees yourself. A repo with no default branch recorded is skipped — run `talea discover`.
 

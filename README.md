@@ -85,10 +85,12 @@ A worktree is `merged` when every commit on it is on `origin/<default branch>`
 — directly, or as an identical change after a rebase merge. `dirty`, `locked`
 and `unmerged` ones are kept, and so is a `nested` one — merged, but with
 another worktree or repo inside its folder, which removing it would delete; `missing` ones (folder already gone) have their
-record cleared. The removal is `git worktree remove`, never forced, and the
-**branch is kept**, so `git worktree add` brings any of them back. Ignored files
-that are not build output — a `.env`, notes — are listed in the plan, because
-they go with the folder.
+record cleared. A `fresh` one — a branch with no commits yet — is kept too: it
+looks merged, but it is a task just started. The removal is `git worktree
+remove`, never forced, and the **branch is kept**, so `git worktree add` brings
+any of them back. git deletes ignored files without asking, so a merged worktree
+holding ignored files that are not build output — a `.env`, notes — is kept as
+`ignored`, with the files named. Move them out, or pass `--with-ignored`.
 
 A **squash merge** reads as `unmerged`: the squashed commit is new, and telling
 it apart would mean asking GitHub. Remove those by hand.

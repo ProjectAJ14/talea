@@ -33,7 +33,9 @@ outside the workspace count too — they belong to the repo.
   merged     every commit is on origin/<default branch>   ${c.dim('→ removed')}
   missing    its folder is already gone                   ${c.dim('→ record cleared')}
   dirty      modified or untracked files                  ${c.dim('→ kept')}
+  ignored    merged, but holds ignored files you made     ${c.dim('→ kept')}
   nested     merged, but another worktree or repo is inside ${c.dim('→ kept')}
+  fresh      a branch with no commits of its own yet      ${c.dim('→ kept')}
   locked     \`git worktree lock\`ed                        ${c.dim('→ kept')}
   unmerged   anything else                                ${c.dim('→ kept')}
 
@@ -43,8 +45,13 @@ and is kept — delete that worktree yourself.
 
 The removal is \`git worktree remove\`, never forced: git itself refuses a tree
 with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, and
-\`git worktree add\` brings it back. Ignored files that are not build output —
-a .env, notes — go with the folder, so the plan lists them first.
+\`git worktree add\` brings it back. git deletes ignored files without asking,
+so a merged worktree holding ignored files that are not build output — a
+.env, notes — is kept as ${c.bold('ignored')} and the plan names them. Move them out, or
+add --with-ignored to remove them along with the folder.
+
+A ${c.bold('fresh')} worktree is one whose branch has never moved since it was created:
+no commits yet, so it looks merged, but it is a task just started.
 
 A repo with no default branch recorded is skipped: run \`talea discover\`.
 
@@ -53,6 +60,7 @@ Options
   -r, --repo <names>    comma-separated repo names; a bare name works too
       --all             ignore this machine's selection
       --apply           actually remove; without it nothing changes
+      --with-ignored    also remove merged worktrees holding ignored files
 `;
 
 // Ignored paths that a build or an install puts back. Anything ignored and NOT
@@ -125,21 +133,33 @@ async function judge(repoDir, wt, base) {
   if (wt.prunable || !existsSync(wt.path)) return 'missing';
   if (await isDirty(wt.path)) return 'dirty';
   if (!wt.head) return 'unmerged';
-  const ancestor = await git(['merge-base', '--is-ancestor', wt.head, base], { cwd: repoDir });
-  if (ancestor.code === 0) return 'merged';
+  if (!(await isMerged(repoDir, wt.head, base))) return 'unmerged';
+  // A branch cut a minute ago has no commits of its own, so it is trivially
+  // "merged" — but it is a task just started, not one finished. Its reflog
+  // still holds only the creation entry; any commit, reset or pull adds one.
+  if (wt.branch) {
+    const log = await git(['reflog', 'show', '--format=%H', `refs/heads/${wt.branch}`], { cwd: repoDir });
+    if (log.code === 0 && lines(log.stdout).length === 1) return 'fresh';
+  }
+  return 'merged';
+}
+
+async function isMerged(repoDir, head, base) {
+  const ancestor = await git(['merge-base', '--is-ancestor', head, base], { cwd: repoDir });
+  if (ancestor.code === 0) return true;
   // A rebase merge rewrote every commit, so none is an ancestor — but each one
   // has a patch-identical twin on the base, and `cherry` marks those with `-`.
-  const cherry = await git(['cherry', base, wt.head], { cwd: repoDir });
-  if (cherry.code === 0 && !lines(cherry.stdout).some((l) => l.startsWith('+'))) return 'merged';
-  return 'unmerged';
+  const cherry = await git(['cherry', base, head], { cwd: repoDir });
+  return cherry.code === 0 && !lines(cherry.stdout).some((l) => l.startsWith('+'));
 }
 
 /**
  * Fetch, then judge every linked worktree of one repo against its default
  * branch. `{ skip }` or `{ fail }` for a repo that cannot be judged, otherwise
  * `{ base, worktrees: [{ path, branch, verdict, size, lossy }] }`.
+ * `withIgnored` lets a merged worktree go even with lossy ignored files in it.
  */
-export async function planRepo({ repo, dir }) {
+export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
   const listed = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
   if (listed.code !== 0) return { fail: `git worktree list failed: ${listed.stderr}` };
   // The first record is the main checkout. It is the repo, and never a candidate.
@@ -172,6 +192,9 @@ export async function planRepo({ repo, dir }) {
         { cwd: wt.path },
       );
       lossy = lossyIgnored(ignored.stdout);
+      // git deletes ignored files without asking, and `--apply` plans and
+      // removes in one run — so a warning here would arrive after the loss.
+      if (lossy.length && !withIgnored) verdict = 'ignored';
     }
     worktrees.push({ path: wt.path, branch: wt.branch, verdict, size, lossy });
   }
@@ -207,7 +230,9 @@ const PAINT = {
   missing: c.yellow,
   cleared: c.green,
   dirty: c.yellow,
+  ignored: c.yellow,
   nested: c.yellow,
+  fresh: c.cyan,
   locked: c.cyan,
   unmerged: c.dim,
   failed: c.red,
@@ -228,7 +253,7 @@ export async function run(opts) {
   );
 
   const plans = await pooled(entries, opts.jobs ?? defaultJobs(), async (entry) => {
-    const plan = await planRepo(entry);
+    const plan = await planRepo(entry, { withIgnored: opts['with-ignored'] });
     if (opts.apply && plan.worktrees) await applyRepo(entry.dir, plan);
     return { ...entry, plan };
   });
@@ -281,7 +306,9 @@ export async function run(opts) {
     );
     for (const { wt } of groupRows) {
       if (wt.error) fail(`${tilde(wt.path)} — ${wt.error}`);
-      if (wt.lossy.length && wt.verdict !== 'failed') {
+      if (wt.verdict === 'ignored') {
+        warn(`${tilde(wt.path)} kept for ignored files: ${wt.lossy.join(', ')} — move them, or --with-ignored`);
+      } else if (wt.lossy.length && wt.verdict !== 'failed') {
         warn(`${tilde(wt.path)} ${opts.apply ? 'lost' : 'would lose'} ignored files: ${wt.lossy.join(', ')}`);
       }
     }
@@ -289,7 +316,7 @@ export async function run(opts) {
   }
 
   const count = (v) => rows.filter((r) => r.wt.verdict === v).length;
-  const tally = ['merged', 'removed', 'missing', 'cleared', 'dirty', 'nested', 'locked', 'unmerged', 'failed']
+  const tally = ['merged', 'removed', 'missing', 'cleared', 'dirty', 'ignored', 'nested', 'fresh', 'locked', 'unmerged', 'failed']
     .map((v) => [v, count(v)])
     .filter(([, n]) => n)
     .map(([v, n]) => `${n} ${v}`);

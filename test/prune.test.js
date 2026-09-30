@@ -177,7 +177,7 @@ describe('prune judges each worktree', () => {
     assert.equal(existsSync(far), false);
   });
 
-  test('an ignored file that is not build output is named in the plan', async () => {
+  test('an ignored file that is not build output keeps it, unless --with-ignored', async () => {
     const dir = makeRepo('ignored');
     writeFileSync(path.join(dir, '.gitignore'), '.env\nnode_modules/\n.plan/\n');
     commit(dir, 'keep.txt'); // takes the .gitignore with it
@@ -188,10 +188,44 @@ describe('prune judges each worktree', () => {
     mkdirSync(path.join(wt, 'node_modules', 'x'), { recursive: true });
     writeFileSync(path.join(wt, 'node_modules', 'x', 'i.js'), '1\n');
 
+    // `--apply` plans and removes in one run, so naming the .env is not
+    // enough: without --with-ignored the worktree is kept.
     const plan = await planRepo(repo(dir));
     const entry = plan.worktrees.find((w) => w.path === wt);
-    assert.equal(entry.verdict, 'merged');
+    assert.equal(entry.verdict, 'ignored');
     assert.deepEqual(entry.lossy, ['.env']);
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(path.join(wt, '.env')), true, 'the .env was deleted');
+
+    const opted = await planRepo(repo(dir), { withIgnored: true });
+    assert.equal(verdictOf(opted, wt), 'merged');
+    await applyRepo(dir, opted);
+    assert.equal(existsSync(wt), false);
+  });
+
+  test('untracked files keep it even when status.showUntrackedFiles=no hides them', async () => {
+    // git worktree remove honours that setting too, so it would delete them.
+    const dir = makeRepo('hidden');
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    git(['config', 'status.showUntrackedFiles', 'no'], dir);
+    writeFileSync(path.join(wt, 'NOTES.txt'), 'mine\n');
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'dirty');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(path.join(wt, 'NOTES.txt')), true, 'untracked work was deleted');
+  });
+
+  test('a worktree whose branch has no commits yet is kept as fresh', async () => {
+    const dir = makeRepo('fresh');
+    const wt = path.join(`${dir}-worktrees`, 'new-task');
+    git(['worktree', 'add', '-q', '-b', 'new-task', wt], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'fresh');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(wt), true);
   });
 });
 

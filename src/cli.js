@@ -98,6 +98,7 @@ const OPTIONS = {
   apply: { type: 'boolean', default: false },
   'fix-paths': { type: 'boolean', default: false },
   loose: { type: 'boolean', default: false },
+  'with-ignored': { type: 'boolean', default: false },
   // parseArgs has no --no-x negation, so the negative flags are declared
   // explicitly and inverted below.
   'no-adopt': { type: 'boolean', default: false },

@@ -181,7 +181,9 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    removed only when every commit on it is on `origin/<defaultBranch>` — an
    ancestor, or patch-identical per `git cherry` (a rebase merge) — only with
    `--apply`, and only by `git worktree remove` **without `--force`**, which
-   refuses a tree with modified or untracked files by itself. `locked` and
+   refuses a tree with modified or untracked files by itself — once `isDirty()`
+   passes `-unormal`, because `status.showUntrackedFiles=no` blinds both it and
+   `git worktree remove`, and the files go (found in review). `locked` and
    `dirty` are never touched, the main checkout is never a candidate,
    and a merged worktree with any `.git` below its root is kept as `nested` —
    git reads it clean when the inner worktree sits under an ignored path, and
@@ -190,8 +192,12 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `rmSync` is involved, and **the branch is kept**: it costs nothing, and
    `git worktree add` brings the folder back. The base is the catalogue's
    `defaultBranch`, never an assumed `main` (rule 8); a repo with none is
-   skipped. Ignored files that are not build output (a `.env`, a `.plan/`) go
-   with the folder, so the dry run lists them first.
+   skipped. git deletes ignored files without asking, and `--apply` plans and
+   removes in one run, so a warning would arrive after the loss: a merged
+   worktree holding ignored files that are not build output (a `.env`, a
+   `.plan/`) is kept as `ignored` unless `--with-ignored` says otherwise. A
+   branch whose reflog holds only its creation is kept as `fresh` — no commits
+   yet makes it trivially merged, and it is a task just started.
    **Known limit: a squash merge reads as `unmerged`.** The squashed commit is a
    new change, so neither ancestry nor `cherry` can see it; telling it apart
    needs the PR's state from GitHub, and `src/github.js` deliberately makes two

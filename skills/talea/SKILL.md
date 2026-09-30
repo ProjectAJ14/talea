@@ -120,12 +120,14 @@ talea prune --apply            # remove the ones marked merged
 ```
 
 **Always run it without `--apply` first, show the developer the plan, and run
-`--apply` only after they confirm.** Read out the `would lose ignored files`
-warnings — a `.env` in a worktree goes with the folder.
+`--apply` only after they confirm.** A merged worktree holding a `.env` or other
+ignored non-build files is kept as `ignored`, with the files named; never add
+`--with-ignored` on the developer's behalf — ask, because those files are gone
+with the folder.
 
 Only `merged` worktrees are removed (every commit already on origin's default
-branch), plus the records of `missing` ones. `dirty`, `nested`, `locked` and
-`unmerged` are kept. A squash-merged branch reads as `unmerged`; say so rather than
+branch), plus the records of `missing` ones. `dirty`, `ignored`, `nested`,
+`fresh` (a branch with no commits yet), `locked` and `unmerged` are kept. A squash-merged branch reads as `unmerged`; say so rather than
 removing it by hand. Report a removal as **worktree removed, branch kept** — the
 branch is still there and `git worktree add` brings the checkout back. Never
 reach for `git worktree remove --force` to finish what prune refused.
