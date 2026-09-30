@@ -92,7 +92,12 @@ any of them back. git deletes ignored files without asking, so a merged worktree
 holding ignored files that are not build output — a `.env`, notes — is kept as
 `ignored`, with the files named. Move them out, or pass `--with-ignored`. A
 file identical to the main checkout's copy at the same path does not count —
-it survives the removal. Each row shows the worktree's folder name, with its
+it survives the removal. Nor does a file the repo declares build output with a
+`.gitattributes` line such as `web/public/runtime.html talea-regenerable` — for
+a file a build copies out of tracked source, whose main-checkout copy is only as
+fresh as its last build. It is read from origin's default branch too, so a mark
+added today covers worktrees branched before it. Mark only what a build
+really writes: a marked file is deleted with the folder. Each row shows the worktree's folder name, with its
 full path dimmed on the line below.
 
 A **squash merge** reads as `unmerged`: the squashed commit is new, and telling

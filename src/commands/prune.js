@@ -50,7 +50,12 @@ with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, an
 so a merged worktree holding ignored files that are not build output — a
 .env, notes — is kept as ${c.bold('ignored')} and the plan names them. Move them out, or
 add --with-ignored to remove them along with the folder. A file identical to
-the main checkout's copy at the same path is not counted: it survives.
+the main checkout's copy at the same path is not counted: it survives. Nor is
+one the repo marks as build output in .gitattributes, on the worktree's branch
+or on origin's default:
+
+  web/public/runtime.html talea-regenerable
+  generated/** talea-regenerable
 
 The table shows each worktree's folder name; its full path is the dim line
 under the row.
@@ -92,22 +97,50 @@ const IGNORED = ['ls-files', '--others', '--ignored', '--exclude-standard'];
 const EXPAND_MAX = 200;
 
 /**
+ * Paths a repo declares regenerable with the `talea-regenerable` attribute —
+ * a `.gitattributes` line such as `web/public/runtime.html talea-regenerable`.
+ * A file a build copies out of tracked source has no telltale folder, and the
+ * main checkout's copy of it is as stale as its last build, so only the repo
+ * can say so. Read from the worktree and from `base` too: a merged worktree was
+ * branched before the line landed, and the repo's current word is the one that
+ * counts. `.git/info/attributes` works as well, for a mark this machine alone
+ * keeps. `--source` needs git 2.40; an older git reads the worktree only.
+ */
+async function regenerable(wtPath, base, files) {
+  if (!files.length) return new Set();
+  const input = files.join('\0');
+  const marked = new Set();
+  for (const source of [[], ['--source', base]]) {
+    const res = await git(['check-attr', '-z', '--stdin', ...source, 'talea-regenerable'], { cwd: wtPath, input });
+    if (res.code !== 0) continue;
+    const out = res.stdout.split('\0');
+    for (let i = 0; i + 2 < out.length; i += 3) if (out[i + 2] === 'set') marked.add(out[i]);
+  }
+  return marked;
+}
+
+/**
  * The ignored files in a worktree that removing it would really lose.
  *
  * `--directory` folds a wholly-ignored folder into one entry, so a `.claude/`
  * holding nothing but the seeded settings file read as somebody's work — the
- * folder is opened and its files judged one by one. And a file byte-identical
+ * folder is opened and its files judged one by one. A file the repo marks
+ * `talea-regenerable` is build output by its own say. And a file byte-identical
  * to the main checkout's copy at the same path (a generated `tokens.css`, a
  * copied config) survives the removal, so it is not a loss either.
  */
-export async function userIgnored(wtPath, mainDir) {
+export async function userIgnored(wtPath, mainDir, base) {
   const listed = await git([...IGNORED, '--directory'], { cwd: wtPath });
   const lost = [];
   for (const entry of lossyIgnored(listed.stdout)) {
-    let files = [entry];
-    if (entry.endsWith('/')) {
-      const inside = lossyIgnored((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout);
-      if (inside.length <= EXPAND_MAX) files = inside;
+    const folder = entry.endsWith('/');
+    let files = folder ? lossyIgnored((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout) : [entry];
+    const marked = await regenerable(wtPath, base, files);
+    files = files.filter((f) => !marked.has(f));
+    if (!files.length) continue;
+    if (folder && files.length > EXPAND_MAX) {
+      lost.push(entry);
+      continue;
     }
     for (const f of files) {
       if (f.endsWith('/') || !(await sameFile(path.join(wtPath, f), path.join(mainDir, f)))) lost.push(f);
@@ -237,7 +270,7 @@ export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
     if (verdict === 'merged' && nested.length) verdict = 'nested';
     let lossy = [];
     if (verdict === 'merged') {
-      lossy = await userIgnored(wt.path, dir);
+      lossy = await userIgnored(wt.path, dir, base);
       // git deletes ignored files without asking, and `--apply` plans and
       // removes in one run — so a warning here would arrive after the loss.
       if (lossy.length && !withIgnored) verdict = 'ignored';

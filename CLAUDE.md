@@ -207,7 +207,16 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    skipped. git deletes ignored files without asking, and `--apply` plans and
    removes in one run, so a warning would arrive after the loss: a merged
    worktree holding ignored files that are not build output (a `.env`, a
-   `.plan/`) is kept as `ignored` unless `--with-ignored` says otherwise. A
+   `.plan/`) is kept as `ignored` unless `--with-ignored` says otherwise.
+   A file a build copies out of tracked source has no telltale folder, and the
+   main checkout's copy is only as fresh as its last build, so the repo says so
+   itself: a `talea-regenerable` attribute in `.gitattributes`, read with `git
+   check-attr` from the worktree and from `origin/<defaultBranch>` (a merged
+   worktree predates the line). A mark, not a name heuristic — "the main
+   checkout has one too" would pass a `.env` edited only in the worktree. The
+   mark gets the trust the repo's `.gitignore` already has — that file decides
+   what is ignored at all — so a careless `** talea-regenerable` does switch
+   the guard off in that repo; it is the repo author's line to write. A
    branch whose reflog holds only its creation is kept as `fresh` — no commits
    yet makes it trivially merged, and it is a task just started.
    **Known limit: a squash merge reads as `unmerged`.** The squashed commit is a

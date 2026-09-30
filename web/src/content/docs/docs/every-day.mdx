@@ -69,6 +69,15 @@ talea prune --apply          # do it
 
 The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`. A file byte-identical to the main checkout's copy at the same path does not count — it survives the removal — and a folder of ignored files is judged file by file, so a `.claude/` holding only a seeded settings file keeps nothing.
 
+A file a build copies out of tracked source — a generated page in `public/`, say — sits under no build folder, and the main checkout's copy is only as fresh as its last build. Mark it in the repo's `.gitattributes` and it stops counting:
+
+```
+web/public/runtime.html talea-regenerable
+generated/** talea-regenerable
+```
+
+The mark is read from origin's default branch as well as the worktree's own, so adding it today covers worktrees branched before it. A mark only this machine should keep goes in `.git/info/attributes` instead. Mark only what a build really writes: a marked file is deleted with the folder, and a broad pattern like `**` switches the guard off for that repo.
+
 Each row names the worktree by its folder; the full path sits dimmed on the line below it, ready to copy.
 
 A **squash merge** reads as `unmerged`: the squashed commit is a new change, not the ones on the branch, and telling them apart would take asking GitHub. Remove those worktrees yourself. A repo with no default branch recorded is skipped — run `talea discover`.
