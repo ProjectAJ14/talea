@@ -4,6 +4,11 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-30
+
+### Added
+- update talea automatically, in the background, once a day
+
 ## [0.8.0] - 2026-09-30
 
 ### Added
