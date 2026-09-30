@@ -4,6 +4,18 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-30
+
+### Added
+- talea prune removes worktrees whose work is merged
+
+### Fixed
+- prune measures worktree size on Windows
+- prune keeps hidden untracked files, ignored files and fresh worktrees
+
+### Chores
+- compare canonical worktree paths in prune tests
+
 ## [0.7.0] - 2026-09-22
 
 ### Added
