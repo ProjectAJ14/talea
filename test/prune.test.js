@@ -13,6 +13,7 @@ import path from 'node:path';
 const home = mkdtempSync(path.join(os.tmpdir(), 'talea-home-'));
 process.env.HOME = process.env.USERPROFILE = home;
 const { planRepo, applyRepo, lossyIgnored, run } = await import('../src/commands/prune.js');
+const { canonical } = await import('../src/adopt.js');
 
 const git = (args, cwd) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -58,7 +59,10 @@ const repo = (dir, extra = {}) => ({
   repo: { name: path.basename(dir), owner: 'me', defaultBranch: 'main', ...extra },
   dir,
 });
-const verdictOf = (plan, wt) => plan.worktrees.find((w) => w.path === wt)?.verdict;
+// git prints `C:/Users/runneradmin/...` where Node has `C:\Users\RUNNER~1\...`,
+// so compare canonical forms or every lookup misses on Windows.
+const entryOf = (plan, wt) => plan.worktrees.find((w) => canonical(w.path) === canonical(wt));
+const verdictOf = (plan, wt) => entryOf(plan, wt)?.verdict;
 
 describe('prune judges each worktree', () => {
   test('merged + clean is removed on --apply, and a dry run removes nothing', async () => {
@@ -191,7 +195,7 @@ describe('prune judges each worktree', () => {
     // `--apply` plans and removes in one run, so naming the .env is not
     // enough: without --with-ignored the worktree is kept.
     const plan = await planRepo(repo(dir));
-    const entry = plan.worktrees.find((w) => w.path === wt);
+    const entry = entryOf(plan, wt);
     assert.equal(entry.verdict, 'ignored');
     assert.deepEqual(entry.lossy, ['.env']);
     await applyRepo(dir, plan);
