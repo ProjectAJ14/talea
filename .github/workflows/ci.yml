@@ -48,7 +48,11 @@ jobs:
         with:
           node-version: 24
       - run: npm run coverage
-      - if: failure()
+      # Node's table lists uncovered LINES only, so a branch that is half-taken
+      # on this runner and fully taken on a laptop fails with no line to look
+      # at. This prints every branch never taken, as `SF:<file> BRDA:<line>,…`.
+      - name: which branches were never taken
+        if: failure()
         run: |
           node --test --experimental-test-coverage --test-coverage-include='src/**' --test-reporter=lcov --test-reporter-destination=lcov.info >/dev/null 2>&1 || true
           awk '/^SF:/{f=$0} /^BRDA:/{split($0,a,","); if (a[4]=="0"||a[4]=="-") print f, $0}' lcov.info

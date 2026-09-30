@@ -104,6 +104,14 @@ describe('helpers', () => {
     }
   });
 
+  // Windows reports `blocks: 0` for every file; an empty file does everywhere,
+  // which is the only way a Linux run reaches the fall-back to `size`.
+  test('measure: a file with no blocks is measured by its size', async () => {
+    const empty = path.join(tmp, 'empty.txt');
+    writeFileSync(empty, '');
+    assert.deepEqual(await measure(empty), { size: 0, nested: [] });
+  });
+
   test('userIgnored: a folder past 200 files is named whole, and a bad base still reads the worktree', async () => {
     const dir = makeRepo(path.join(tmp, 'big'), 'gen/\n');
     const gen = path.join(dir, 'gen');
