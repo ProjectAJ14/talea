@@ -101,7 +101,9 @@ export async function measure(root) {
     } catch {
       return 0;
     }
-    const own = st.blocks != null ? st.blocks * 512 : st.size;
+    // Windows reports `blocks: 0` for every file, not undefined, so a null
+    // check measured every worktree there as empty.
+    const own = st.blocks ? st.blocks * 512 : st.size;
     if (!st.isDirectory()) return own;
     let names;
     try {
