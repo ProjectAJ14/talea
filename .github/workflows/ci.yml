@@ -35,3 +35,17 @@ jobs:
       - run: node bin/talea.js doctor
         continue-on-error: true
 
+  coverage:
+    # 100% of lines, branches and functions, or the run fails. One job, not the
+    # whole matrix: the thresholds need Node >= 22.8 (Node 20 has coverage but
+    # no flag to fail on it), and the numbers are measured on Linux — a branch
+    # that only runs on Windows is exercised by a test that fakes the platform,
+    # never by waiting for a runner that has it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm run coverage
+

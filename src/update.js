@@ -16,6 +16,9 @@ import { USER_DIR, readUserState, writeUserState } from './config.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.join(here, '..');
 
+/** Subprocess and filesystem probes, swappable so a test never runs a real npm. */
+export const io = { spawn, existsSync };
+
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 3000;
 
@@ -28,7 +31,7 @@ export const pkgJson = () =>
  *   'npm'   — installed from the registry
  */
 export function installKind() {
-  return existsSync(path.join(PACKAGE_ROOT, '.git')) ? 'local' : 'npm';
+  return io.existsSync(path.join(PACKAGE_ROOT, '.git')) ? 'local' : 'npm';
 }
 
 /** Compare semver-ish strings. Returns true when `b` is newer than `a`. */
@@ -56,20 +59,18 @@ export function isNewer(a, b) {
  * for longer than the timeout.
  */
 export async function lookupLatestRelease(name = pkgJson().name) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS);
   try {
     const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, {
-      signal: ctrl.signal,
+      // Rejects with a TimeoutError. No timer of our own to clear, and none
+      // that keeps the process alive after the command has finished.
+      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
       headers: { accept: 'application/json', 'user-agent': 'talea' },
     });
     if (!res.ok) return { reason: res.status === 404 ? 'unpublished' : 'unreachable' };
     const { version } = await res.json();
     return version ? { version } : { reason: 'untagged' };
   } catch (err) {
-    return { reason: err.name === 'AbortError' ? 'timeout' : 'unreachable', detail: err.message };
-  } finally {
-    clearTimeout(timer);
+    return { reason: err.name === 'TimeoutError' ? 'timeout' : 'unreachable', detail: err.message };
   }
 }
 
@@ -78,7 +79,7 @@ export const latestRelease = async () => (await lookupLatestRelease()).version ?
 /** Reinstall globally from the registry. Resolves the exit code. */
 export function installLatest(name = pkgJson().name) {
   return new Promise((resolve) => {
-    const child = spawn('npm', ['install', '-g', `${name}@latest`], {
+    const child = io.spawn('npm', ['install', '-g', `${name}@latest`], {
       stdio: 'inherit',
       // npm is a .cmd on Windows, which spawn cannot exec without a shell.
       shell: process.platform === 'win32',
@@ -116,7 +117,7 @@ export function autoUpdateOutcome(record, version) {
 function spawnBackgroundUpgrade() {
   mkdirSync(USER_DIR, { recursive: true });
   const out = openSync(UPDATE_LOG, 'w');
-  const child = spawn(process.execPath, [path.join(PACKAGE_ROOT, 'bin', 'talea.js'), 'upgrade'], {
+  const child = io.spawn(process.execPath, [path.join(PACKAGE_ROOT, 'bin', 'talea.js'), 'upgrade'], {
     detached: true,
     stdio: ['ignore', out, out],
     windowsHide: true,

@@ -110,7 +110,8 @@ export function prependSection(changelog, section) {
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
-function main() {
+/** `root` is the folder holding package.json and CHANGELOG.md — a parameter so a test can point it at a scratch copy. */
+export function main(root = new URL('../', import.meta.url)) {
   const forced = process.argv[2] && process.argv[2] !== 'auto' ? process.argv[2] : null;
 
   let lastTag = null;
@@ -131,7 +132,7 @@ function main() {
   const commits = parseCommits(log);
   const level = forced ?? bumpFrom(commits);
 
-  const pkgPath = new URL('../package.json', import.meta.url);
+  const pkgPath = new URL('package.json', root);
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   const version = nextVersion(pkg.version, level);
 
@@ -142,7 +143,7 @@ function main() {
   }
 
   const section = changelogSection(version, new Date().toISOString().slice(0, 10), commits);
-  const changelogPath = new URL('../CHANGELOG.md', import.meta.url);
+  const changelogPath = new URL('CHANGELOG.md', root);
   writeFileSync(changelogPath, prependSection(readFileSync(changelogPath, 'utf8'), section));
 
   pkg.version = version;
@@ -151,7 +152,7 @@ function main() {
   // The notes go to a file: a multi-line value through $GITHUB_OUTPUT needs a
   // heredoc delimiter that the notes themselves must not contain, and release
   // notes are exactly the text that would eventually contain it.
-  writeFileSync(new URL('../.release-notes.md', import.meta.url), section);
+  writeFileSync(new URL('.release-notes.md', root), section);
 
   console.log(`${pkg.name} ${version} (${level}, ${commits.length} commit(s))`);
   output('release', 'true');

@@ -160,7 +160,7 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
       }
       counts.failed++;
       view.set(repo.name, 'fail', 'clone failed');
-      view.note(repo.name, retry.stderr.split('\n')[0] ?? 'clone failed');
+      view.note(repo.name, retry.stderr.split('\n')[0]);
       return;
     }
 
@@ -175,7 +175,7 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
     if (res.code !== 0) {
       counts.failed++;
       view.set(repo.name, 'fail', 'clone failed');
-      view.note(repo.name, res.stderr.split('\n')[0] ?? 'clone failed');
+      view.note(repo.name, res.stderr.split('\n')[0]);
       return;
     }
 
@@ -191,9 +191,12 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
   return counts;
 }
 
-/** Group docs, for the folders repos live in. Shared by `clone` and `sync`. */
-export function writeDocs(manifest, root, repos) {
-  const docs = dropDocs(manifest, root, new Set(repos.map((r) => repoGroup(r))));
+/**
+ * Group docs, for the folders repos live in. Shared by `clone` and `sync`.
+ * `templates` is for tests; every caller takes the packaged folder.
+ */
+export function writeDocs(manifest, root, repos, templates) {
+  const docs = dropDocs(manifest, root, new Set(repos.map((r) => repoGroup(r))), templates);
   if (!docs.written.length) return;
   heading('Workspace docs');
   for (const file of docs.written) ok(`CLAUDE.md ${c.dim(`→ ${path.relative(root, file)}`)}`);

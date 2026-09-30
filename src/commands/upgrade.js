@@ -47,7 +47,7 @@ export async function run(opts) {
       unreachable: 'could not reach the registry',
       untagged: 'the registry has no version for it',
     };
-    warn(`No version to compare against — ${why[latest.reason] ?? latest.reason}.`);
+    warn(`No version to compare against — ${why[latest.reason]}.`);
     plain(c.dim(`  Installed: ${version}`));
     return;
   }

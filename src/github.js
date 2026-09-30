@@ -13,6 +13,12 @@ import { spawnSync } from 'node:child_process';
 const API = 'https://api.github.com';
 
 /**
+ * The subprocess runner and the cached `gh` probe, on one object so a test can
+ * swap them without a fake `gh` on PATH (a fake binary is a .cmd on Windows).
+ */
+export const io = { spawnSync, gh: null };
+
+/**
  * A token, and where it came from.
  *
  * No token is a usable state, not an error: the public repos of a named user
@@ -23,7 +29,7 @@ export function token() {
   if (process.env.GITHUB_TOKEN) return { token: process.env.GITHUB_TOKEN, from: 'GITHUB_TOKEN' };
   if (process.env.GH_TOKEN) return { token: process.env.GH_TOKEN, from: 'GH_TOKEN' };
 
-  const res = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8', shell: false });
+  const res = io.spawnSync('gh', ['auth', 'token'], { encoding: 'utf8', shell: false });
   const out = res.stdout?.trim();
   if (res.status === 0 && out) return { token: out, from: 'gh auth token' };
 
@@ -40,12 +46,9 @@ export function token() {
  * UNABLE_TO_GET_ISSUER_CERT_LOCALLY. Preferring `gh` when it is there means
  * that machine works with no configuration at all.
  */
-let ghPresent = null;
 export function haveGh() {
-  if (ghPresent === null) {
-    ghPresent = spawnSync('gh', ['--version'], { encoding: 'utf8', shell: false }).status === 0;
-  }
-  return ghPresent;
+  io.gh ??= io.spawnSync('gh', ['--version'], { encoding: 'utf8', shell: false }).status === 0;
+  return io.gh;
 }
 
 function viaGh(pathname, { method = 'GET', body, paginate } = {}) {
@@ -56,7 +59,7 @@ function viaGh(pathname, { method = 'GET', body, paginate } = {}) {
   if (paginate) args.push('--paginate', '--slurp');
   if (body) args.push('--input', '-');
 
-  const res = spawnSync('gh', args, {
+  const res = io.spawnSync('gh', args, {
     encoding: 'utf8',
     shell: false,
     input: body ? JSON.stringify(body) : undefined,
@@ -64,7 +67,7 @@ function viaGh(pathname, { method = 'GET', body, paginate } = {}) {
   });
 
   if (res.status !== 0) {
-    const detail = (res.stderr ?? '').trim().split('\n')[0] ?? `gh api exited ${res.status}`;
+    const detail = (res.stderr ?? '').trim().split('\n')[0] || `gh api exited ${res.status}`;
     throw new Error(`GitHub — ${detail}`);
   }
 

@@ -221,7 +221,6 @@ export function pickRepos(rows, { title = 'Select what to clone' } = {}) {
     if (cursor < 0) cursor = 0;
     let top = 0;
     let painted = 0;
-    let done = false;
 
     // Leave room for the title, the counter and the key hints.
     const viewport = () => Math.max(5, (out.rows || 24) - 6);
@@ -269,7 +268,6 @@ export function pickRepos(rows, { title = 'Select what to clone' } = {}) {
     process.once('exit', restore);
 
     const finish = (value) => {
-      done = true;
       process.stdin.off('data', onData);
       process.off('exit', restore);
       restore();
@@ -281,7 +279,6 @@ export function pickRepos(rows, { title = 'Select what to clone' } = {}) {
     const onData = (chunk) => {
       let dirty = false;
       for (const key of splitKeys(chunk)) {
-        if (done) return;
         const res = applyKey(rows, key, cursor, viewport());
         cursor = res.cursor;
         if (res.action === 'cancel') return finish(null);

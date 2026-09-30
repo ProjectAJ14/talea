@@ -236,8 +236,9 @@ export async function main(argv) {
     ...values,
     jobs,
     // `rm` is `add` with the sign flipped; the command reads this rather than
-    // being a near-copy of the same forty lines.
-    removing: key === 'rm' || name === 'rm' || name === 'remove',
+    // being a near-copy of the same forty lines. `remove` is an alias, so it
+    // has already become `rm` by here.
+    removing: key === 'rm',
     clone: !values['no-clone'],
     adopt: !values['no-adopt'],
     archived: !values['no-archived'],

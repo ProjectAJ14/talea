@@ -27,26 +27,38 @@ const WARN = icon.warn;
  * authenticates you and then refuses the shell. So the signal is the text, not
  * the exit code.
  */
-function sshProbe(host) {
+export function sshVerdict(output) {
+  const text = output.trim();
+  const authed = /successfully authenticated|shell access|You've successfully|Welcome/i.test(text);
+  const denied = /permission denied|publickey/i.test(text);
+  return { ok: authed && !denied, message: text.split('\n')[0] || 'no response' };
+}
+
+const SSH = ['ssh', '-T', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10', 'git@github.com'];
+
+/** The command is a parameter so a test can run a stand-in instead of dialling GitHub. */
+export function sshProbe([cmd, ...args] = SSH, timeoutMs = 15000) {
   return new Promise((resolve) => {
-    const child = spawn(
-      'ssh',
-      ['-T', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10', host],
-      { stdio: ['ignore', 'pipe', 'pipe'], shell: false },
-    );
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
     let out = '';
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));
-    child.on('error', (e) => resolve({ ok: false, message: e.message }));
-    child.on('close', () => {
-      const text = out.trim();
-      const authed = /successfully authenticated|shell access|You've successfully|Welcome/i.test(text);
-      const denied = /permission denied|publickey/i.test(text);
-      resolve({ ok: authed && !denied, message: text.split('\n')[0] ?? 'no response' });
+    // Cleared on either ending, or the timer keeps `talea doctor` alive for
+    // the whole timeout after ssh has already answered.
+    const timer = setTimeout(() => child.kill(), timeoutMs);
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, message: e.message });
     });
-    setTimeout(() => child.kill(), 15000);
+    child.on('close', () => {
+      clearTimeout(timer);
+      resolve(sshVerdict(out));
+    });
   });
 }
+
+/** Swappable, so a test of `run()` never reaches the network. */
+export const probe = { ssh: sshProbe };
 
 export async function run() {
   heading('talea doctor');
@@ -70,7 +82,7 @@ export async function run() {
     user.stdout || c.yellow('not set — commits will be attributed oddly'),
   ]);
 
-  const gh = await task('Trying SSH to GitHub', () => sshProbe('git@github.com'));
+  const gh = await task('Trying SSH to GitHub', () => probe.ssh());
   checks.push([
     gh.ok ? PASS : FAIL,
     `SSH ${icon.arrow} GitHub`,

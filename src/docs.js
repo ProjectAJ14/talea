@@ -22,9 +22,12 @@ import { groupDir } from './config.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const TEMPLATES = path.join(here, '..', 'templates');
 
-/** The template for a group, or for the workspace root when group is null. */
-export const templateFor = (group) =>
-  path.join(TEMPLATES, `${group ?? 'root'}.CLAUDE.md`);
+/**
+ * The template for a group, or for the workspace root when group is null.
+ * `dir` is only ever not TEMPLATES in a test: the package ships no templates.
+ */
+export const templateFor = (group, dir = TEMPLATES) =>
+  path.join(dir, `${group ?? 'root'}.CLAUDE.md`);
 
 /**
  * Every folder a group's docs belong in, innermost last: `work/backend` is the
@@ -86,7 +89,7 @@ function docFolders(dir, group) {
  * Throws on a group whose `dir` cannot name a folder below the root. See
  * `docFolders`.
  */
-export function dropDocs(manifest, root, groups) {
+export function dropDocs(manifest, root, groups, templates = TEMPLATES) {
   // Keyed by folder so a parent shared by two groups (`PORTAL/` under both V1
   // and V2) is considered once.
   const targets = new Map([[root, null]]);
@@ -104,7 +107,7 @@ export function dropDocs(manifest, root, groups) {
   const kept = [];
 
   for (const [dir, group] of targets) {
-    const src = templateFor(group);
+    const src = templateFor(group, templates);
     if (!existsSync(src)) continue;
 
     const dst = path.join(dir, 'CLAUDE.md');

@@ -125,7 +125,7 @@ export function normalizeUrl(url) {
 /** The last path segment of a remote — the repo name as the server knows it. */
 export function urlRepoName(url) {
   const n = normalizeUrl(url);
-  return n ? (n.split('/').pop() ?? null) : null;
+  return n ? n.split('/').pop() : null;
 }
 
 /** Every URL form the catalogue knows for this repo. */
@@ -257,7 +257,7 @@ function destinationBlocked(to) {
  * Reasons a checkout must not be moved. Each one is a case where `rename`
  * would leave git pointing at a path that no longer exists.
  */
-async function moveBlockers(dir) {
+export async function moveBlockers(dir) {
   const dotGit = path.join(dir, '.git');
   try {
     if (lstatSync(dotGit).isFile()) {
@@ -708,7 +708,7 @@ export function claudeMaybeRunning() {
       stdio: 'pipe',
       encoding: 'utf8',
     });
-    return res.status === 0 && /claude\.exe/i.test(res.stdout ?? '');
+    return res.status === 0 && /claude\.exe/i.test(res.stdout);
   }
   const res = spawnSync('pgrep', ['-x', 'claude'], { stdio: 'pipe' });
   return res.status === 0;

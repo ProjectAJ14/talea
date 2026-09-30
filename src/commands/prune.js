@@ -215,7 +215,6 @@ async function judge(repoDir, wt, base) {
   if (wt.locked) return 'locked';
   if (wt.prunable || !existsSync(wt.path)) return 'missing';
   if (await isDirty(wt.path)) return 'dirty';
-  if (!wt.head) return 'unmerged';
   if (!(await isMerged(repoDir, wt.head, base))) return 'unmerged';
   // A branch cut a minute ago has no commits of its own, so it is trivially
   // "merged" — but it is a task just started, not one finished. Its reflog
