@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>talea — one folder structure for every machine</title>
-<meta name="description" content="talea gives every machine you work on the same folder structure. It builds a catalogue of your GitHub repos, moves the checkouts you already have into place, clones what is missing, and fast-forwards the lot. It never pushes and it never deletes.">
+<meta name="description" content="talea gives every machine you work on the same folder structure. It builds a catalogue of your GitHub repos, moves the checkouts you already have into place, clones what is missing, and fast-forwards the lot. It never pushes and it never deletes your work.">
 <link rel="canonical" href="https://talea-run.web.app/">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="talea — one folder structure for every machine">
-<meta property="og:description" content="One catalogue of your GitHub repos, one tree, and a command that makes any machine match it. Nothing is ever deleted.">
+<meta property="og:description" content="One catalogue of your GitHub repos, one tree, and a command that makes any machine match it. Nothing of yours is ever deleted.">
 <meta property="og:url" content="https://talea-run.web.app/">
 <meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#17171a">
@@ -113,7 +113,7 @@
         </a>
       </div>
 
-      <p class="hero__note fade-up fade-up--4">Node 20+ &middot; macOS, Linux and Windows &middot; zero dependencies, runtime and dev. It never pushes, and it never deletes anything.</p>
+      <p class="hero__note fade-up fade-up--4">Node 20+ &middot; macOS, Linux and Windows &middot; zero dependencies, runtime and dev. It never pushes, and the only thing it removes is a merged worktree you asked it to.</p>
     </div>
 
     <!-- ========================= THE TERMINAL =========================
@@ -268,7 +268,7 @@
       <span class="hl hl--d">A tool that fixed this by re-cloning would throw away your branches, your stashes and your uncommitted work.</span>
       <span class="hl hl--e">talea moves what is already there instead,</span>
       <span class="hl hl--f">matching every checkout by its git remote rather than its folder name &mdash;</span>
-      <span class="hl hl--g">and it deletes nothing, ever.</span>
+      <span class="hl hl--g">and it never deletes your work.</span>
     </p>
   </div>
 </section>
@@ -476,7 +476,7 @@
 <section class="commands seam" id="commands" aria-labelledby="commands-title">
   <div class="wrap commands__grid">
     <div>
-      <h2 class="h2" id="commands-title" data-reveal>Sixteen commands</h2>
+      <h2 class="h2" id="commands-title" data-reveal>Seventeen commands</h2>
       <div class="cmd-table" data-reveal data-delay="100">
         <div class="cmd-row"><code>talea init [dir]</code><span>Create the workspace on this machine and fill it</span></div>
         <div class="cmd-row"><code>talea discover</code><span>Build or refresh the catalogue from GitHub</span></div>
@@ -490,7 +490,7 @@
         <div class="cmd-row"><code>talea skill</code><span>Install the skill that lets your coding agent drive talea</span></div>
       </div>
       <p class="cmd-ask" data-reveal data-delay="150">
-        Plus <code>clone</code>, <code>add</code>, <code>rm</code>, <code>list</code>, <code>tree</code>, <code>doctor</code> and <code>upgrade</code>.
+        Plus <code>clone</code>, <code>add</code>, <code>rm</code>, <code>list</code>, <code>tree</code>, <code>prune</code>, <code>doctor</code> and <code>upgrade</code>.
         Every one takes <code>-g &lt;group&gt;</code> and <code>-r &lt;repo&gt;</code> to narrow the run — or a bare name, <code>talea sync eklavya</code> — and <code>--help</code> for its own
         examples. An unknown group or repo name exits non-zero rather than quietly doing nothing.
         <a href="/docs/commands/">The full reference</a>
@@ -529,6 +529,7 @@
         <li>An adopt is always shown as a dry run first &mdash; a move relocates directories you may have open</li>
         <li><code class="code-inline">--loose</code> is never taken on your behalf, because a name-only match is how an SDK cache gets adopted and breaks a toolchain</li>
         <li>A removal is reported as <em>taken off the list</em>, never as a delete, because that is what it is</li>
+        <li>A worktree prune is shown as a plan first, and reported as <em>worktree removed, branch kept</em></li>
         <li>The gist id never lands in a message going somewhere shared</li>
       </ul>
       <p class="dash__note" data-reveal data-delay="300">

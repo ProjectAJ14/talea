@@ -188,9 +188,16 @@ export async function currentBranch(dir) {
   return born.code === 0 ? born.stdout : null;
 }
 
-/** True when the working tree has uncommitted changes (tracked or untracked). */
+/**
+ * True when the working tree has uncommitted changes (tracked or untracked).
+ *
+ * `-unormal` is not the default restated. `status.showUntrackedFiles=no` hides
+ * new files from a bare `status`, and `git worktree remove` honours the same
+ * setting — so without the override a tree full of new files reads clean here
+ * and git then deletes them.
+ */
 export async function isDirty(dir) {
-  const { code, stdout } = await git(['status', '--porcelain'], { cwd: dir });
+  const { code, stdout } = await git(['status', '--porcelain', '-unormal'], { cwd: dir });
   return code === 0 && stdout.length > 0;
 }
 

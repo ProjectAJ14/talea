@@ -16,11 +16,13 @@ No `reset --hard`, no `clean -fd`, no `checkout --force`. A dirty repo is fetche
 
 This is also why a repo in the wrong place is **moved, not re-cloned**. A `rename` keeps branches, stashes, the reflog and uncommitted work; a re-clone silently discards all of it. talea never copies-then-deletes either — a cross-device move is refused and reported.
 
-### It will not delete anything
+### It will not delete anything — except a merged worktree you asked it to
 
 A second copy of a repo moves to `.talea-duplicates/<GROUP>/<repo>` with everything in it. `talea rm` takes a repo off this machine's list and leaves the checkout exactly where it is, printing the path.
 
 The module that moves checkouts contains no `rmSync`. That is a property of the file, not a promise in a document.
+
+`talea prune --apply` is the one exception, and it is narrow. It removes a linked worktree only when every commit on it is already on origin's default branch, never one that is dirty, locked, has another repo inside it or holds ignored files you made (unless you pass `--with-ignored`), never the main checkout, and never the branch. The removal is `git worktree remove` without `--force`, so git refuses a tree with uncommitted work on its own. Without `--apply` it is a plan and nothing more.
 
 ### It will not merge a divergence
 

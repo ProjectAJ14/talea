@@ -72,7 +72,7 @@ Every `.mdx` under `src/content/docs/docs/` has a row here, in sidebar order.
 | `installing.mdx` | `package.json` `name`, the checks in `src/commands/doctor.js`, and `src/commands/upgrade.js` for the daily notice and the git-checkout refusal |
 | `first-machine.mdx` | `src/commands/init.js` and `src/commands/discover.js` (its affiliation list and what it preserves), plus `src/commands/manifest.js` for the gist |
 | `every-machine.mdx` | `src/config.js` for where each file lives, and rule 11 in the root `CLAUDE.md` for what discovery refreshes |
-| `every-day.mdx` | the `help` strings of `sync`, `status`, `where`, `add`, `select` and `exec`, and `summary()` in `src/log.js` for the exit codes |
+| `every-day.mdx` | the `help` strings of `sync`, `status`, `prune`, `where`, `add`, `select` and `exec`, and `summary()` in `src/log.js` for the exit codes |
 | `adopting.mdx` | `src/adopt.js` — `matchRepo`, `executeMove`, the worktree read-before-rename, the park, the path repair. Rules 2, 3, 4 and 5 in the root `CLAUDE.md` |
 | `agents.mdx` | `src/commands/skill.js` and `skills/talea/SKILL.md`. The table of what it will and will not do is that skill's own Rules section |
 | `commands.mdx` | one `###` per command in `src/cli.js`'s `COMMANDS`, in the order `USAGE` lists them, plus the `ALIASES` table |

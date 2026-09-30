@@ -315,13 +315,31 @@ export function canonical(p) {
  * refused too.
  */
 export function linkedWorktrees(porcelain) {
+  return worktreeRecords(porcelain)
+    .slice(1) // the main checkout is the thing being moved, not a link into it
+    .filter((w) => !w.prunable)
+    .map((w) => w.path);
+}
+
+/**
+ * Every block of `git worktree list --porcelain`, main checkout first, as
+ * `{ path, head, branch, locked, prunable }`. `branch` is the short name, or
+ * null for a detached HEAD. The one parser both `adopt` and `prune` read.
+ */
+export function worktreeRecords(porcelain) {
+  const has = (block, key) => block.some((l) => l === key || l.startsWith(`${key} `));
+  const value = (block, key) => block.find((l) => l.startsWith(`${key} `))?.slice(key.length + 1);
   return String(porcelain)
     .split(/\r?\n\s*\r?\n/)
     .map((block) => lines(block))
     .filter((block) => block.length && block[0].startsWith('worktree '))
-    .slice(1) // the main checkout is the thing being moved, not a link into it
-    .filter((block) => !block.some((l) => l === 'prunable' || l.startsWith('prunable ')))
-    .map((block) => block[0].slice('worktree '.length));
+    .map((block) => ({
+      path: block[0].slice('worktree '.length),
+      head: value(block, 'HEAD') ?? null,
+      branch: value(block, 'branch')?.replace(/^refs\/heads\//, '') ?? null,
+      locked: has(block, 'locked'),
+      prunable: has(block, 'prunable'),
+    }));
 }
 
 /**

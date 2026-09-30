@@ -32,7 +32,7 @@ Everything else in this manual is downstream of these.
 
 **It never pushes.** talea reads and checks out. There is no `git push` in it, anywhere.
 
-**It never deletes.** A repo in the wrong place is *moved*, which keeps your branches, stashes, reflog and uncommitted work. A second copy of a repo is *parked* in `.talea-duplicates/` with everything in it. A repo you take off this machine's list is *left exactly where it is*. Emptying any of that is your decision.
+**It never deletes your work.** A repo in the wrong place is *moved*, which keeps your branches, stashes, reflog and uncommitted work. A second copy of a repo is *parked* in `.talea-duplicates/` with everything in it. A repo you take off this machine's list is *left exactly where it is*. Emptying any of that is your decision. The one thing talea removes is a worktree folder whose commits are all on origin already — with `talea prune --apply`, and never the branch.
 
 ---
 

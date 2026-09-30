@@ -6,7 +6,9 @@ sidebar:
 
 ### Will it delete anything?
 
-No. Duplicates are parked in `.talea-duplicates/` with everything in them, and a repo you take off this machine's list is left exactly where it is. Emptying either is your decision.
+Not your work. Duplicates are parked in `.talea-duplicates/` with everything in them, and a repo you take off this machine's list is left exactly where it is. Emptying either is your decision.
+
+The one removal is `talea prune --apply`: a linked worktree whose every commit is already on origin's default branch, never dirty, never locked. The folder goes; the branch stays.
 
 ### Will it push my work?
 

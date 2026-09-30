@@ -64,6 +64,7 @@ None of these change anything on disk. Run one before proposing work.
 | `talea tree` | the folder tree as it actually is on disk |
 | `talea doctor` | can this machine do the work: git, SSH, GitHub auth, the workspace |
 | `talea adopt` | what a move *would* do. It changes nothing without `--apply` |
+| `talea prune` | which worktrees are merged and could go, with sizes. It changes nothing without `--apply` |
 
 `talea status` is the one to run before suggesting a sync — a dirty repo is
 skipped, and saying so up front is better than reporting it afterwards.
@@ -110,6 +111,26 @@ Flutter project on the machine.
 A second copy of the same repo is **parked** in `.talea-duplicates/`, not
 deleted. Say so when it happens — clearing that folder is the developer's call,
 and nothing in talea will do it for them.
+
+## Pruning worktrees: the one that removes things
+
+```bash
+talea prune                    # the plan: every linked worktree, verdict, size
+talea prune --apply            # remove the ones marked merged
+```
+
+**Always run it without `--apply` first, show the developer the plan, and run
+`--apply` only after they confirm.** A merged worktree holding a `.env` or other
+ignored non-build files is kept as `ignored`, with the files named; never add
+`--with-ignored` on the developer's behalf — ask, because those files are gone
+with the folder.
+
+Only `merged` worktrees are removed (every commit already on origin's default
+branch), plus the records of `missing` ones. `dirty`, `ignored`, `nested`,
+`fresh` (a branch with no commits yet), `locked` and `unmerged` are kept. A squash-merged branch reads as `unmerged`; say so rather than
+removing it by hand. Report a removal as **worktree removed, branch kept** — the
+branch is still there and `git worktree add` brings the checkout back. Never
+reach for `git worktree remove --force` to finish what prune refused.
 
 ## What this machine keeps
 
@@ -162,8 +183,8 @@ cloned — `talea init` or `talea select` after it is what fills the tree.
 ## Narrowing any run
 
 Every command takes `-g <group>` and `-r <repo>`, both repeatable, and `--help`
-for its own examples. For `sync`, `clone`, `status`, `list` and `tree` a bare
-name is the same as `-r`. `adopt` is the exception: it refuses a bare name,
+for its own examples. For `sync`, `clone`, `status`, `list`, `tree` and `prune`
+a bare name is the same as `-r`. `adopt` is the exception: it refuses a bare name,
 because `-r` there lifts the name-only guard and must be typed on purpose. An
 unknown group or repo name **exits non-zero** rather than quietly doing nothing,
 so a typo is loud.
@@ -171,6 +192,8 @@ so a typo is loud.
 ## Rules
 
 - **Never `--apply` an adopt the developer has not seen the dry run of.**
+- **Never `talea prune --apply` before the developer has seen the dry run and
+  said yes.** Report it as *worktree removed, branch kept*.
 - **Never `--loose`** unless they have looked at the name-only matches and said
   which one they want.
 - Report a move as *moved*, a removal as *taken off the list*, and a duplicate

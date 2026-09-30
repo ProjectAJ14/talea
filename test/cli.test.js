@@ -12,6 +12,7 @@ describe('bare words after a command', () => {
   test('are repo names for the commands that act on repos', () => {
     assert.deepEqual(routeWords('sync', ['PiDom'], undefined), { repo: ['PiDom'], words: [] });
     assert.deepEqual(routeWords('status', ['a'], ['b']), { repo: ['b', 'a'], words: [] });
+    assert.deepEqual(routeWords('prune', ['eklavya'], undefined), { repo: ['eklavya'], words: [] });
   });
 
   test('reach the commands that read their own', () => {

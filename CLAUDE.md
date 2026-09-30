@@ -131,6 +131,8 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    keep it that way.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
+   The one removal in the tool is `talea prune --apply`, and rule 13 is why it
+   does not break this one.
 
 6. **Never push.** This is a read-and-checkout tool. No `git push`, ever.
 
@@ -146,8 +148,8 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
 
 9. **Fail loudly on typos.** An unknown group or repo name exits non-zero. A
    bulk command that quietly does nothing is worse than one that stops.
-   A bare word is never dropped: after `sync`, `clone`, `status`, `list` and
-   `tree` it is a repo name (`-r`), after a command that reads its own words it
+   A bare word is never dropped: after `sync`, `clone`, `status`, `list`,
+   `tree` and `prune` it is a repo name (`-r`), after a command that reads its own words it
    goes to that command, and anywhere else it stops the run. Dropping it made
    `talea sync PiDom` sync every repo on the machine. `adopt` refuses one,
    because `-r` there lifts rule 3's guard and must be typed on purpose.
@@ -170,6 +172,36 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `talea update` is an alias of `upgrade`, not of `sync` — "update" is what
    people type to update a tool, and `pull` already covers syncing. Typing it
    is the choice; nothing reinstalls unasked.
+
+13. **`prune` deletes, and only what is already on origin.** It is the first
+   command that removes anything, and the case for it is disk: thirty forgotten
+   worktrees on one machine held 8.5 GB, nearly all of it `node_modules`,
+   `build` and `.dart_tool`, for branches merged long ago. It stays inside rule
+   5 because it leans on git's own guards and adds the one git lacks. A linked worktree is
+   removed only when every commit on it is on `origin/<defaultBranch>` — an
+   ancestor, or patch-identical per `git cherry` (a rebase merge) — only with
+   `--apply`, and only by `git worktree remove` **without `--force`**, which
+   refuses a tree with modified or untracked files by itself — once `isDirty()`
+   passes `-unormal`, because `status.showUntrackedFiles=no` blinds both it and
+   `git worktree remove`, and the files go (found in review). `locked` and
+   `dirty` are never touched, the main checkout is never a candidate,
+   and a merged worktree with any `.git` below its root is kept as `nested` —
+   git reads it clean when the inner worktree sits under an ignored path, and
+   `git worktree remove` then deletes the inner one's uncommitted work (found
+   in review, pinned by a test), no
+   `rmSync` is involved, and **the branch is kept**: it costs nothing, and
+   `git worktree add` brings the folder back. The base is the catalogue's
+   `defaultBranch`, never an assumed `main` (rule 8); a repo with none is
+   skipped. git deletes ignored files without asking, and `--apply` plans and
+   removes in one run, so a warning would arrive after the loss: a merged
+   worktree holding ignored files that are not build output (a `.env`, a
+   `.plan/`) is kept as `ignored` unless `--with-ignored` says otherwise. A
+   branch whose reflog holds only its creation is kept as `fresh` — no commits
+   yet makes it trivially merged, and it is a task just started.
+   **Known limit: a squash merge reads as `unmerged`.** The squashed commit is a
+   new change, so neither ancestry nor `cherry` can see it; telling it apart
+   needs the PR's state from GitHub, and `src/github.js` deliberately makes two
+   calls. Those worktrees are kept and the developer removes them by hand.
 
 ## The look
 
