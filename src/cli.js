@@ -14,6 +14,7 @@ import * as sync from './commands/sync.js';
 import * as status from './commands/status.js';
 import * as list from './commands/list.js';
 import * as tree from './commands/tree.js';
+import * as prune from './commands/prune.js';
 import * as where from './commands/where.js';
 import * as add from './commands/add.js';
 import * as manifest from './commands/manifest.js';
@@ -36,6 +37,7 @@ const COMMANDS = {
   status,
   list,
   tree,
+  prune,
   where,
   add,
   rm: add,
@@ -69,7 +71,7 @@ const ALIASES = {
 // Bare words after these commands are repo names: `talea sync PiDom` is
 // `talea sync -r PiDom`. Dropping them instead ran the command over every repo
 // on the machine, which is a typo guard failing in the worst direction.
-const TAKES_REPOS = new Set(['sync', 'clone', 'status', 'list', 'tree']);
+const TAKES_REPOS = new Set(['sync', 'clone', 'status', 'list', 'tree', 'prune']);
 
 // These read their own positionals. Everything else takes none, and a stray
 // word stops the run. `adopt` is left out on purpose: an explicit -r there lifts
@@ -128,6 +130,7 @@ ${c.bold('Commands')}
   ${c.cyan('clone')}      clone only — never fetches or merges
   ${c.cyan('adopt')}      move repos you already have into the right place
   ${c.cyan('status')}     one table: branch, clean/dirty, ahead/behind
+  ${c.cyan('prune')}      remove worktrees whose work is merged — ${c.dim('--apply')} to do it
   ${c.cyan('select')}     reopen the checklist — or ${c.dim('talea pick <repo>')} for one
   ${c.cyan('add')}        keep another repo on this machine (${c.dim('rm')} to drop one)
   ${c.cyan('where')}      print a repo's path — ${c.dim('cd $(talea where eklavya)')}
@@ -151,6 +154,7 @@ ${c.bold('The first machine')}
 ${c.bold('Every day')}
   talea sync                    ${c.dim('# clone the new, fast-forward the rest')}
   talea status --drift          ${c.dim('# what is not where I left it')}
+  talea prune                   ${c.dim('# which merged worktrees can go')}
 
 ${c.bold('With an agent')}
   talea skill install           ${c.dim('# then ask Claude Code "where is eklavya?"')}

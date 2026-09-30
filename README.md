@@ -64,11 +64,34 @@ this machine needs, untick what it does not, press enter.
 ```sh
 talea sync                   # clone the new, fast-forward the rest
 talea status                 # branch, clean/dirty, ahead/behind, in one table
+talea prune                  # which merged worktrees can go, and what they hold
 talea add some-repo          # keep one more on this machine, and clone it now
 talea select                 # reopen the checklist and change the whole list
 talea pick some-repo          # keep that one — an unknown name opens the checklist
 cd $(talea where eklavya)
 ```
+
+## Cleaning up worktrees
+
+Every worktree carries its own `node_modules`, `build` or `.dart_tool`, so the
+ones you forgot about can hold gigabytes long after their branches merged.
+
+```sh
+talea prune                  # every linked worktree, its verdict and its size
+talea prune --apply          # remove the merged ones
+```
+
+A worktree is `merged` when every commit on it is on `origin/<default branch>`
+— directly, or as an identical change after a rebase merge. `dirty`, `locked`
+and `unmerged` ones are kept, and so is a `nested` one — merged, but with
+another worktree or repo inside its folder, which removing it would delete; `missing` ones (folder already gone) have their
+record cleared. The removal is `git worktree remove`, never forced, and the
+**branch is kept**, so `git worktree add` brings any of them back. Ignored files
+that are not build output — a `.env`, notes — are listed in the plan, because
+they go with the folder.
+
+A **squash merge** reads as `unmerged`: the squashed commit is new, and telling
+it apart would mean asking GitHub. Remove those by hand.
 
 ## Let your coding agent do it
 
@@ -168,6 +191,7 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea clone` | clone only — never fetches or merges |
 | `talea adopt` | move checkouts you already have into place |
 | `talea status` | branch, clean/dirty, ahead/behind |
+| `talea prune` | remove worktrees whose work is merged (`--apply` to do it) |
 | `talea select` | reopen the checklist — `talea pick <repo>` for one |
 | `talea add` / `talea rm` | change that one repo at a time |
 | `talea where <repo>` | print a repo's path, for `cd $( )` |
@@ -180,8 +204,8 @@ Treat the id like a bookmark you would not paste into a public channel.
 | `talea upgrade` | update the CLI itself (also `talea update`) |
 
 Every one of them takes `-g <group>` and `-r <repo>` to narrow the run, and
-`--help` for its own examples. For `sync`, `clone`, `status`, `list` and `tree`
-a bare name means the same as `-r`, so `talea sync eklavya` syncs that one repo.
+`--help` for its own examples. For `sync`, `clone`, `status`, `list`, `tree` and
+`prune` a bare name means the same as `-r`, so `talea sync eklavya` syncs that one repo.
 A command that takes no names refuses a stray word instead of ignoring it.
 
 ---
@@ -195,8 +219,11 @@ A command that takes no names refuses a stray word instead of ignoring it.
   reported for you to deal with.
 - **It will not move you off your branch.** If you are on a feature branch, that
   is where the work is. It fast-forwards the branch you are on, or leaves it.
-- **It will not delete anything.** Not a duplicate, not a checkout you removed
-  from the list, not a folder in the way. It moves things and tells you where.
+- **It will not delete anything — except a merged worktree you asked it to.**
+  Not a duplicate, not a checkout you removed from the list, not a folder in
+  the way. It moves things and tells you where. `talea prune --apply` is the
+  one removal, and it only takes a worktree folder whose commits are all on
+  origin's default branch — never a dirty or locked one, never the branch.
 
 ## Auth
 

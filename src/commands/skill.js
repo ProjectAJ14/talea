@@ -62,8 +62,8 @@ Installs at ${c.bold('user scope')}, so every project you open gets it — your 
 spans all of them, and the agent needs the same instructions in each.
 
 The skill is what turns ${c.dim('"where is eklavya?"')} and ${c.dim('"tidy up my repos"')} into the
-right talea command, with the guardrails attached: an adopt is always dry-run
-first, ${c.dim('--loose')} is never taken on your behalf, and nothing is ever deleted.
+right talea command, with the guardrails attached: an adopt or a prune is always
+dry-run first, ${c.dim('--loose')} is never taken on your behalf, and nothing of yours is deleted.
 
 It refuses to overwrite a skill called ${c.dim('talea')} that this tool did not write.
 Move yours first if you have one.
