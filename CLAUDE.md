@@ -29,7 +29,8 @@ src/
   adopt.js                 match checkouts by remote, move them, repair paths
   theme.js                 the look, in one file — palette, glyphs, width maths
   log.js                   composes theme.js into headings, tables, the box
-  live.js                  the live block redrawn in place while pooled() works
+  live.js                  the live block redrawn in place while pooled() works,
+                           and task(): the loader for every other slow step
   prompt.js                the selection tree (pure) + raw-mode checkbox picker
   docs.js                  write templates/<GROUP>.CLAUDE.md into the workspace
   update.js                version check against the npm registry
@@ -213,6 +214,23 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    new change, so neither ancestry nor `cherry` can see it; telling it apart
    needs the PR's state from GitHub, and `src/github.js` deliberately makes two
    calls. Those worktrees are kept and the developer removes them by hand.
+   An ignored file only counts as a loss if it is really lost: a folder that
+   `--directory` folded into one entry is opened and judged file by file, and
+   a file byte-identical to the main checkout's copy at the same path survives
+   the removal. Found on a real machine: a `.claude/` holding only the seeded
+   settings file, and a generated `tokens.css`, kept three merged worktrees.
+
+14. **Nothing slow is silent.** Anything that can take longer than a blink — a
+   network call, a filesystem walk, a git call per repo — has three states: a
+   **loading** state while it works, an **error** state when it fails, and the
+   **loaded** state, which is the output itself. The loading state is never
+   missing: a terminal that says nothing for five seconds reads as a hang, and
+   the developer presses Ctrl-C on a command that was about to finish. Per-repo
+   work that already has rows uses `board()`; everything else goes through
+   `task(label, fn)` in `src/live.js`, which draws a spinner on **stderr**, only
+   on a terminal, and clears it either way — so piped stdout and `cd $(talea
+   where)` are byte-for-byte unchanged, and a thrown error reaches the caller to
+   be reported. A new slow call without one is a bug, not a polish item.
 
 ## The look
 

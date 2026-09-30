@@ -4,6 +4,7 @@ import { defaultBranch, groupDir, repoGroup } from '../config.js';
 import { aheadBehind, currentBranch, defaultJobs, isDirty, pooled } from '../git.js';
 import { c, context, glyph, group, heading, plain, table } from '../log.js';
 import { machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea status')} — one table showing where every repo stands
@@ -33,42 +34,14 @@ export async function run(opts) {
   const pool = opts.all ? manifest.repos : machineRepos(manifest, state);
   const entries = withPaths(manifest, root, selectRepos(manifest, opts, pool));
 
-  const rows = await pooled(entries, defaultJobs(), async ({ repo, dir, cloned }) => {
-    const home = defaultBranch(repo);
-    if (!cloned) {
-      return {
-        repo,
-        missing: true,
-        cells: [c.dim(repo.name), c.dim(glyph.rule), c.dim(home ?? glyph.rule), c.yellow('not cloned')],
-      };
-    }
-
-    const [branch, dirty, delta] = await Promise.all([
-      currentBranch(dir),
-      isDirty(dir),
-      aheadBehind(dir),
-    ]);
-
-    // Drift here means "somewhere other than the default branch", which is a
-    // fact worth showing and not a problem to fix — most of the time it is
-    // exactly where the work is. `--drift` is a filter, never a warning.
-    const drift = home != null && branch !== home;
-    const bits = [dirty ? c.yellow('dirty') : c.dim('clean')];
-    if (delta?.ahead) bits.push(c.cyan(`${glyph.up}${delta.ahead}`));
-    if (delta?.behind) bits.push(c.yellow(`${glyph.down}${delta.behind}`));
-
-    return {
-      repo,
-      drift,
-      missing: false,
-      cells: [
-        c.bold(repo.name),
-        drift ? c.cyan(branch ?? '?') : (branch ?? '?'),
-        drift ? c.dim(home) : c.dim(''),
-        bits.join(' '),
-      ],
-    };
-  });
+  let read = 0;
+  const rows = await task(`Reading ${entries.length} repos`, (update) =>
+    pooled(entries, defaultJobs(), async (entry) => {
+      const row = await readRow(entry);
+      update(`${++read}/${entries.length}  ${entry.repo.name}`);
+      return row;
+    }),
+  );
 
   let shown = rows;
   if (opts.drift) shown = rows.filter((r) => r.drift && !r.missing);
@@ -111,4 +84,41 @@ export async function run(opts) {
   if (working) parts.push(c.cyan(`${working} on another branch`));
   plain(parts.join(c.dim(', ')));
   if (missing) plain(c.dim('Run `talea sync` to get the missing repos.'));
+}
+
+async function readRow({ repo, dir, cloned }) {
+  const home = defaultBranch(repo);
+  if (!cloned) {
+    return {
+      repo,
+      missing: true,
+      cells: [c.dim(repo.name), c.dim(glyph.rule), c.dim(home ?? glyph.rule), c.yellow('not cloned')],
+    };
+  }
+
+  const [branch, dirty, delta] = await Promise.all([
+    currentBranch(dir),
+    isDirty(dir),
+    aheadBehind(dir),
+  ]);
+
+  // Drift here means "somewhere other than the default branch", which is a
+  // fact worth showing and not a problem to fix — most of the time it is
+  // exactly where the work is. `--drift` is a filter, never a warning.
+  const drift = home != null && branch !== home;
+  const bits = [dirty ? c.yellow('dirty') : c.dim('clean')];
+  if (delta?.ahead) bits.push(c.cyan(`${glyph.up}${delta.ahead}`));
+  if (delta?.behind) bits.push(c.yellow(`${glyph.down}${delta.behind}`));
+
+  return {
+    repo,
+    drift,
+    missing: false,
+    cells: [
+      c.bold(repo.name),
+      drift ? c.cyan(branch ?? '?') : (branch ?? '?'),
+      drift ? c.dim(home) : c.dim(''),
+      bits.join(' '),
+    ],
+  };
 }

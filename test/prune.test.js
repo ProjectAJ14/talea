@@ -207,6 +207,51 @@ describe('prune judges each worktree', () => {
     assert.equal(existsSync(wt), false);
   });
 
+  test('an ignored folder or file that loses nothing does not keep it', async () => {
+    // Found on a real machine: `--directory` folded `.claude/` into one entry,
+    // so a folder holding only the seeded settings file read as somebody's
+    // work; and a generated file identical to the main checkout's was "lost".
+    const dir = makeRepo('recoverable');
+    writeFileSync(path.join(dir, '.gitignore'), '.claude/\ntokens.css\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    mkdirSync(path.join(wt, '.claude'));
+    writeFileSync(path.join(wt, '.claude', 'settings.local.json'), '{}\n');
+    writeFileSync(path.join(dir, 'tokens.css'), 'a{}\n');
+    writeFileSync(path.join(wt, 'tokens.css'), 'a{}\n');
+
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged');
+
+    // The same file, changed in the worktree, is a real loss again.
+    writeFileSync(path.join(wt, 'tokens.css'), 'b{}\n');
+    const entry = entryOf(await planRepo(repo(dir)), wt);
+    assert.equal(entry.verdict, 'ignored');
+    assert.deepEqual(entry.lossy, ['tokens.css']);
+  });
+
+  test('a file of your own inside an ignored folder still keeps it', async () => {
+    // Opening a folded folder must not lose what it holds: the seeded settings
+    // file goes, the notes beside it are named and keep the worktree.
+    const dir = makeRepo('opened');
+    writeFileSync(path.join(dir, '.gitignore'), '.plan/\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    mkdirSync(path.join(wt, '.plan', 'node_modules'), { recursive: true });
+    writeFileSync(path.join(wt, '.plan', 'node_modules', 'x.js'), '1\n');
+    writeFileSync(path.join(wt, '.plan', 'notes.md'), 'mine\n');
+
+    const plan = await planRepo(repo(dir));
+    const entry = entryOf(plan, wt);
+    assert.equal(entry.verdict, 'ignored');
+    assert.deepEqual(entry.lossy, ['.plan/notes.md']);
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(path.join(wt, '.plan', 'notes.md')), true, 'the notes were deleted');
+  });
+
   test('untracked files keep it even when status.showUntrackedFiles=no hides them', async () => {
     // git worktree remove honours that setting too, so it would delete them.
     const dir = makeRepo('hidden');

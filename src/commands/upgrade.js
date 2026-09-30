@@ -1,6 +1,7 @@
 import { readUserState, writeUserState } from '../config.js';
 import { c, fail, heading, icon, info, ok, plain, skip, warn } from '../log.js';
 import { installKind, installLatest, isNewer, lookupLatestRelease, pkgJson } from '../update.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea upgrade')} — update the CLI itself
@@ -38,7 +39,7 @@ export async function run(opts) {
   const { name, version } = pkgJson();
   heading('talea upgrade');
 
-  const latest = await lookupLatestRelease(name);
+  const latest = await task('Asking the npm registry', () => lookupLatestRelease(name));
   if (!latest.version) {
     const why = {
       timeout: 'the registry did not answer in time',
@@ -75,6 +76,9 @@ export async function run(opts) {
     return;
   }
 
+  // npm's own output is inherited and says it is working; this line says what
+  // it is about to do, so the pause before npm's first byte is not silence.
+  info(c.dim(`npm install -g ${name}@latest`));
   plain('');
   const code = await installLatest(name);
   plain('');

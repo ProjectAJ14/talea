@@ -18,6 +18,7 @@ import {
 } from '../config.js';
 import { createGist, readGist, token, updateGist } from '../github.js';
 import { c, context, fail, heading, info, ok, plain, warn } from '../log.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea manifest')} — move the catalogue between machines
@@ -86,14 +87,16 @@ async function push(opts) {
     ['repos', `${manifest.repos.length}`],
   ]);
 
-  const gistId = id
-    ? await updateGist({ token: tok, id, filename: GIST_FILE, content })
-    : await createGist({
-        token: tok,
-        filename: GIST_FILE,
-        content,
-        description: 'talea catalogue — the repos I keep, and where they go',
-      });
+  const gistId = await task('Uploading to GitHub', () =>
+    id
+      ? updateGist({ token: tok, id, filename: GIST_FILE, content })
+      : createGist({
+          token: tok,
+          filename: GIST_FILE,
+          content,
+          description: 'talea catalogue — the repos I keep, and where they go',
+        }),
+  );
 
   writeUserState({ ...state, gist: gistId });
 
@@ -121,7 +124,7 @@ async function pull(opts, positionals) {
     ['gist', c.bold(id)],
   ]);
 
-  const content = await readGist({ token: tok, id, filename: GIST_FILE });
+  const content = await task('Downloading from GitHub', () => readGist({ token: tok, id, filename: GIST_FILE }));
 
   // Parsed before it is written, never after: a truncated download or somebody
   // else's gist would otherwise land on top of a working catalogue and only

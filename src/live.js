@@ -204,3 +204,50 @@ function onSigint() {
   restoreCursor();
   process.exit(130);
 }
+
+/**
+ * One line that says what is happening while `fn` works — the loading state
+ * for anything slower than a blink that is not a per-repo board: a GitHub
+ * call, a filesystem scan, a pass over every worktree. `fn` gets
+ * `update(note)` to show progress beside the label.
+ *
+ * It draws on stderr, and only when stderr is a terminal, so `talea where` and
+ * every piped stdout stay byte-for-byte what they were. It leaves nothing
+ * behind: the line is cleared either way, because what the command prints next
+ * is the loaded state, and an error thrown by `fn` reaches the caller untouched
+ * to be reported as the error state.
+ */
+export async function task(label, fn, { live = process.stderr.isTTY } = {}) {
+  if (!live) return fn(() => {});
+  const err = (s) => process.stderr.write(s);
+  let note = '';
+  let frame = 0;
+  const draw = () => {
+    const f = paint.warn(spinner[frame++ % spinner.length]);
+    const line = `${f} ${label}${note ? `  ${paint.dim(note)}` : ''}`;
+    err(ansi.cr + ansi.clearLine + truncVisible(line, Math.max(1, (process.stderr.columns || 80) - 1)));
+  };
+  const show = () => err(ansi.showCursor);
+  const onInt = () => {
+    err(ansi.cr + ansi.clearLine);
+    show();
+    process.exit(130);
+  };
+  err(ansi.hideCursor);
+  process.on('exit', show);
+  process.on('SIGINT', onInt);
+  draw();
+  const timer = setInterval(draw, FRAME_MS);
+  timer.unref?.();
+  try {
+    return await fn((n) => {
+      note = n ?? '';
+    });
+  } finally {
+    clearInterval(timer);
+    err(ansi.cr + ansi.clearLine);
+    show();
+    process.off('exit', show);
+    process.off('SIGINT', onInt);
+  }
+}
