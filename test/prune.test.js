@@ -231,6 +231,58 @@ describe('prune judges each worktree', () => {
     assert.deepEqual(entry.lossy, ['tokens.css']);
   });
 
+  test('a file the repo marks talea-regenerable does not keep it', async () => {
+    // Found on a real machine: a build copies a tracked doc into public/, the
+    // main checkout's copy was a week stale, so every merged worktree was kept.
+    const dir = makeRepo('marked');
+    writeFileSync(path.join(dir, '.gitignore'), 'public/\n.env\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    mkdirSync(path.join(wt, 'public'));
+    writeFileSync(path.join(wt, 'public', 'runtime.html'), 'new\n');
+    writeFileSync(path.join(wt, '.env'), 'SECRET=1\n');
+    mkdirSync(path.join(dir, 'public'));
+    writeFileSync(path.join(dir, 'public', 'runtime.html'), 'stale\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy.sort(), ['.env', 'public/runtime.html']);
+
+    // Declared on main after the worktree branched: the base's word counts,
+    // and it covers only what it names — the .env still keeps the worktree.
+    git(['merge', '-q', '--ff-only', 'feat'], dir);
+    writeFileSync(path.join(dir, '.gitattributes'), 'public/** talea-regenerable\n');
+    commit(dir, 'attrs.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const entry = entryOf(await planRepo(repo(dir)), wt);
+    assert.equal(entry.verdict, 'ignored');
+    assert.deepEqual(entry.lossy, ['.env']);
+
+    rmSync(path.join(wt, '.env'));
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged');
+  });
+
+  test('the mark also counts from the worktree itself and .git/info/attributes, and only when set', async () => {
+    const dir = makeRepo('marked-here');
+    writeFileSync(path.join(dir, '.gitignore'), '*.gen\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    // Declared on the branch itself, not yet on main.
+    writeFileSync(path.join(wt, '.gitattributes'), 'a.gen talea-regenerable\nb.gen -talea-regenerable\n');
+    commit(wt, 'attrs.txt');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    for (const f of ['a.gen', 'b.gen', 'c.gen']) writeFileSync(path.join(wt, f), `${f}\n`);
+
+    // An unset mark is no mark: b.gen is still somebody's file.
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy.sort(), ['b.gen', 'c.gen']);
+
+    // A mark this machine alone keeps, shared by every worktree of the repo.
+    const info = path.join(dir, '.git', 'info');
+    mkdirSync(info, { recursive: true });
+    writeFileSync(path.join(info, 'attributes'), 'c.gen talea-regenerable\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['b.gen']);
+  });
+
   test('a file of your own inside an ignored folder still keeps it', async () => {
     // Opening a folded folder must not lose what it holds: the seeded settings
     // file goes, the notes beside it are named and keep the worktree.
