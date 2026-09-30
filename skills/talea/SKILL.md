@@ -121,7 +121,8 @@ talea prune --apply            # remove the ones marked merged
 
 **Always run it without `--apply` first, show the developer the plan, and run
 `--apply` only after they confirm.** A merged worktree holding a `.env` or other
-ignored non-build files is kept as `ignored`, with the files named; never add
+ignored non-build files (not counting ones identical to the main checkout's
+copy) is kept as `ignored` — it *is* merged — with the files named; never add
 `--with-ignored` on the developer's behalf — ask, because those files are gone
 with the folder.
 

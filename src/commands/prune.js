@@ -9,13 +9,14 @@
 // back. What a removal really frees is node_modules, build and .dart_tool.
 
 import { existsSync } from 'node:fs';
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import { worktreeRecords, lines } from '../adopt.js';
 import { defaultBranch, groupDir, repoGroup } from '../config.js';
 import { defaultJobs, fetch, git, isDirty, pooled } from '../git.js';
+import { task } from '../live.js';
 import { c, context, fail, group, heading, plain, skip, summary, table, warn } from '../log.js';
 import { clonedOnly, machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 
@@ -48,7 +49,11 @@ with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, an
 \`git worktree add\` brings it back. git deletes ignored files without asking,
 so a merged worktree holding ignored files that are not build output — a
 .env, notes — is kept as ${c.bold('ignored')} and the plan names them. Move them out, or
-add --with-ignored to remove them along with the folder.
+add --with-ignored to remove them along with the folder. A file identical to
+the main checkout's copy at the same path is not counted: it survives.
+
+The table shows each worktree's folder name; its full path is the dim line
+under the row.
 
 A ${c.bold('fresh')} worktree is one whose branch has never moved since it was created:
 no commits yet, so it looks merged, but it is a task just started.
@@ -79,6 +84,49 @@ export function lossyIgnored(listing) {
     const clean = p.replace(/\/$/, '');
     return !REGENERABLE_FILES.has(clean) && !clean.split('/').some((s) => REGENERABLE.has(s));
   });
+}
+
+const IGNORED = ['ls-files', '--others', '--ignored', '--exclude-standard'];
+// Past this many files a folder is named as one entry rather than compared
+// file by file; it is somebody's folder either way.
+const EXPAND_MAX = 200;
+
+/**
+ * The ignored files in a worktree that removing it would really lose.
+ *
+ * `--directory` folds a wholly-ignored folder into one entry, so a `.claude/`
+ * holding nothing but the seeded settings file read as somebody's work — the
+ * folder is opened and its files judged one by one. And a file byte-identical
+ * to the main checkout's copy at the same path (a generated `tokens.css`, a
+ * copied config) survives the removal, so it is not a loss either.
+ */
+export async function userIgnored(wtPath, mainDir) {
+  const listed = await git([...IGNORED, '--directory'], { cwd: wtPath });
+  const lost = [];
+  for (const entry of lossyIgnored(listed.stdout)) {
+    let files = [entry];
+    if (entry.endsWith('/')) {
+      const inside = lossyIgnored((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout);
+      if (inside.length <= EXPAND_MAX) files = inside;
+    }
+    for (const f of files) {
+      if (f.endsWith('/') || !(await sameFile(path.join(wtPath, f), path.join(mainDir, f)))) lost.push(f);
+    }
+  }
+  return lost;
+}
+
+/** Two regular files with the same bytes. A symlink or anything unreadable is not "same". */
+async function sameFile(a, b) {
+  try {
+    const [sa, sb] = await Promise.all([lstat(a), lstat(b)]);
+    // Sizes first: a multi-gigabyte ignored file that differs is never read.
+    if (!sa.isFile() || !sb.isFile() || sa.size !== sb.size) return false;
+    const [x, y] = await Promise.all([readFile(a), readFile(b)]);
+    return x.equals(y);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -189,11 +237,7 @@ export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
     if (verdict === 'merged' && nested.length) verdict = 'nested';
     let lossy = [];
     if (verdict === 'merged') {
-      const ignored = await git(
-        ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'],
-        { cwd: wt.path },
-      );
-      lossy = lossyIgnored(ignored.stdout);
+      lossy = await userIgnored(wt.path, dir);
       // git deletes ignored files without asking, and `--apply` plans and
       // removes in one run — so a warning here would arrive after the loss.
       if (lossy.length && !withIgnored) verdict = 'ignored';
@@ -240,6 +284,10 @@ const PAINT = {
   failed: c.red,
 };
 
+const listFiles = (files) =>
+  `${files.length === 1 ? 'file' : 'files'}: ${files.slice(0, 3).join(', ')}` +
+  (files.length > 3 ? c.dim(` and ${files.length - 3} more`) : '');
+
 function tilde(p) {
   const home = os.homedir().replace(/\\/g, '/');
   const norm = p.replace(/\\/g, '/');
@@ -254,11 +302,19 @@ export async function run(opts) {
     withPaths(manifest, root, selectRepos(manifest, opts, pool).filter((r) => !r.ignore)),
   );
 
-  const plans = await pooled(entries, opts.jobs ?? defaultJobs(), async (entry) => {
-    const plan = await planRepo(entry, { withIgnored: opts['with-ignored'] });
-    if (opts.apply && plan.worktrees) await applyRepo(entry.dir, plan);
-    return { ...entry, plan };
-  });
+  // A fetch per repo that has worktrees, then a walk of every worktree's files:
+  // seconds on a real machine, and a silent terminal reads as a hang.
+  let checked = 0;
+  const plans = await task(
+    opts.apply ? 'Pruning worktrees' : 'Checking worktrees',
+    (update) =>
+      pooled(entries, opts.jobs ?? defaultJobs(), async (entry) => {
+        const plan = await planRepo(entry, { withIgnored: opts['with-ignored'] });
+        if (opts.apply && plan.worktrees) await applyRepo(entry.dir, plan);
+        update(`${++checked}/${entries.length}  ${entry.repo.name}`);
+        return { ...entry, plan };
+      }),
+  );
 
   heading(opts.apply ? 'Pruning worktrees' : 'Worktrees — dry run, nothing changes');
   context([
@@ -296,22 +352,26 @@ export async function run(opts) {
 
   for (const [name, groupRows] of byGroup) {
     group(`${groupDir(manifest, name)}/`, groupRows.length, 'worktree');
+    // The folder name on the row, the full path dim underneath: the path is
+    // what you paste, but as a column it pushed every other one off the screen.
     table(
       groupRows.map(({ repo, wt }) => [
         '  ' + c.bold(repo.name),
-        tilde(wt.path),
+        path.basename(wt.path),
         wt.branch ?? c.dim('(detached)'),
         PAINT[wt.verdict](wt.verdict),
         wt.size ? formatBytes(wt.size) : c.dim('—'),
       ]),
       ['  REPO', 'WORKTREE', 'BRANCH', 'VERDICT', 'SIZE'],
+      { below: groupRows.map(({ wt }) => tilde(wt.path)) },
     );
-    for (const { wt } of groupRows) {
-      if (wt.error) fail(`${tilde(wt.path)} — ${wt.error}`);
+    for (const { repo, wt } of groupRows) {
+      const name = `${repo.name}/${path.basename(wt.path)}`;
+      if (wt.error) fail(`${name} — ${wt.error}`);
       if (wt.verdict === 'ignored') {
-        warn(`${tilde(wt.path)} kept for ignored files: ${wt.lossy.join(', ')} — move them, or --with-ignored`);
+        warn(`${name} is merged, kept for ignored ${listFiles(wt.lossy)} — move ${wt.lossy.length === 1 ? 'it' : 'them'}, or --with-ignored`);
       } else if (wt.lossy.length && wt.verdict !== 'failed') {
-        warn(`${tilde(wt.path)} ${opts.apply ? 'lost' : 'would lose'} ignored files: ${wt.lossy.join(', ')}`);
+        warn(`${name} ${opts.apply ? 'lost' : 'would lose'} ignored ${listFiles(wt.lossy)}`);
       }
     }
     plain();

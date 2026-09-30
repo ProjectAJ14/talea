@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { c, fail, heading, info, ok, plain, summary } from '../log.js';
 import { clonedOnly, machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea exec')} — run one command in every repo
@@ -55,7 +56,7 @@ export async function run(opts, positionals) {
   const counts = { ok: 0, skipped: 0, failed: 0, okLabel: 'ok' };
 
   for (const { repo, dir } of entries) {
-    const res = await runOne(command, args, dir);
+    const res = await task(`${repo.name}  ${c.dim([command, ...args].join(' '))}`, () => runOne(command, args, dir));
     const label = `${c.bold(repo.name)} ${c.dim(path.relative(root, dir))}`;
     if (res.code === 0) {
       counts.ok++;

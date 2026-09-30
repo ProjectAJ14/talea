@@ -20,6 +20,7 @@ import {
   unfixablePaths,
 } from '../adopt.js';
 import { git } from '../git.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea adopt')} — move repos you already have into the right place
@@ -69,8 +70,10 @@ that is how you tell talea another tool owns a checkout.
  * clones — a repo the developer already has must never be cloned twice.
  */
 export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
-  const dirs = findGitDirs(scanRoots, 3);
-  const candidates = await readOrigins(dirs, jobs);
+  // A walk three levels deep under every scan root, then a `git remote` per
+  // checkout found — the pause before a sync's board appears.
+  const dirs = await task('Looking for checkouts you already have', async () => findGitDirs(scanRoots, 3));
+  const candidates = await task(`Reading ${dirs.length} checkouts`, () => readOrigins(dirs, jobs));
   const plans = await planAdoptions(manifest, root, repos, candidates);
 
   return {

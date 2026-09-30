@@ -1,6 +1,7 @@
 import { findWorkspace, loadManifest, saveManifest } from '../config.js';
 import { listRepos, toEntry, token, whoami } from '../github.js';
 import { c, context, fail, heading, info, ok, plain, skip, table, warn } from '../log.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea discover')} — build the catalogue from your GitHub account
@@ -113,7 +114,7 @@ export async function run(opts) {
   let login = opts.user ?? null;
   if (tok && !login) {
     try {
-      login = await whoami(tok);
+      login = await task('Reading the account behind the token', () => whoami(tok));
       info(`signed in as ${c.bold(login)}`);
     } catch (err) {
       warn(`Could not read the account behind that token — ${err.message}`);
@@ -122,7 +123,9 @@ export async function run(opts) {
 
   let api;
   try {
-    api = await listRepos({ token: opts.user ? null : tok, user: login });
+    api = await task('Asking GitHub for your repositories', () =>
+      listRepos({ token: opts.user ? null : tok, user: login }),
+    );
   } catch (err) {
     fail(err.message);
     process.exit(1);

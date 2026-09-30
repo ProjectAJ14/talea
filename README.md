@@ -90,7 +90,10 @@ looks merged, but it is a task just started. The removal is `git worktree
 remove`, never forced, and the **branch is kept**, so `git worktree add` brings
 any of them back. git deletes ignored files without asking, so a merged worktree
 holding ignored files that are not build output — a `.env`, notes — is kept as
-`ignored`, with the files named. Move them out, or pass `--with-ignored`.
+`ignored`, with the files named. Move them out, or pass `--with-ignored`. A
+file identical to the main checkout's copy at the same path does not count —
+it survives the removal. Each row shows the worktree's folder name, with its
+full path dimmed on the line below.
 
 A **squash merge** reads as `unmerged`: the squashed commit is new, and telling
 it apart would mean asking GitHub. Remove those by hand.

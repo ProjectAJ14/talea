@@ -7,6 +7,7 @@ import { token, whoami } from '../github.js';
 import { c, heading, icon, plain, verdict } from '../log.js';
 import { padEndVisible } from '../theme.js';
 import { hasChosen, machineRepos } from '../workspace.js';
+import { task } from '../live.js';
 
 export const help = `
 ${c.bold('talea doctor')} — check that this machine can actually do the work
@@ -69,7 +70,7 @@ export async function run() {
     user.stdout || c.yellow('not set — commits will be attributed oddly'),
   ]);
 
-  const gh = await sshProbe('git@github.com');
+  const gh = await task('Trying SSH to GitHub', () => sshProbe('git@github.com'));
   checks.push([
     gh.ok ? PASS : FAIL,
     `SSH ${icon.arrow} GitHub`,
@@ -82,7 +83,7 @@ export async function run() {
   let login = null;
   if (tok) {
     try {
-      login = await whoami(tok);
+      login = await task('Checking the GitHub token', () => whoami(tok));
     } catch (err) {
       login = c.red(err.message);
     }

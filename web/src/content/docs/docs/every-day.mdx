@@ -67,7 +67,9 @@ talea prune                  # the plan, with sizes; changes nothing
 talea prune --apply          # do it
 ```
 
-The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`.
+The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`. A file byte-identical to the main checkout's copy at the same path does not count — it survives the removal — and a folder of ignored files is judged file by file, so a `.claude/` holding only a seeded settings file keeps nothing.
+
+Each row names the worktree by its folder; the full path sits dimmed on the line below it, ready to copy.
 
 A **squash merge** reads as `unmerged`: the squashed commit is a new change, not the ones on the branch, and telling them apart would take asking GitHub. Remove those worktrees yourself. A repo with no default branch recorded is skipped — run `talea discover`.
 

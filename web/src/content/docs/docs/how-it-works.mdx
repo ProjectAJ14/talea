@@ -20,7 +20,7 @@ talea is Node 20+, ESM, and **zero dependencies** — runtime and dev. Argument 
 | `src/adopt.js` | match checkouts by remote, move them, repair paths |
 | `src/theme.js` | the look, in one file — palette, glyphs, width maths |
 | `src/log.js` | composes `theme.js` into headings, tables, the box |
-| `src/live.js` | the live block redrawn in place while work is in flight |
+| `src/live.js` | the live block redrawn in place while work is in flight, and the one-line loader every other slow step shows |
 | `src/prompt.js` | the selection tree, and the raw-mode checkbox picker |
 | `src/commands/` | one file per command |
 
@@ -30,6 +30,8 @@ talea is Node 20+, ESM, and **zero dependencies** — runtime and dev. Argument 
 2. The command resolves the workspace and the catalogue — nearest first — and works out which repos this run is about, from this machine's selection narrowed by any `-g` and `-r`.
 3. Network work runs through a pool. The default job count is one per core, clamped to **6–12**: more than a dozen simultaneous SSH sessions gets you throttled, and fewer than six is slower than it needs to be.
 4. The live block redraws in place while that happens. Off a terminal — a pipe, a CI log — it prints one line per repo as each settles instead, because a pipe has no cursor to redraw with and a spinner frame per repo per 80ms is not something a log should hold.
+
+   Anything else slow — a GitHub call, the scan for checkouts, `prune`'s pass over every worktree — shows a single spinner line with what it is doing. It draws on stderr and only on a terminal, and it clears itself when the work ends, so piped output and `cd $(talea where)` never see it.
 5. `summary()` prints the counts and sets `process.exitCode`. That is the only thing that makes a partial failure visible to a script.
 
 ### Why the output is one file

@@ -1,7 +1,7 @@
 // The look layer: width maths that has to ignore colour, and the live block's
 // promise that its piped rendering is the same one it freezes on a terminal.
 
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -431,4 +431,23 @@ test('truncation counts columns, not escape codes, and closes the colour', () =>
   assert.equal(visibleWidth(truncVisible(coloured, 5)), 5);
   // Cut mid-colour: the reset has to go back on or it bleeds down the screen.
   assert.match(truncVisible(coloured, 5), /\x1b\[0m$/);
+});
+
+describe('table', () => {
+  test('a `below` line sits under the second column of its own row', async () => {
+    const { table } = await import('../src/log.js');
+    const out = [];
+    const log = console.log;
+    console.log = (s = '') => out.push(stripAnsi(s));
+    try {
+      table([['app', 'feat', 'merged'], ['longer', 'fix', 'dirty']], null, { below: ['~/ws/.app-worktrees/feat'] });
+    } finally {
+      console.log = log;
+    }
+    assert.deepEqual(out, [
+      'app     feat  merged',
+      '        ~/ws/.app-worktrees/feat',
+      'longer  fix   dirty',
+    ]);
+  });
 });

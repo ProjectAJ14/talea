@@ -88,8 +88,12 @@ const visibleLength = (s) => stripAnsi(s).length;
 /**
  * Render an aligned table. `rows` is an array of arrays; `head` is optional.
  * Columns are left-aligned and padded to the widest visible cell.
+ *
+ * `below[i]`, when given, is a dim second line under row i, starting under the
+ * second column — the place for a long path that would otherwise widen that
+ * column for every row.
  */
-export function table(rows, head) {
+export function table(rows, head, { below } = {}) {
   const all = head ? [head, ...rows] : rows;
   if (all.length === 0) return;
   const widths = [];
@@ -109,7 +113,11 @@ export function table(rows, head) {
       .trimEnd();
 
   if (head) console.log(dim(render(head)));
-  for (const row of rows) console.log(render(row));
+  const indent = ' '.repeat((widths[0] ?? 0) + 2);
+  rows.forEach((row, i) => {
+    console.log(render(row));
+    if (below?.[i]) console.log(indent + dim(below[i]));
+  });
 }
 
 /**
