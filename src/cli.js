@@ -22,7 +22,7 @@ import * as doctor from './commands/doctor.js';
 import * as exec from './commands/exec.js';
 import * as upgrade from './commands/upgrade.js';
 import * as skill from './commands/skill.js';
-import { notifyIfOutdatedAsync } from './update.js';
+import { autoUpdateAsync } from './update.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8'));
@@ -253,7 +253,7 @@ export async function main(argv) {
   // After the real work, never before it, and never able to fail it.
   if (key !== 'upgrade') {
     try {
-      await notifyIfOutdatedAsync();
+      await autoUpdateAsync();
     } catch {
       // An update check is not worth a non-zero exit.
     }
