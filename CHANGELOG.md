@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-10-01
+
+### Fixed
+- cover every line, branch and function, and enforce it in CI
+
+### Chores
+- reach measure()'s size fallback on Linux; keep the branch report in CI
+- debug uncovered branch [temporary]
+
 ## [0.9.2] - 2026-09-30
 
 ### Fixed
