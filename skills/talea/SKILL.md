@@ -122,11 +122,15 @@ talea prune --apply            # remove the ones marked merged
 **Always run it without `--apply` first, show the developer the plan, and run
 `--apply` only after they confirm.** A merged worktree holding a `.env` or other
 ignored non-build files (not counting ones identical to the main checkout's
-copy, or ones the repo marks `talea-regenerable` in `.gitattributes`) is kept as `ignored` — it *is* merged — with the files named; never add
+copy, build output on talea's own list, or ones the repo marks
+`talea-regenerable` in `.gitattributes`) is kept as `ignored` — it *is* merged — with the files named; never add
 `--with-ignored` on the developer's behalf — ask, because those files are gone
 with the folder. If a named file is one a build writes, the lasting fix is a
 `talea-regenerable` line in that repo's `.gitattributes`, proposed to the
-developer — never added to cover one file that is really theirs.
+developer — never added to cover one file that is really theirs. A `nested`
+verdict names the repo inside and why (`dirty`, `stash`, `unpushed`,
+`worktree`); that is work in another repo, so report it — never move it or
+delete it to free the worktree.
 
 Only `merged` worktrees are removed (every commit already on origin's default
 branch) and `unused` ones (no commits of their own, cut over a day ago), plus

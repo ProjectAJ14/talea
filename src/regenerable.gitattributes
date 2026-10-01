@@ -1,0 +1,61 @@
+# Ignored paths a build, an install or an IDE puts back. `talea prune` reads
+# this as one more attributes file — git's own matcher, git's own syntax — so a
+# merged worktree holding only these is not kept for "ignored files you made".
+#
+# Adding an ecosystem is adding lines here; no code changes. A repo can say
+# `-talea-regenerable` in its own .gitattributes to take one back, and a
+# developer can add patterns for every repo in git's global attributes file
+# (`git config --global core.attributesFile`).
+#
+# A folder is `**/<name>/**`: without the leading `**/` the pattern is anchored
+# to the repo root and misses `ios/Flutter/ephemeral/`. A pattern with a slash
+# in it is anchored; one without matches a basename at any depth. A leading `/`
+# matches nothing in an attributes file — write `a/b`, not `/a/b`.
+
+# JavaScript and the web
+**/node_modules/** talea-regenerable
+**/dist/** talea-regenerable
+**/.next/** talea-regenerable
+**/.nuxt/** talea-regenerable
+**/.turbo/** talea-regenerable
+**/.astro/** talea-regenerable
+**/.cache/** talea-regenerable
+**/coverage/** talea-regenerable
+**/.firebase/** talea-regenerable
+
+# Python
+**/.venv/** talea-regenerable
+**/venv/** talea-regenerable
+**/__pycache__/** talea-regenerable
+**/.pytest_cache/** talea-regenerable
+
+# Rust, Gradle, CocoaPods, and every build folder
+**/target/** talea-regenerable
+**/.gradle/** talea-regenerable
+**/.kotlin/** talea-regenerable
+**/Pods/** talea-regenerable
+**/build/** talea-regenerable
+
+# Flutter and Dart: what `flutter pub get` and `flutter build` write, with
+# absolute paths and plugin versions in it, so it never matches the main
+# checkout's copy byte for byte.
+**/.dart_tool/** talea-regenerable
+**/ephemeral/** talea-regenerable
+**/.symlinks/** talea-regenerable
+**/.plugin_symlinks/** talea-regenerable
+.flutter-plugins talea-regenerable
+.flutter-plugins-dependencies talea-regenerable
+local.properties talea-regenerable
+Generated.xcconfig talea-regenerable
+flutter_export_environment.sh talea-regenerable
+GeneratedPluginRegistrant.* talea-regenerable
+pubspec.lock talea-regenerable
+Podfile.lock talea-regenerable
+
+# IDEs and the OS
+**/.idea/** talea-regenerable
+*.iml talea-regenerable
+.DS_Store talea-regenerable
+
+# Seeded by worktree tooling as a copy of the main checkout's.
+.claude/settings.local.json talea-regenerable

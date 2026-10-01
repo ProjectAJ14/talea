@@ -207,10 +207,15 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    passes `-unormal`, because `status.showUntrackedFiles=no` blinds both it and
    `git worktree remove`, and the files go (found in review). `locked` and
    `dirty` are never touched, the main checkout is never a candidate,
-   and a merged worktree with any `.git` below its root is kept as `nested` —
-   git reads it clean when the inner worktree sits under an ignored path, and
-   `git worktree remove` then deletes the inner one's uncommitted work (found
-   in review, pinned by a test), no
+   and a merged worktree with a repo below its root that holds work of its own
+   is kept as `nested` — git reads it clean when the inner one sits under an
+   ignored path, and `git worktree remove` then deletes the inner one's
+   uncommitted work (found in review, pinned by a test). "Work of its own" is
+   judged by content, not location: a `.git` *file* (linked worktree,
+   submodule) always counts, otherwise uncommitted changes, a stash, a commit
+   on HEAD or a local branch that no remote has, or anything git cannot read.
+   Judging by location kept 29 GB of merged Flutter worktrees, each holding
+   clean SwiftPM clones `flutter build ios` left under `build/`. No
    `rmSync` is involved, and **the branch is kept**: it costs nothing, and
    `git worktree add` brings the folder back. The base is the catalogue's
    `defaultBranch`, never an assumed `main` (rule 8); a repo with none is
@@ -218,6 +223,14 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    removes in one run, so a warning would arrive after the loss: a merged
    worktree holding ignored files that are not build output (a `.env`, a
    `.plan/`) is kept as `ignored` unless `--with-ignored` says otherwise.
+   What counts as build output is **data, not code**: `src/regenerable.gitattributes`,
+   in git's attributes syntax, handed to `check-attr` as the global
+   attributes file so a repo's `-talea-regenerable` still beats it. There is
+   no generic way to tell build output from a person's file — to git a `.env`
+   and a `Generated.xcconfig` are the same thing, ignored and different from
+   the main checkout's — so a list has to exist; keeping it as data means a
+   new ecosystem is a line, gets globs for free, and needs no release
+   when a developer adds their own in git's global attributes file.
    A file a build copies out of tracked source has no telltale folder, and the
    main checkout's copy is only as fresh as its last build, so the repo says so
    itself: a `talea-regenerable` attribute in `.gitattributes`, read with `git

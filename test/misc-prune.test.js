@@ -284,6 +284,30 @@ describe('talea prune, the report', () => {
     assert.match(t, /unmerged/);
   });
 
+  test('a worktree kept for the repos inside it names them, and the table counts why', async () => {
+    const ws = workspace('ws-nested', [{ name: 'app', owner: 'me', defaultBranch: 'main' }]);
+    const dir = makeRepo(path.join(ws, 'me', 'app'), 'vendor/\n');
+    const one = addWorktree(dir, 'one');
+    const many = addWorktree(dir, 'many', undefined, 'one');
+    git(['push', '-q', 'origin', 'many:main'], dir);
+    const lib = makeRepo(path.join(tmp, 'lib'));
+    const dirty = (wt, name) => {
+      const at = path.join(wt, 'vendor', name);
+      git(['clone', '-q', `${lib}.git`, at], tmp);
+      writeFileSync(path.join(at, 'WIP.txt'), 'unsaved\n');
+    };
+    dirty(one, 'a');
+    for (const name of ['a', 'b', 'c', 'd']) dirty(many, name);
+    process.chdir(ws);
+
+    await run({});
+    const t = text();
+    assert.match(t, /nested.* · 1 dirty/);
+    assert.match(t, /nested.* · 4 dirty/);
+    assert.match(t, /app\/one is merged, kept for a repo inside it: vendor\/a \(dirty\)/);
+    assert.match(t, /app\/many is merged, kept for repos inside it: vendor\/a \(dirty\), vendor\/b \(dirty\), vendor\/c \(dirty\).* and 1 more/);
+  });
+
   test('a removal git refuses is named, and its ignored files are not called lost', { skip: !posix && 'needs a shell-script git' }, async () => {
     const ws = workspace('ws-refused', [{ name: 'app', owner: 'me', defaultBranch: 'main' }]);
     const dir = makeRepo(path.join(ws, 'me', 'app'), '.env\n');

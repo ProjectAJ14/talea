@@ -83,8 +83,10 @@ talea prune --apply          # remove the merged and unused ones
 
 A worktree is `merged` when every commit on it is on `origin/<default branch>`
 — directly, or as an identical change after a rebase merge. `dirty`, `locked`
-and `unmerged` ones are kept, and so is a `nested` one — merged, but with
-another worktree or repo inside its folder, which removing it would delete; `missing` ones (folder already gone) have their
+and `unmerged` ones are kept, and so is a `nested` one — merged, but with a repo inside its folder that
+holds work of its own (a linked worktree, uncommitted changes, a stash, or a
+commit no remote has), which removing it would delete. A clean clone a build
+tool left there, such as SwiftPM's `checkouts/`, does not count; `missing` ones (folder already gone) have their
 record cleared. A branch with no commits yet looks merged: cut in the last day
 it is `fresh` and kept, a task just started; older, it is `unused` and removed,
 and the verdict shows its age. A lock is kept, unless it is one Claude Code left
@@ -96,7 +98,12 @@ any of them back. git deletes ignored files without asking, so a merged worktree
 holding ignored files that are not build output — a `.env`, notes — is kept as
 `ignored`, with the files named. Move them out, or pass `--with-ignored`. A
 file identical to the main checkout's copy at the same path does not count —
-it survives the removal. Nor does a file the repo declares build output with a
+it survives the removal. Nor does build output: talea ships a list —
+`node_modules`, `build`, Flutter's `ephemeral/`, `*.iml` and the rest — in
+[`src/regenerable.gitattributes`](src/regenerable.gitattributes), git's own
+attributes syntax, so adding an ecosystem is adding a line. A repo takes one
+back with `-talea-regenerable`, and a pattern for every repo on a machine goes
+in git's global attributes file. Nor does a file the repo declares build output with a
 `.gitattributes` line such as `web/public/runtime.html talea-regenerable` — for
 a file a build copies out of tracked source, whose main-checkout copy is only as
 fresh as its last build. It is read from origin's default branch too, so a mark
