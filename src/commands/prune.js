@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { worktreeRecords, lines } from '../adopt.js';
 import { defaultBranch, groupDir, repoGroup } from '../config.js';
@@ -36,7 +37,7 @@ outside the workspace count too — they belong to the repo.
   missing    its folder is already gone                   ${c.dim('→ record cleared')}
   dirty      modified or untracked files                  ${c.dim('→ kept')}
   ignored    merged, but holds ignored files you made     ${c.dim('→ kept')}
-  nested     merged, but another worktree or repo is inside ${c.dim('→ kept')}
+  nested     merged, but a repo inside has its own work   ${c.dim('→ kept')}
   unused     no commits of its own, untouched for a day   ${c.dim('→ removed')}
   fresh      the same, but cut less than a day ago        ${c.dim('→ kept')}
   locked     \`git worktree lock\`ed                        ${c.dim('→ kept')}
@@ -53,11 +54,22 @@ so a merged worktree holding ignored files that are not build output — a
 .env, notes — is kept as ${c.bold('ignored')} and the plan names them. Move them out, or
 add --with-ignored to remove them along with the folder. A file identical to
 the main checkout's copy at the same path is not counted: it survives. Nor is
-one the repo marks as build output in .gitattributes, on the worktree's branch
-or on origin's default:
+build output: talea ships a list (node_modules, build, Flutter's ephemeral,
+*.iml, …) in git's attributes syntax, and a repo marks its own in
+.gitattributes, on the worktree's branch or on origin's default:
 
   web/public/runtime.html talea-regenerable
   generated/** talea-regenerable
+  pubspec.lock -talea-regenerable     ${c.dim("take one of talea's back")}
+
+A pattern for every repo on this machine goes in git's global attributes file
+(\`git config --global core.attributesFile\`).
+
+A repo inside a worktree — a build tool's clone, a nested worktree — goes with
+it, so it is judged too: a linked worktree, uncommitted changes, a stash, or a
+commit no remote has keeps the worktree as ${c.bold('nested')}, and the verdict says
+why (\`nested · 1 dirty\`). A clean one whose commits are all on a remote does
+not; its own ignored files are judged like the worktree's.
 
 The table shows each worktree's folder name; its full path is the dim line
 under the row.
@@ -82,23 +94,16 @@ Options
       --with-ignored    also remove merged worktrees holding ignored files
 `;
 
-// Ignored paths that a build or an install puts back. Anything ignored and NOT
-// under one of these is somebody's file, and the plan names it before removal.
-const REGENERABLE = new Set([
-  'node_modules', 'build', 'dist', '.dart_tool', '.next', '.nuxt', '.turbo',
-  '.astro', '.cache', 'target', '.venv', 'venv', 'Pods', 'coverage', '.gradle',
-  '__pycache__', '.pytest_cache', '.DS_Store', '.firebase',
-]);
-// Seeded by worktree tooling as a copy of the main checkout's.
-const REGENERABLE_FILES = new Set(['.claude/settings.local.json']);
-
-/** Ignored entries (from `ls-files --directory`) that are not build output. */
-export function lossyIgnored(listing) {
-  return lines(listing).filter((p) => {
-    const clean = p.replace(/\/$/, '');
-    return !REGENERABLE_FILES.has(clean) && !clean.split('/').some((s) => REGENERABLE.has(s));
-  });
-}
+// Ignored paths that a build, an install or an IDE puts back, as an attributes
+// file git matches itself. Anything ignored and NOT marked there, or by the
+// repo, is somebody's file, and the plan names it before removal. A new
+// ecosystem is new lines in that file, never new code.
+const DEFAULTS = fileURLToPath(new URL('../regenerable.gitattributes', import.meta.url));
+// A folded folder (`node_modules/`) is asked about through a path two levels
+// inside it: `**/node_modules/**` marks that, and so covers the whole folder
+// without listing it, while a pattern for only some of its files does not, and
+// the folder is opened and judged file by file.
+const PROBE = '.talea-probe/.talea-probe';
 
 const IGNORED = ['ls-files', '--others', '--ignored', '--exclude-standard'];
 // Past this many files a folder is named as one entry rather than compared
@@ -106,26 +111,30 @@ const IGNORED = ['ls-files', '--others', '--ignored', '--exclude-standard'];
 const EXPAND_MAX = 200;
 
 /**
- * Paths a repo declares regenerable with the `talea-regenerable` attribute —
- * a `.gitattributes` line such as `web/public/runtime.html talea-regenerable`.
+ * The entries of `paths` nothing marks `talea-regenerable` — a `.gitattributes`
+ * line such as `web/public/runtime.html talea-regenerable`.
+ *
  * A file a build copies out of tracked source has no telltale folder, and the
- * main checkout's copy of it is as stale as its last build, so only the repo
- * can say so. Read from the worktree and from `base` too: a merged worktree was
- * branched before the line landed, and the repo's current word is the one that
- * counts. `.git/info/attributes` works as well, for a mark this machine alone
- * keeps. `--source` needs git 2.40; an older git reads the worktree only.
+ * main checkout's copy of it is as stale as its last build, so the repo can say
+ * so. Asked three ways: the worktree's own attributes (with `.git/info/` and
+ * the developer's global file), origin's default branch's — a merged worktree
+ * was branched before the line landed, and the repo's current word is the one
+ * that counts — and talea's defaults, given as the global file so a repo's
+ * `-talea-regenerable` still wins over them. `--source` needs git 2.40; an
+ * older git skips that one reading.
  */
-async function regenerable(wtPath, base, files) {
-  if (!files.length) return new Set();
-  const input = files.join('\0');
+async function unmarked(wtPath, base, paths) {
+  if (!paths.length) return [];
+  const asked = paths.map((p) => (p.endsWith('/') ? p + PROBE : p));
   const marked = new Set();
-  for (const source of [[], ['--source', base]]) {
-    const res = await git(['check-attr', '-z', '--stdin', ...source, 'talea-regenerable'], { cwd: wtPath, input });
+  const reads = [['check-attr'], ['check-attr', '--source', base], ['-c', `core.attributesFile=${DEFAULTS}`, 'check-attr']];
+  for (const read of reads) {
+    const res = await git([...read, '-z', '--stdin', 'talea-regenerable'], { cwd: wtPath, input: asked.join('\0') });
     if (res.code !== 0) continue;
     const out = res.stdout.split('\0');
     for (let i = 0; i + 2 < out.length; i += 3) if (out[i + 2] === 'set') marked.add(out[i]);
   }
-  return marked;
+  return paths.filter((_, i) => !marked.has(asked[i]));
 }
 
 /**
@@ -133,26 +142,35 @@ async function regenerable(wtPath, base, files) {
  *
  * `--directory` folds a wholly-ignored folder into one entry, so a `.claude/`
  * holding nothing but the seeded settings file read as somebody's work — the
- * folder is opened and its files judged one by one. A file the repo marks
+ * folder is opened and its files judged one by one. A file marked
  * `talea-regenerable` is build output by its own say. And a file byte-identical
  * to the main checkout's copy at the same path (a generated `tokens.css`, a
  * copied config) survives the removal, so it is not a loss either.
+ *
+ * `cleared` names the repos inside it (`vendor/dep/`, as git lists them) that
+ * `nestedLoss()` found nothing in: their tracked files are on their remote, so
+ * only their own ignored files count — judged the same way, with no main
+ * checkout to compare against.
  */
-export async function userIgnored(wtPath, mainDir, base) {
+export async function userIgnored(wtPath, mainDir, base, cleared = new Set()) {
   const listed = await git([...IGNORED, '--directory'], { cwd: wtPath });
   const lost = [];
-  for (const entry of lossyIgnored(listed.stdout)) {
+  for (const entry of await unmarked(wtPath, base, lines(listed.stdout))) {
     const folder = entry.endsWith('/');
-    let files = folder ? lossyIgnored((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout) : [entry];
-    const marked = await regenerable(wtPath, base, files);
-    files = files.filter((f) => !marked.has(f));
+    const files = folder
+      ? await unmarked(wtPath, base, lines((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout))
+      : [entry];
     if (!files.length) continue;
     if (folder && files.length > EXPAND_MAX) {
       lost.push(entry);
       continue;
     }
     for (const f of files) {
-      if (f.endsWith('/') || !(await sameFile(path.join(wtPath, f), path.join(mainDir, f)))) lost.push(f);
+      if (cleared.has(f)) {
+        for (const g of await userIgnored(path.join(wtPath, f), null, 'HEAD')) lost.push(f + g);
+      } else if (f.endsWith('/') || !(mainDir && (await sameFile(path.join(wtPath, f), path.join(mainDir, f))))) {
+        lost.push(f);
+      }
     }
   }
   return lost;
@@ -172,13 +190,39 @@ async function sameFile(a, b) {
 }
 
 /**
+ * What a repo found inside a worktree would lose with it, or null for nothing.
+ *
+ * `git worktree remove` deletes whatever is in the folder, nested repos too, so
+ * one with work of its own keeps the worktree. But build tools write clean
+ * clones everywhere — SwiftPM's `checkouts/`, Cargo git dependencies — and
+ * judging those by where they sit kept every merged Flutter worktree that had
+ * ever built for iOS. So it is judged by what it holds, the same for any tool:
+ * a `.git` file is a linked worktree or a submodule, whose work lives in
+ * another repo's records — the case this check was written for — and is always
+ * a loss. Otherwise uncommitted changes, a stash, or a commit on HEAD or a
+ * local branch that no remote has. Anything git cannot read is a loss too.
+ */
+export async function nestedLoss(dir) {
+  if (!(await lstat(path.join(dir, '.git'))).isDirectory()) return 'worktree';
+  // A broken `.git` must not send git up to the outer worktree's records.
+  const opts = { cwd: dir, env: { GIT_CEILING_DIRECTORIES: path.dirname(dir) } };
+  const status = await git(['status', '--porcelain', '-unormal'], opts);
+  if (status.code !== 0) return 'unreadable';
+  if (status.stdout) return 'dirty';
+  if ((await git(['rev-parse', '--verify', '--quiet', 'refs/stash'], opts)).code === 0) return 'stash';
+  const unpushed = await git(['rev-list', '-n1', 'HEAD', '--branches', '--not', '--remotes'], opts);
+  return unpushed.code !== 0 || unpushed.stdout ? 'unpushed' : null;
+}
+
+/**
  * Bytes on disk under `root`, symlinks not followed, and every folder below
  * the root that has a `.git` of its own — another worktree or checkout.
  *
  * The second half is a safety check, not a statistic. git reads a worktree as
  * clean when the only thing in it is a nested worktree under an ignored path
  * (`.claude/worktrees/x`), and `git worktree remove` then deletes the nested
- * one with its uncommitted work. So a worktree with any repo inside it is kept.
+ * one with its uncommitted work. So every repo inside it is found, and
+ * `nestedLoss()` says whether it holds anything.
  */
 // ponytail: hardlinks (a pnpm store) count once per link, so the figure can
 // overstate what is freed; dedupe by inode if that ever misleads anybody.
@@ -298,7 +342,7 @@ async function isMerged(repoDir, head, base) {
 /**
  * Fetch, then judge every linked worktree of one repo against its default
  * branch. `{ skip }` or `{ fail }` for a repo that cannot be judged, otherwise
- * `{ base, worktrees: [{ path, branch, verdict, age, stale, lockReason, size, lossy }] }`.
+ * `{ base, worktrees: [{ path, branch, verdict, age, stale, lockReason, size, lossy, held }] }`.
  * `withIgnored` lets a merged worktree go even with lossy ignored files in it;
  * `now` is the clock `fresh` is measured against.
  */
@@ -329,15 +373,27 @@ export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.
     const stale = wt.locked && (await staleLock(wt.lockReason));
     let { verdict, age } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
     const { size, nested } = verdict === 'missing' ? { size: 0, nested: [] } : await measure(wt.path);
-    if (REMOVABLE.has(verdict) && nested.length) verdict = 'nested';
+    const held = [];
+    const cleared = new Set();
+    if (REMOVABLE.has(verdict)) {
+      // The walk is parallel, so its order is not; the report should be.
+      for (const n of nested.sort()) {
+        // git's spelling, so it matches what `ls-files` lists on any platform.
+        const rel = path.relative(wt.path, n).split(path.sep).join('/');
+        const why = await nestedLoss(n);
+        if (why) held.push({ path: rel, why });
+        else cleared.add(`${rel}/`);
+      }
+      if (held.length) verdict = 'nested';
+    }
     let lossy = [];
     if (REMOVABLE.has(verdict)) {
-      lossy = await userIgnored(wt.path, dir, base);
+      lossy = await userIgnored(wt.path, dir, base, cleared);
       // git deletes ignored files without asking, and `--apply` plans and
       // removes in one run — so a warning here would arrive after the loss.
       if (lossy.length && !withIgnored) verdict = 'ignored';
     }
-    worktrees.push({ path: wt.path, branch: wt.branch, verdict, age, stale, lockReason: wt.lockReason, size, lossy });
+    worktrees.push({ path: wt.path, branch: wt.branch, verdict, age, stale, lockReason: wt.lockReason, size, lossy, held });
   }
   return { base, worktrees };
 }
@@ -393,9 +449,15 @@ const listFiles = (files) =>
   `${files.length === 1 ? 'file' : 'files'}: ${files.slice(0, 3).join(', ')}` +
   (files.length > 3 ? c.dim(` and ${files.length - 3} more`) : '');
 
-/** The facts beside a verdict: a no-commit branch's age, a lock left by an exited agent. */
+/** The facts beside a verdict: a no-commit branch's age, a lock left by an exited agent, what a nested repo holds. */
 function verdictNote(wt) {
-  const notes = [wt.age == null ? null : formatAge(wt.age), wt.stale ? 'stale lock' : null].filter(Boolean);
+  const counts = {};
+  for (const { why } of wt.held) counts[why] = (counts[why] ?? 0) + 1;
+  const notes = [
+    wt.age == null ? null : formatAge(wt.age),
+    wt.stale ? 'stale lock' : null,
+    ...Object.entries(counts).map(([why, n]) => `${n} ${why}`),
+  ].filter(Boolean);
   return notes.length ? c.dim(` · ${notes.join(' · ')}`) : '';
 }
 
@@ -479,7 +541,11 @@ export async function run(opts) {
     for (const { repo, wt } of groupRows) {
       const name = `${repo.name}/${path.basename(wt.path)}`;
       if (wt.error) fail(`${name} — ${wt.error}`);
-      if (wt.verdict === 'ignored') {
+      if (wt.verdict === 'nested') {
+        const repos = wt.held.map((h) => `${h.path} (${h.why})`);
+        warn(`${name} is merged, kept for ${repos.length === 1 ? 'a repo' : 'repos'} inside it: ${repos.slice(0, 3).join(', ')}` +
+          (repos.length > 3 ? c.dim(` and ${repos.length - 3} more`) : ''));
+      } else if (wt.verdict === 'ignored') {
         warn(`${name} is merged, kept for ignored ${listFiles(wt.lossy)} — move ${wt.lossy.length === 1 ? 'it' : 'them'}, or --with-ignored`);
       } else if (wt.lossy.length && wt.verdict !== 'failed') {
         warn(`${name} ${opts.apply ? 'lost' : 'would lose'} ignored ${listFiles(wt.lossy)}`);

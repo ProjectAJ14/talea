@@ -57,7 +57,7 @@ Worktrees pile up. Each one carries its own `node_modules`, `build` or `.dart_to
 | `missing` | the folder is already gone | the record is cleared |
 | `dirty` | modified or untracked files | kept |
 | `ignored` | merged, but holds ignored files that are not build output, like a `.env` | kept, unless `--with-ignored` |
-| `nested` | merged, but another worktree or repo sits inside its folder | kept |
+| `nested` | merged, but a repo inside its folder holds work of its own — a linked worktree, uncommitted changes, a stash, or a commit no remote has | kept |
 | `unused` | a branch with no commits of its own, cut more than a day ago | removed |
 | `fresh` | the same, cut within the last day — a task just started | kept |
 | `locked` | `git worktree lock`ed | kept |
@@ -71,6 +71,10 @@ talea prune --apply          # do it
 `fresh` and `unused` show the branch's age beside the verdict (`fresh · 7h`). A lock is kept unless Claude Code left it: it locks each agent's worktree with `claude agent <id> (pid N start <time>)`, and once that process has exited the worktree is judged as if unlocked, marked `· stale lock`, and `--apply` unlocks it before removing it. Any other lock is never touched. The dim line under a locked row shows its reason.
 
 The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`. A file byte-identical to the main checkout's copy at the same path does not count — it survives the removal — and a folder of ignored files is judged file by file, so a `.claude/` holding only a seeded settings file keeps nothing.
+
+Build output does not count either. talea ships a list of it — `node_modules`, `build`, `.dart_tool`, Flutter's `ephemeral/` and `Generated.xcconfig`, `*.iml`, `.idea/` and more — in [`src/regenerable.gitattributes`](https://github.com/ProjectAJ14/talea/blob/main/src/regenerable.gitattributes), written in git's own attributes syntax and matched by git itself. A new ecosystem is a new line there, not new code. A pattern for every repo on your machine goes in git's global attributes file (`git config --global core.attributesFile`), and a repo takes one of talea's back with `-talea-regenerable`.
+
+A repo inside a worktree is judged by what it holds, not where it sits. `flutter build ios` leaves clean SwiftPM clones under `build/`, and those do not keep a merged worktree. A linked worktree, uncommitted changes, a stash or a commit no remote has does, and the verdict says which (`nested · 1 dirty`), with the repo named underneath. A clean one's own ignored files are judged like the worktree's.
 
 A file a build copies out of tracked source — a generated page in `public/`, say — sits under no build folder, and the main checkout's copy is only as fresh as its last build. Mark it in the repo's `.gitattributes` and it stops counting:
 

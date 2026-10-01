@@ -12,7 +12,7 @@ import path from 'node:path';
 // developer's own list. Set before the import: config.js reads home on load.
 const home = mkdtempSync(path.join(os.tmpdir(), 'talea-home-'));
 process.env.HOME = process.env.USERPROFILE = home;
-const { planRepo, applyRepo, lossyIgnored, staleLock, formatAge, run } = await import('../src/commands/prune.js');
+const { planRepo, applyRepo, nestedLoss, staleLock, formatAge, run } = await import('../src/commands/prune.js');
 const { canonical } = await import('../src/adopt.js');
 
 const git = (args, cwd) =>
@@ -144,8 +144,81 @@ describe('prune judges each worktree', () => {
 
     const plan = await planRepo(repo(dir));
     assert.equal(verdictOf(plan, outer), 'nested');
+    assert.equal(entryOf(plan, outer).held[0].why, 'worktree');
     await applyRepo(dir, plan);
     assert.equal(existsSync(path.join(inner, 'WIP.txt')), true, 'nested work was deleted');
+  });
+
+  test('a clean repo inside it whose HEAD is on its remote does not keep it', async () => {
+    // Found on a real machine: `flutter build ios` leaves SwiftPM clones under
+    // build/, and judged by where they sat they kept 29 GB of merged worktrees.
+    // One outside a build folder is judged the same way: by what it holds.
+    const dir = makeRepo('nested-clean');
+    makeRepo('dep');
+    writeFileSync(path.join(dir, '.gitignore'), 'build/\nvendor/\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    for (const at of ['build/ios/SourcePackages/checkouts/dep', 'vendor/dep']) {
+      git(['clone', '-q', path.join(tmp, 'dep.git'), path.join(wt, at)], tmp);
+    }
+
+    // Its own ignored files are judged like the worktree's: a .env in it is a loss.
+    writeFileSync(path.join(wt, 'vendor', 'dep', '.git', 'info', 'exclude'), '.env\n');
+    writeFileSync(path.join(wt, 'vendor', 'dep', '.env'), 'SECRET=1\n');
+    const kept = entryOf(await planRepo(repo(dir)), wt);
+    assert.equal(kept.verdict, 'ignored');
+    assert.deepEqual(kept.lossy, ['vendor/dep/.env']);
+    rmSync(path.join(wt, 'vendor', 'dep', '.env'));
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'merged');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(wt), false);
+  });
+
+  test('a repo inside it with work of its own keeps it, and says which', async () => {
+    const dir = makeRepo('nested-work');
+    makeRepo('lib');
+    writeFileSync(path.join(dir, '.gitignore'), 'vendor/\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    const inside = (name) => {
+      const at = path.join(wt, 'vendor', name);
+      git(['clone', '-q', path.join(tmp, 'lib.git'), at], tmp);
+      git(['config', 'user.email', 'test@example.com'], at);
+      git(['config', 'user.name', 'test'], at);
+      return at;
+    };
+    writeFileSync(path.join(inside('dirty'), 'WIP.txt'), 'unsaved\n');
+    commit(inside('unpushed'), 'local.txt');
+    const stashed = inside('stashed');
+    writeFileSync(path.join(stashed, 'README.md'), 'changed\n');
+    git(['stash', '-q'], stashed);
+    // No remote at all: nothing it holds is anywhere else.
+    git(['remote', 'remove', 'origin'], inside('orphan'));
+
+    const plan = await planRepo(repo(dir));
+    const entry = entryOf(plan, wt);
+    assert.equal(entry.verdict, 'nested');
+    assert.deepEqual(entry.held.map((h) => `${h.path} ${h.why}`).sort(), [
+      'vendor/dirty dirty',
+      'vendor/orphan unpushed',
+      'vendor/stashed stash',
+      'vendor/unpushed unpushed',
+    ]);
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(path.join(wt, 'vendor', 'dirty', 'WIP.txt')), true, 'nested work was deleted');
+  });
+
+  test('a .git git cannot read is a loss, never the outer worktree read instead', async () => {
+    const dir = makeRepo('nested-broken');
+    const broken = path.join(dir, 'vendor', 'broken');
+    mkdirSync(path.join(broken, '.git'), { recursive: true });
+    assert.equal(await nestedLoss(broken), 'unreadable');
   });
 
   test('a locked worktree is kept, even when merged', async () => {
@@ -365,6 +438,46 @@ describe('prune judges each worktree', () => {
     assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['b.gen']);
   });
 
+  test('what Flutter writes is build output by talea\'s own list; a .env still is not', async () => {
+    // Found on a real machine: ~80 files of Flutter and IDE output, none
+    // byte-identical to the main checkout's, kept a merged worktree as ignored.
+    const dir = makeRepo('flutter');
+    writeFileSync(
+      path.join(dir, '.gitignore'),
+      ['ephemeral/', '.flutter-plugins-dependencies', 'local.properties', 'Generated.xcconfig', '*.iml', '.idea/', 'pubspec.lock', '.env', ''].join('\n'),
+    );
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    const write = (rel, text = rel) => {
+      mkdirSync(path.dirname(path.join(wt, rel)), { recursive: true });
+      writeFileSync(path.join(wt, rel), `${text} in the worktree\n`);
+    };
+    for (const f of [
+      'ios/Flutter/ephemeral/flutter_lldbinit',
+      'macos/Flutter/ephemeral/Packages/x/y.swift',
+      'ios/Flutter/Generated.xcconfig',
+      '.flutter-plugins-dependencies',
+      'android/local.properties',
+      'quietflip.iml',
+      '.idea/modules.xml',
+      'pubspec.lock',
+    ]) write(f);
+    write('.env');
+
+    const entry = entryOf(await planRepo(repo(dir)), wt);
+    assert.equal(entry.verdict, 'ignored');
+    assert.deepEqual(entry.lossy, ['.env']);
+
+    // The repo's own word beats talea's list.
+    rmSync(path.join(wt, '.env'));
+    const info = path.join(dir, '.git', 'info');
+    mkdirSync(info, { recursive: true });
+    writeFileSync(path.join(info, 'attributes'), 'pubspec.lock -talea-regenerable\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['pubspec.lock']);
+  });
+
   test('a file of your own inside an ignored folder still keeps it', async () => {
     // Opening a folded folder must not lose what it holds: the seeded settings
     // file goes, the notes beside it are named and keep the worktree.
@@ -468,13 +581,6 @@ describe('formatAge', () => {
     assert.equal(formatAge(125), '2m');
     assert.equal(formatAge(7 * 3600 + 5), '7h');
     assert.equal(formatAge(3 * 86400 + 5), '3d');
-  });
-});
-
-describe('lossyIgnored', () => {
-  test('drops build output at any depth, keeps anything else', () => {
-    const listing = 'node_modules/\npackages/a/dist/\n.dart_tool/\n.env\n.plan/\n.claude/settings.local.json\n';
-    assert.deepEqual(lossyIgnored(listing), ['.env', '.plan/']);
   });
 });
 
