@@ -155,14 +155,17 @@ describe('prune judges each worktree', () => {
     // One outside a build folder is judged the same way: by what it holds.
     const dir = makeRepo('nested-clean');
     makeRepo('dep');
-    writeFileSync(path.join(dir, '.gitignore'), 'build/\nvendor/\n');
+    // vendor/ is ignored whole; third/dep/ is the ignored folder itself.
+    writeFileSync(path.join(dir, '.gitignore'), 'build/\nvendor/\nthird/dep/\n');
     commit(dir, 'keep.txt');
     git(['push', '-q', 'origin', 'main'], dir);
     const wt = addWorktree(dir, 'feat');
     git(['push', '-q', 'origin', 'feat:main'], dir);
-    for (const at of ['build/ios/SourcePackages/checkouts/dep', 'vendor/dep']) {
+    for (const at of ['build/ios/SourcePackages/checkouts/dep', 'vendor/dep', 'third/dep']) {
       git(['clone', '-q', path.join(tmp, 'dep.git'), path.join(wt, at)], tmp);
     }
+    // SwiftPM pins a commit, not a branch: a detached HEAD that a remote has.
+    git(['checkout', '-q', '--detach'], path.join(wt, 'build/ios/SourcePackages/checkouts/dep'));
 
     // Its own ignored files are judged like the worktree's: a .env in it is a loss.
     writeFileSync(path.join(wt, 'vendor', 'dep', '.git', 'info', 'exclude'), '.env\n');
@@ -219,6 +222,8 @@ describe('prune judges each worktree', () => {
     const broken = path.join(dir, 'vendor', 'broken');
     mkdirSync(path.join(broken, '.git'), { recursive: true });
     assert.equal(await nestedLoss(broken), 'unreadable');
+    // Gone since the walk saw it.
+    assert.equal(await nestedLoss(path.join(dir, 'vendor', 'vanished')), 'unreadable');
   });
 
   test('a locked worktree is kept, even when merged', async () => {
@@ -476,6 +481,40 @@ describe('prune judges each worktree', () => {
     mkdirSync(info, { recursive: true });
     writeFileSync(path.join(info, 'attributes'), 'pubspec.lock -talea-regenerable\n');
     assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['pubspec.lock']);
+  });
+
+  test('a pattern for some of a folder\'s files does not cover the folder', async () => {
+    // A folded folder is asked about through a path two levels in, so
+    // `gen/*` (one level) cannot vouch for `gen/sub/notes.md`.
+    const dir = makeRepo('partial');
+    writeFileSync(path.join(dir, '.gitignore'), 'gen/\n');
+    writeFileSync(path.join(dir, '.gitattributes'), 'gen/* talea-regenerable\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    mkdirSync(path.join(wt, 'gen', 'sub'), { recursive: true });
+    writeFileSync(path.join(wt, 'gen', 'out.js'), '1\n');
+    writeFileSync(path.join(wt, 'gen', 'sub', 'notes.md'), 'mine\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['gen/sub/notes.md']);
+  });
+
+  test('a pattern in the developer\'s own attributes file counts too', async () => {
+    // talea's list goes in as the global attributes file; the developer's
+    // own must not be pushed out by it.
+    const dir = makeRepo('own-attrs');
+    writeFileSync(path.join(dir, '.gitignore'), '*.out\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    writeFileSync(path.join(wt, 'run.out'), 'log\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['run.out']);
+
+    const mine = path.join(tmp, 'my-attributes');
+    writeFileSync(mine, '*.out talea-regenerable\n');
+    git(['config', 'core.attributesFile', mine], dir);
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged');
   });
 
   test('a file of your own inside an ignored folder still keeps it', async () => {

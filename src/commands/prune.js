@@ -203,7 +203,10 @@ async function sameFile(a, b) {
  * local branch that no remote has. Anything git cannot read is a loss too.
  */
 export async function nestedLoss(dir) {
-  if (!(await lstat(path.join(dir, '.git'))).isDirectory()) return 'worktree';
+  // Gone or unreadable since the walk saw it: nothing to judge, so a loss.
+  const dotGit = await lstat(path.join(dir, '.git')).catch(() => null);
+  if (!dotGit) return 'unreadable';
+  if (!dotGit.isDirectory()) return 'worktree';
   // A broken `.git` must not send git up to the outer worktree's records.
   const opts = { cwd: dir, env: { GIT_CEILING_DIRECTORIES: path.dirname(dir) } };
   const status = await git(['status', '--porcelain', '-unormal'], opts);
