@@ -129,8 +129,12 @@ with the folder. If a named file is one a build writes, the lasting fix is a
 developer — never added to cover one file that is really theirs.
 
 Only `merged` worktrees are removed (every commit already on origin's default
-branch), plus the records of `missing` ones. `dirty`, `ignored`, `nested`,
-`fresh` (a branch with no commits yet), `locked` and `unmerged` are kept. A squash-merged branch reads as `unmerged`; say so rather than
+branch) and `unused` ones (no commits of their own, cut over a day ago), plus
+the records of `missing` ones. `dirty`, `ignored`, `nested`, `fresh` (no
+commits yet, cut within the day), `locked` and `unmerged` are kept. A verdict
+marked `· stale lock` was locked by a Claude Code agent that has exited; prune
+unlocks it itself. Never run `git worktree unlock` on a `locked` one to get it
+removed — a lock prune keeps is somebody's. A squash-merged branch reads as `unmerged`; say so rather than
 removing it by hand. Report a removal as **worktree removed, branch kept** — the
 branch is still there and `git worktree add` brings the checkout back. Never
 reach for `git worktree remove --force` to finish what prune refused.

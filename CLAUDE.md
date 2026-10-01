@@ -227,8 +227,19 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    mark gets the trust the repo's `.gitignore` already has — that file decides
    what is ignored at all — so a careless `** talea-regenerable` does switch
    the guard off in that repo; it is the repo author's line to write. A
-   branch whose reflog holds only its creation is kept as `fresh` — no commits
-   yet makes it trivially merged, and it is a task just started.
+   branch whose reflog holds only its creation has no commits yet, which makes
+   it trivially merged: cut under 24 hours ago it is kept as `fresh`, a task
+   just started; older, it is `unused` and removed like a merged one — clean,
+   nothing of its own, and the branch survives. Reading only the entry count
+   kept a day-old agent branch as "just started" forever.
+   A lock is never lifted except a leftover: Claude Code locks each agent
+   worktree with `claude agent <id> (pid N start <time>)`, and when no process
+   has that pid, or the one that does started at a different time (a reused
+   pid), the lock protects nothing. Such a worktree is judged as if unlocked
+   and `--apply` runs `git worktree unlock` before the unforced remove, so the
+   dirty-tree guard still holds. Any other reason, or none, is somebody's lock
+   and is never touched; anything unreadable — no `ps`, a start time that
+   does not parse — reads as held.
    **Known limit: a squash merge reads as `unmerged`.** The squashed commit is a
    new change, so neither ancestry nor `cherry` can see it; telling it apart
    needs the PR's state from GitHub, and `src/github.js` deliberately makes two

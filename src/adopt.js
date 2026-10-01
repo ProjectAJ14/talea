@@ -323,8 +323,9 @@ export function linkedWorktrees(porcelain) {
 
 /**
  * Every block of `git worktree list --porcelain`, main checkout first, as
- * `{ path, head, branch, locked, prunable }`. `branch` is the short name, or
- * null for a detached HEAD. The one parser both `adopt` and `prune` read.
+ * `{ path, head, branch, locked, lockReason, prunable }`. `branch` is the short
+ * name, or null for a detached HEAD; `lockReason` is null for a lock without
+ * one. The one parser both `adopt` and `prune` read.
  */
 export function worktreeRecords(porcelain) {
   const has = (block, key) => block.some((l) => l === key || l.startsWith(`${key} `));
@@ -338,6 +339,7 @@ export function worktreeRecords(porcelain) {
       head: value(block, 'HEAD') ?? null,
       branch: value(block, 'branch')?.replace(/^refs\/heads\//, '') ?? null,
       locked: has(block, 'locked'),
+      lockReason: value(block, 'locked') ?? null,
       prunable: has(block, 'prunable'),
     }));
 }

@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import test, { describe, before, after } from 'node:test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import path from 'node:path';
 // developer's own list. Set before the import: config.js reads home on load.
 const home = mkdtempSync(path.join(os.tmpdir(), 'talea-home-'));
 process.env.HOME = process.env.USERPROFILE = home;
-const { planRepo, applyRepo, lossyIgnored, run } = await import('../src/commands/prune.js');
+const { planRepo, applyRepo, lossyIgnored, staleLock, formatAge, run } = await import('../src/commands/prune.js');
 const { canonical } = await import('../src/adopt.js');
 
 const git = (args, cwd) =>
@@ -61,6 +61,16 @@ const repo = (dir, extra = {}) => ({
 });
 // git prints `C:/Users/runneradmin/...` where Node has `C:\Users\RUNNER~1\...`,
 // so compare canonical forms or every lookup misses on Windows.
+// The lock Claude Code puts on an agent's worktree. A pid of a process that
+// has already exited makes it a leftover.
+const agentLock = (pid, start = 'Wed Sep 30 20:22:41 2026') => `claude agent agent-x (pid ${pid} start ${start})`;
+const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid;
+// What `ps` says about this test process; Windows has no `ps`, and any string
+// reads the same there: unknown, so held.
+const ownStart = () =>
+  process.platform === 'win32' ? 'unknown' : execFileSync('ps', ['-o', 'lstart=', '-p', String(process.pid)], { encoding: 'utf8' }).trim();
+const DAY = 24 * 3600 * 1000;
+
 const entryOf = (plan, wt) => plan.worktrees.find((w) => canonical(w.path) === canonical(wt));
 const verdictOf = (plan, wt) => entryOf(plan, wt)?.verdict;
 
@@ -148,6 +158,78 @@ describe('prune judges each worktree', () => {
     assert.equal(verdictOf(plan, wt), 'locked');
     await applyRepo(dir, plan);
     assert.equal(existsSync(wt), true);
+  });
+
+  test('a merged worktree locked by an agent that has exited is unlocked and removed', async () => {
+    const dir = makeRepo('stale-lock');
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    git(['worktree', 'lock', '--reason', agentLock(deadPid()), wt], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'merged');
+    assert.equal(entryOf(plan, wt).stale, true);
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'removed');
+    assert.equal(existsSync(wt), false);
+  });
+
+  test('a stale lock on unmerged work is still kept, and stays locked', async () => {
+    const dir = makeRepo('stale-unmerged');
+    const wt = addWorktree(dir, 'feat');
+    git(['worktree', 'lock', '--reason', agentLock(deadPid()), wt], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'unmerged');
+    await applyRepo(dir, plan);
+    assert.match(git(['worktree', 'list', '--porcelain'], dir), /locked claude agent/);
+  });
+
+  test('an agent lock whose process is still running is kept, even when merged', async () => {
+    const dir = makeRepo('live-lock');
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    git(['worktree', 'lock', '--reason', agentLock(process.pid, ownStart()), wt], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'locked');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(wt), true);
+  });
+
+  test('a lock with a reason of its own is kept, merged or not', async () => {
+    const dir = makeRepo('own-lock');
+    const merged = addWorktree(dir, 'a');
+    git(['push', '-q', 'origin', 'a:main'], dir);
+    const unmerged = addWorktree(dir, 'b');
+    git(['worktree', 'lock', '--reason', 'on a USB drive', merged], dir);
+    git(['worktree', 'lock', '--reason', `pid ${deadPid()} is mine`, unmerged], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, merged), 'locked');
+    assert.equal(verdictOf(plan, unmerged), 'locked');
+    assert.equal(entryOf(plan, merged).lockReason, 'on a USB drive');
+  });
+
+  test('a stale-locked worktree deleted by hand has its record cleared', async () => {
+    const dir = makeRepo('stale-missing');
+    const wt = addWorktree(dir, 'feat');
+    git(['worktree', 'lock', '--reason', agentLock(deadPid()), wt], dir);
+    rmSync(wt, { recursive: true, force: true });
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'missing');
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'cleared');
+    assert.equal(git(['worktree', 'list', '--porcelain'], dir).includes('feat'), false);
+  });
+
+  test('a stale lock git will not lift is reported, and nothing is removed', async () => {
+    const dir = makeRepo('unlock-fails');
+    const plan = { worktrees: [{ path: path.join(tmp, 'not-a-worktree'), verdict: 'merged', stale: true, lossy: [] }] };
+    await applyRepo(dir, plan);
+    assert.equal(plan.worktrees[0].verdict, 'failed');
+    assert.ok(plan.worktrees[0].error);
   });
 
   test('a worktree deleted by hand is cleared from the record', async () => {
@@ -325,8 +407,67 @@ describe('prune judges each worktree', () => {
 
     const plan = await planRepo(repo(dir));
     assert.equal(verdictOf(plan, wt), 'fresh');
+    assert.ok(entryOf(plan, wt).age < 3600);
     await applyRepo(dir, plan);
     assert.equal(existsSync(wt), true);
+  });
+
+  test('a branch with no commits, cut over a day ago, is unused and removed', async () => {
+    const dir = makeRepo('unused');
+    const wt = path.join(`${dir}-worktrees`, 'old-task');
+    git(['worktree', 'add', '-q', '-b', 'old-task', wt], dir);
+
+    const plan = await planRepo(repo(dir), { now: Date.now() + 2 * DAY });
+    assert.equal(verdictOf(plan, wt), 'unused');
+    assert.ok(entryOf(plan, wt).age >= 2 * 24 * 3600 - 60);
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'removed');
+    assert.equal(existsSync(wt), false);
+    assert.equal(git(['branch', '--list', 'old-task'], dir).replace(/^[*+ ]+/, ''), 'old-task');
+  });
+
+  test('an unused worktree holding ignored files you made is kept as ignored', async () => {
+    const dir = makeRepo('unused-ignored');
+    writeFileSync(path.join(dir, '.gitignore'), '.env\n');
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = path.join(`${dir}-worktrees`, 'old-task');
+    git(['worktree', 'add', '-q', '-b', 'old-task', wt], dir);
+    writeFileSync(path.join(wt, '.env'), 'SECRET=1\n');
+
+    const plan = await planRepo(repo(dir), { now: Date.now() + 2 * DAY });
+    assert.equal(verdictOf(plan, wt), 'ignored');
+  });
+});
+
+describe('staleLock', () => {
+  test('only a claude agent lock can be stale', async () => {
+    assert.equal(await staleLock(null), false);
+    assert.equal(await staleLock('on a USB drive'), false);
+    assert.equal(await staleLock(agentLock(deadPid())), true);
+  });
+
+  test('a live pid is stale only when its start time proves it was reused', async () => {
+    const lock = agentLock(process.pid, 'Wed Sep 30 20:22:41 2026');
+    assert.equal(await staleLock(lock, { started: async () => 'Thu Oct  1 09:00:00 2026' }), true);
+    assert.equal(await staleLock(lock, { started: async () => 'Wed Sep 30 20:22:41 2026' }), false);
+    assert.equal(await staleLock(lock, { started: async () => '' }), false, 'no ps: cannot tell, so held');
+    assert.equal(await staleLock(agentLock(process.pid, 'sometime'), { started: async () => 'Wed Sep 30 20:22:41 2026' }), false);
+  });
+
+  test('a pid owned by another user is alive, so the lock is held', async () => {
+    const kill = () => {
+      throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+    };
+    assert.equal(await staleLock(agentLock(1), { kill }), false);
+  });
+});
+
+describe('formatAge', () => {
+  test('minutes, hours, days', () => {
+    assert.equal(formatAge(125), '2m');
+    assert.equal(formatAge(7 * 3600 + 5), '7h');
+    assert.equal(formatAge(3 * 86400 + 5), '3d');
   });
 });
 
@@ -344,6 +485,10 @@ describe('talea prune, end to end', () => {
     const dir = makeRepo('app', path.join(ws, 'me'));
     const wt = addWorktree(dir, 'feat');
     git(['push', '-q', 'origin', 'feat:main'], dir);
+    git(['worktree', 'lock', '--reason', agentLock(deadPid()), wt], dir);
+    git(['worktree', 'add', '-q', '-b', 'new-task', path.join(`${dir}-worktrees`, 'new-task')], dir);
+    const held = addWorktree(dir, 'held');
+    git(['worktree', 'lock', '--reason', 'on a USB drive', held], dir);
     writeFileSync(
       path.join(ws, 'talea.repos.json'),
       JSON.stringify({ repos: [{ name: 'app', owner: 'me', defaultBranch: 'main' }] }),
@@ -362,7 +507,9 @@ describe('talea prune, end to end', () => {
       process.chdir(cwd);
     }
     const text = out.join('\n');
-    assert.match(text, /merged/);
+    assert.match(text, /merged.* · stale lock/);
+    assert.match(text, /fresh.* · \d+m/);
+    assert.match(text, /locked: on a USB drive/);
     assert.match(text, /would free/);
     assert.equal(existsSync(wt), true, 'a dry run removed a worktree');
     assert.equal(process.exitCode ?? 0, 0);

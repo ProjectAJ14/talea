@@ -64,7 +64,7 @@ this machine needs, untick what it does not, press enter.
 ```sh
 talea sync                   # clone the new, fast-forward the rest
 talea status                 # branch, clean/dirty, ahead/behind, in one table
-talea prune                  # which merged worktrees can go, and what they hold
+talea prune                  # which finished worktrees can go, and what they hold
 talea add some-repo          # keep one more on this machine, and clone it now
 talea select                 # reopen the checklist and change the whole list
 talea pick some-repo          # keep that one — an unknown name opens the checklist
@@ -78,15 +78,19 @@ ones you forgot about can hold gigabytes long after their branches merged.
 
 ```sh
 talea prune                  # every linked worktree, its verdict and its size
-talea prune --apply          # remove the merged ones
+talea prune --apply          # remove the merged and unused ones
 ```
 
 A worktree is `merged` when every commit on it is on `origin/<default branch>`
 — directly, or as an identical change after a rebase merge. `dirty`, `locked`
 and `unmerged` ones are kept, and so is a `nested` one — merged, but with
 another worktree or repo inside its folder, which removing it would delete; `missing` ones (folder already gone) have their
-record cleared. A `fresh` one — a branch with no commits yet — is kept too: it
-looks merged, but it is a task just started. The removal is `git worktree
+record cleared. A branch with no commits yet looks merged: cut in the last day
+it is `fresh` and kept, a task just started; older, it is `unused` and removed,
+and the verdict shows its age. A lock is kept, unless it is one Claude Code left
+on an agent worktree whose process has exited — then the verdict says `stale
+lock`, and `--apply` unlocks it before removing it. The dim line under a locked
+row shows the lock's reason. The removal is `git worktree
 remove`, never forced, and the **branch is kept**, so `git worktree add` brings
 any of them back. git deletes ignored files without asking, so a merged worktree
 holding ignored files that are not build output — a `.env`, notes — is kept as
@@ -231,11 +235,12 @@ A command that takes no names refuses a stray word instead of ignoring it.
   reported for you to deal with.
 - **It will not move you off your branch.** If you are on a feature branch, that
   is where the work is. It fast-forwards the branch you are on, or leaves it.
-- **It will not delete anything — except a merged worktree you asked it to.**
+- **It will not delete anything — except a finished worktree you asked it to.**
   Not a duplicate, not a checkout you removed from the list, not a folder in
   the way. It moves things and tells you where. `talea prune --apply` is the
   one removal, and it only takes a worktree folder whose commits are all on
-  origin's default branch — never a dirty or locked one, never the branch.
+  origin's default branch (or that has none of its own and sat untouched a
+  day) — never a dirty one, never one somebody locked, never the branch.
 
 ## Auth
 

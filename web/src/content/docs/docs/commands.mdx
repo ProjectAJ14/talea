@@ -80,14 +80,14 @@ talea status --all              # the whole catalogue
 
 ```bash
 talea prune                     # the plan: every linked worktree and its verdict
-talea prune --apply             # remove the merged ones
+talea prune --apply             # remove the merged and unused ones
 talea prune eklavya             # one repo — same as -r eklavya
 talea prune --all               # the whole catalogue
 ```
 
 `-g` · `-r` · `--all` · `--apply` · `--with-ignored` · `-j`
 
-A worktree is removed only when every commit on it is already on `origin/<default branch>`, and only with `--apply`. The branch is kept. [Every day](/docs/every-day/#talea-prune) has the verdicts.
+A worktree is removed only when every commit on it is already on `origin/<default branch>` — or it has none of its own and is over a day old — and only with `--apply`. The branch is kept. [Every day](/docs/every-day/#talea-prune) has the verdicts.
 
 ### talea select
 
