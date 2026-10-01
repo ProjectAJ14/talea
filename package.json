@@ -22,8 +22,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include=bin/** --test-coverage-include=src/** --test-coverage-include=scripts/** --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100"
+    "test": "node scripts/test.mjs",
+    "coverage": "node scripts/test.mjs --experimental-test-coverage --test-coverage-include=bin/** --test-coverage-include=src/** --test-coverage-include=scripts/** --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100"
   },
   "keywords": [
     "github",
