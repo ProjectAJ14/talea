@@ -15,6 +15,12 @@ There is nothing to install. `npm test` runs bare `node --test` — **not** a gl
 `node --test "test/*.test.js"` finds nothing on Node 20, the declared minimum,
 and unquoted it needs a globbing shell that cmd.exe is not.
 
+`npm test` runs it through `scripts/test.mjs`, which points `TMPDIR`/`TEMP`/`TMP`
+at one folder for the run and removes it at the end. Tests build fixtures under
+`os.tmpdir()`, a failing test never reaches its `after`, and git children write
+there too: repeated runs once left 83 GB of `talea-*` folders on a laptop.
+Cleaning up per test is still good manners; the wrapper is what guarantees it.
+
 **Coverage is 100% — lines, branches and functions — and CI enforces it.**
 `npm run coverage` is the same run with Node's own coverage and thresholds, so
 it stays inside the no-dependencies rule; the `coverage` job in `ci.yml` runs
