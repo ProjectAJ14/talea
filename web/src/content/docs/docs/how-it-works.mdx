@@ -44,6 +44,6 @@ The palette is the same verdigris ramp the website is built on, so the CLI and t
 
 ### Cross-platform care
 
-talea runs on macOS, Linux and Windows, and the tests run on all three across Node 20, 22 and 24 on every push.
+talea runs on macOS, Linux and Windows, and the tests run on all three across Node 20, 22 and 24 on every push. They cover every line, branch and function: CI fails a change that leaves one untested.
 
 Treat any new `path.relative`, `startsWith` or `includes` on two paths as a Windows bug until proven otherwise. Node hands out 8.3 short names out of `TEMP` while git prints the long ones, and URL normalisation has to unify `\` with `/` — or a checkout stops matching its own catalogue entry and gets cloned a second time.

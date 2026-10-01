@@ -173,6 +173,8 @@ Mark it in the catalogue and talea leaves it completely alone:
 Without this, two tools that both organise repositories will each drag the same
 checkout back to where it thinks it belongs, on every run. Use it for repos
 inside another workspace manager's tree, vendored checkouts, and SDK caches.
+Naming an ignored repo with `-r` does not override it: talea skips it and
+says why.
 
 ## What travels, and what does not
 
@@ -251,10 +253,12 @@ machine behind a corporate proxy or VPN where Node's own HTTPS would fail.
 git clone git@github.com:ProjectAJ14/talea.git
 cd talea
 npm test          # no install step — there are no dependencies
+npm run coverage  # the same tests, failing below 100% coverage (Node 22.8+)
 node bin/talea.js --help
 ```
 
-Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every push.
+Tests run on macOS, Linux and Windows across Node 20, 22 and 24 on every push,
+and CI fails any change that leaves a line, branch or function untested.
 
 The website lives in `web/` and is its own thing — Astro, deployed to Firebase
 Hosting on a push to `main` that touches it. `web/CLAUDE.md` is how to work on

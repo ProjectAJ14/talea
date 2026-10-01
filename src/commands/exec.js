@@ -23,7 +23,7 @@ Options
 Repos are processed one at a time so the output stays readable and attributable.
 `;
 
-function runOne(command, args, cwd) {
+export function runOne(command, args, cwd) {
   return new Promise((resolve) => {
     // shell:true so developers can write `talea exec -- yarn build && yarn test`
     // and get the shell semantics they expect on their own platform.

@@ -152,7 +152,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       }
       counts.failed++;
       view.set(repo.name, 'fail', 'fetch failed');
-      view.note(repo.name, fetched.stderr.split('\n')[0] ?? 'fetch failed');
+      view.note(repo.name, fetched.stderr.split('\n')[0]);
       return;
     }
 
@@ -190,7 +190,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       counts.failed++;
       const reason = /diverge|non-fast-forward|not possible to fast-forward/i.test(res.stderr)
         ? 'diverged from origin — needs a manual merge or rebase'
-        : (res.stderr.split('\n')[0] ?? 'fast-forward failed');
+        : res.stderr.split('\n')[0];
       view.set(repo.name, 'fail', `${branch} — ${reason}`);
       return;
     }

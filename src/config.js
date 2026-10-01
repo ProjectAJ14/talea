@@ -36,7 +36,10 @@ const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 /** Machine-wide state: the update-check stamp, the gist id, the workspace list. Not per workspace. */
 export function readUserState() {
   try {
-    return readJson(USER_STATE);
+    // A readable `null` or `[]` is not a state either, and every caller reads a
+    // field straight off what this returns.
+    const state = readJson(USER_STATE);
+    return state && typeof state === 'object' && !Array.isArray(state) ? state : {};
   } catch {
     return {};
   }
@@ -63,9 +66,12 @@ export function manifestCandidates(workspaceRoot) {
 }
 
 export function loadManifest(workspaceRoot) {
-  const file = manifestCandidates(workspaceRoot).find((f) => existsSync(f));
-  const manifest = file ? readJson(file) : readJson(PACKAGED_MANIFEST);
-  manifest.__source = file ?? PACKAGED_MANIFEST;
+  // The packaged catalogue is the last candidate and always ships, so it is
+  // the fallback rather than something to look for.
+  const file =
+    manifestCandidates(workspaceRoot).slice(0, -1).find((f) => existsSync(f)) ?? PACKAGED_MANIFEST;
+  const manifest = readJson(file);
+  manifest.__source = file;
   manifest.repos ??= [];
   manifest.groups ??= {};
   return manifest;

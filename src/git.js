@@ -124,7 +124,7 @@ function clearStaleLocks(stderr, cwd) {
 // Nothing under `refs/heads/` or `refs/stash` is ever touched here.
 const CANNOT_LOCK = /cannot lock ref '(refs\/remotes\/[^']+)'/g;
 
-async function dropCollidingRefs(stderr, opts) {
+async function dropCollidingRefs(stderr, opts, run) {
   // A lock file that is still on disk means a live git owns it — the age check
   // above already declined to remove it, so do not go behind its back either.
   if (lockPathsIn(stderr, opts?.cwd).some(existsSync)) return 0;
@@ -132,9 +132,9 @@ async function dropCollidingRefs(stderr, opts) {
   const named = new Set([...String(stderr).matchAll(CANNOT_LOCK)].map((m) => m[1]));
   let dropped = 0;
   for (const ref of named) {
-    const { code: exists } = await git(['show-ref', '--verify', '--quiet', ref], opts);
+    const { code: exists } = await run(['show-ref', '--verify', '--quiet', ref], opts);
     if (exists !== 0) continue; // already gone; not progress, so do not loop on it
-    const { code } = await git(['update-ref', '-d', ref], opts);
+    const { code } = await run(['update-ref', '-d', ref], opts);
     if (code === 0) dropped++;
   }
   return dropped;
@@ -145,17 +145,18 @@ async function dropCollidingRefs(stderr, opts) {
  * debris from a killed git, and a case-collision between two remote branches.
  * Retries only while it is actually clearing something, so a genuine failure
  * returns after the first run and a lock a live git holds is reported rather
- * than stolen.
+ * than stolen. `run` is `git`, and a parameter only so a test can script the
+ * failures a case-sensitive filesystem never produces.
  */
-async function unlocking(args, opts) {
-  let res = await git(args, opts);
+export async function unlocking(args, opts, run = git) {
+  let res = await run(args, opts);
   // Git reports one collision per run, and a repo with years of branches can
   // have several, so the cap is per-repo patience rather than per-failure.
   for (let i = 0; i < 10 && res.code !== 0; i++) {
     const healed =
-      clearStaleLocks(res.stderr, opts?.cwd) || (await dropCollidingRefs(res.stderr, opts));
+      clearStaleLocks(res.stderr, opts?.cwd) || (await dropCollidingRefs(res.stderr, opts, run));
     if (!healed) break;
-    res = await git(args, opts);
+    res = await run(args, opts);
   }
   return res;
 }

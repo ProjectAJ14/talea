@@ -22,7 +22,7 @@ import {
   writeUserState,
 } from './config.js';
 import { isRepo } from './git.js';
-import { c, fail } from './log.js';
+import { c, fail, icon } from './log.js';
 
 const csv = (v) =>
   (Array.isArray(v) ? v : [v])
@@ -186,13 +186,21 @@ export function selectRepos(manifest, opts = {}, pool = manifest.repos) {
 
   // An explicit -r reaches past the machine's selection on purpose: naming a
   // repo is a request for that repo, not a request filtered by what was ticked
-  // six months ago.
-  let repos = names.length ? manifest.repos : pool;
-  if (groups.length) repos = repos.filter((r) => groups.includes(repoGroup(r).toLowerCase()));
+  // six months ago. It never reaches past `ignore: true`, though — another tool
+  // owns that checkout — so an ignored repo comes through only when the
+  // caller's pool already holds it, as `list`'s whole-catalogue view does.
+  // It is a known name, not a typo, so it is explained rather than refused.
+  let repos = pool;
   if (names.length) {
     const wanted = new Set(names.map((n) => n.toLowerCase()));
-    repos = repos.filter((r) => wanted.has(r.name.toLowerCase()));
+    const named = manifest.repos.filter((r) => wanted.has(r.name.toLowerCase()));
+    const owned = named.filter((r) => r.ignore && !pool.includes(r));
+    for (const r of owned) {
+      console.error(`${icon.warn} ${r.name} is marked ignore: true — another tool owns that checkout, so talea leaves it alone.`);
+    }
+    repos = named.filter((r) => !owned.includes(r));
   }
+  if (groups.length) repos = repos.filter((r) => groups.includes(repoGroup(r).toLowerCase()));
   return repos;
 }
 

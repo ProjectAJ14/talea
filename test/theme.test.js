@@ -3,6 +3,7 @@
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 
 import {
   centerVisible,
@@ -160,74 +161,77 @@ test('a run with nothing but skips does not claim ALL CLEAR', () => {
 
 // ── Colour gating ──────────────────────────────────────────────
 // `useColor` and `trueColor` are decided once, at module evaluation, from the
-// environment. A fresh copy per case is the only way to exercise both branches;
-// the query string defeats the ESM module cache.
+// environment, so each case loads theme.js in a child process under its own
+// env. A child and not a `?case=N` import: coverage counts a query-string copy
+// as a separate file, and the real one would read as untested.
 
-let bust = 0;
-async function themeWith(env) {
-  const saved = {};
+function themeWith(env) {
+  const childEnv = { ...process.env };
   for (const k of ['NO_COLOR', 'FORCE_COLOR', 'COLORTERM', 'TERM']) {
-    saved[k] = process.env[k];
-    if (env[k] === undefined) delete process.env[k];
-    else process.env[k] = env[k];
+    if (env[k] === undefined) delete childEnv[k];
+    else childEnv[k] = env[k];
   }
-  try {
-    return await import(`../src/theme.js?case=${bust++}`);
-  } finally {
-    for (const [k, v] of Object.entries(saved)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
+  const url = new URL('../src/theme.js', import.meta.url).href;
+  const script = `const t = await import(${JSON.stringify(url)});
+    process.stdout.write(JSON.stringify({
+      useColor: t.useColor, ok: t.paint.ok('x'), fail: t.paint.fail('x'),
+      bold: t.bold('x'), dim: t.dim('x'), glyphOk: t.glyph.ok,
+      strippedOk: t.stripAnsi(t.paint.ok('x')),
+    }));`;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: childEnv,
+    encoding: 'utf8',
+  });
+  return JSON.parse(out);
 }
 
-test('NO_COLOR strips every escape but keeps the glyphs', async () => {
-  const t = await themeWith({ NO_COLOR: '1', FORCE_COLOR: '1' });
+test('NO_COLOR strips every escape but keeps the glyphs', () => {
+  const t = themeWith({ NO_COLOR: '1', FORCE_COLOR: '1' });
   assert.equal(t.useColor, false, 'NO_COLOR must win over FORCE_COLOR');
-  assert.equal(t.paint.ok('done'), 'done');
-  assert.equal(t.bold('x'), 'x');
-  assert.equal(t.dim('x'), 'x');
+  assert.equal(t.ok, 'x');
+  assert.equal(t.bold, 'x');
+  assert.equal(t.dim, 'x');
   // The glyph is content, not decoration — a log with colour stripped still has
   // to say which repos failed.
-  assert.equal(t.glyph.ok, '▣');
+  assert.equal(t.glyphOk, '▣');
 });
 
-test('TERM=dumb is treated like NO_COLOR', async () => {
-  const t = await themeWith({ TERM: 'dumb' });
+test('TERM=dumb is treated like NO_COLOR', () => {
+  const t = themeWith({ TERM: 'dumb' });
   assert.equal(t.useColor, false);
-  assert.equal(t.paint.fail('x'), 'x');
+  assert.equal(t.fail, 'x');
 });
 
-test('FORCE_COLOR turns colour on through a pipe', async () => {
+test('FORCE_COLOR turns colour on through a pipe', () => {
   // node --test gives us no TTY, so this is the only way the suite (or
   // `talea ... | less -R`) sees colour at all.
-  const t = await themeWith({ FORCE_COLOR: '1' });
+  const t = themeWith({ FORCE_COLOR: '1' });
   assert.equal(t.useColor, true);
-  assert.notEqual(t.paint.ok('x'), 'x');
+  assert.notEqual(t.ok, 'x');
 });
 
-test('truecolor is gated on COLORTERM, with a basic-16 fallback', async () => {
-  const full = await themeWith({ FORCE_COLOR: '1', COLORTERM: 'truecolor' });
-  const basic = await themeWith({ FORCE_COLOR: '1', COLORTERM: undefined });
+test('truecolor is gated on COLORTERM, with a basic-16 fallback', () => {
+  const full = themeWith({ FORCE_COLOR: '1', COLORTERM: 'truecolor' });
+  const basic = themeWith({ FORCE_COLOR: '1', COLORTERM: undefined });
 
-  assert.match(full.paint.ok('x'), /\x1b\[38;2;\d+;\d+;\d+m/, 'expected 24-bit');
-  assert.doesNotMatch(basic.paint.ok('x'), /38;2;/, 'must not emit 24-bit without COLORTERM');
-  assert.match(basic.paint.ok('x'), /\x1b\[\d\dm/, 'expected a basic SGR code');
+  assert.match(full.ok, /\x1b\[38;2;\d+;\d+;\d+m/, 'expected 24-bit');
+  assert.doesNotMatch(basic.ok, /38;2;/, 'must not emit 24-bit without COLORTERM');
+  assert.match(basic.ok, /\x1b\[\d\dm/, 'expected a basic SGR code');
 
   // Same visible text either way — only the escapes differ.
-  assert.equal(full.stripAnsi(full.paint.ok('x')), 'x');
-  assert.equal(basic.stripAnsi(basic.paint.ok('x')), 'x');
+  assert.equal(full.strippedOk, 'x');
+  assert.equal(basic.strippedOk, 'x');
 });
 
-test('both colour paths close with the same reset, so nesting composes', async () => {
+test('both colour paths close with the same reset, so nesting composes', () => {
   // A full reset (\x1b[0m) also clears bold and dim, so a colour nested inside
   // dim() would un-dim the rest of the line on one terminal and not the other —
   // a rendering difference gated on an env var, which is the worst kind to
   // reproduce.
   for (const colorterm of ['truecolor', undefined]) {
-    const t = await themeWith({ FORCE_COLOR: '1', COLORTERM: colorterm });
-    assert.ok(t.paint.ok('x').endsWith('\x1b[39m'), `COLORTERM=${colorterm} used a different reset`);
-    assert.doesNotMatch(t.paint.ok('x'), /\x1b\[0m/, `COLORTERM=${colorterm} emitted a full reset`);
+    const t = themeWith({ FORCE_COLOR: '1', COLORTERM: colorterm });
+    assert.ok(t.ok.endsWith('\x1b[39m'), `COLORTERM=${colorterm} used a different reset`);
+    assert.doesNotMatch(t.ok, /\x1b\[0m/, `COLORTERM=${colorterm} emitted a full reset`);
   }
 });
 

@@ -44,7 +44,7 @@ The remote URL is the identity. A folder that merely shares a name is listed and
 
 ### It will not touch an ignored checkout
 
-`ignore: true` on a catalogue entry means another tool owns that checkout. No command touches it — not `sync`, not `adopt`, not an explicit selection.
+`ignore: true` on a catalogue entry means another tool owns that checkout. No command touches it — not `sync`, not `adopt`, not an explicit selection, not `-r`. Naming it with `-r` skips it with a note saying why.
 
 ### It will not quietly do nothing
 

@@ -143,7 +143,7 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     if (failedMoves.has(winner) || !existsSync(winner)) {
       warn(
         `${c.bold(plan.repo.name)} second copy left where it is — ` +
-          `${path.relative(root, plan.keeping) || plan.keeping} is not in place\n    ${c.dim(shorten(plan.from))}`,
+          `${where(root, plan.keeping)} is not in place\n    ${c.dim(shorten(plan.from))}`,
       );
       continue;
     }
@@ -156,13 +156,13 @@ export async function applyMoves(root, moves, parks = [], manifest) {
       fail(`${c.bold(plan.repo.name)} second copy\n    ${c.dim(res.message)}`);
       continue;
     }
-    parked.push({ ...plan, to: res.to ?? plan.to });
+    parked.push({ ...plan, to: res.to });
     const landed = parked[parked.length - 1];
     ok(
       `${c.bold(plan.repo.name)} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, landed.to))}`,
     );
     plain(
-      `    ${c.dim(glyph.pending)} second copy — ${c.bold(path.relative(root, plan.keeping) || plan.keeping)} is the one in use`,
+      `    ${c.dim(glyph.pending)} second copy — ${c.bold(where(root, plan.keeping))} is the one in use`,
     );
     plain(
       `    ${c.dim(glyph.pending)} ${
@@ -209,7 +209,7 @@ async function trackedAmong(files) {
 async function reportLeftovers(root, applied) {
   const rewritten = applied.results
     .filter((r) => r.ok)
-    .flatMap((r) => r.repairs?.rewritten?.map((h) => h.file) ?? []);
+    .flatMap((r) => r.repairs.rewritten.map((h) => h.file));
 
   const tracked = await trackedAmong(rewritten);
   if (tracked.length) {
@@ -231,7 +231,7 @@ async function reportLeftovers(root, applied) {
     plain('');
     heading('Still pointing at the old location — these need you');
     for (const l of needsYou) {
-      plain(`  ${c.yellow('!')} ${c.bold(l.what)} ${c.dim(l.detail ?? '')}`);
+      plain(`  ${c.yellow('!')} ${c.bold(l.what)} ${c.dim(l.detail)}`);
       plain(`      ${c.dim(l.why)}`);
     }
   }
@@ -299,6 +299,9 @@ function repairPaths(root, plan) {
   // diff to review, and finding it by surprise later is worse.
   return { done, rewritten };
 }
+
+/** A path relative to the workspace, or absolute when it IS the workspace. */
+const where = (root, p) => path.relative(root, p) || p;
 
 // os.homedir(), not process.env.HOME: HOME is unset on Windows, and
 // String.replace(undefined, '~') would replace the literal text "undefined".
@@ -429,7 +432,7 @@ export async function run(opts) {
         `  ${c.yellow('⇉')} ${c.bold(p.repo.name)} ${c.dim('— second copy')}\n` +
           `      from  ${c.dim(shorten(p.from))}\n` +
           `      to    ${c.dim(path.relative(root, p.to))}\n` +
-          `      keep  ${c.dim(path.relative(root, p.keeping) || p.keeping)}` +
+          `      keep  ${c.dim(where(root, p.keeping))}` +
           (p.holds.length ? `\n      ${c.yellow(`holds ${p.holds.join(' and ')}`)}` : ''),
       );
     }
@@ -468,7 +471,7 @@ export async function run(opts) {
       warn(
         `${c.bold(p.repo.name)} left alone — matched on name only, not on remote\n` +
           `    ${c.dim(shorten(p.from))}\n` +
-          `    ${c.dim(p.originUrl ?? 'no origin')}`,
+          `    ${c.dim(p.originUrl)}`,
       );
     }
     plain(c.dim('  Check the remote, then re-run with --loose or -r to include it.'));

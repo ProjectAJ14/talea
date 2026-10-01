@@ -60,6 +60,10 @@ export function workspaceTarget(positional, manifest) {
   return path.join(os.homedir(), manifest?.workspace || 'Workspace');
 }
 
+// Swappable so a test can stand in for the GitHub call and the clone run —
+// `discover` needs a token and a network, and neither belongs in `npm test`.
+export const deps = { discover, sync };
+
 export async function run(opts, positionals = []) {
   const target = workspaceTarget(positionals[0], loadManifest(null));
 
@@ -114,7 +118,7 @@ export async function run(opts, positionals = []) {
   if (!manifest.repos.length) {
     info('The catalogue is empty — discovering your repos from GitHub.');
     plain('');
-    await discover({ ...opts, apply: true });
+    await deps.discover({ ...opts, apply: true });
     manifest = loadManifest(target);
     if (!manifest.repos.length) {
       warn('Still nothing in the catalogue. Nothing to clone.');
@@ -148,7 +152,7 @@ export async function run(opts, positionals = []) {
   const back = process.cwd();
   try {
     process.chdir(target);
-    await sync(opts);
+    await deps.sync(opts);
   } finally {
     process.chdir(back);
   }
