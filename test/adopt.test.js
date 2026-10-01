@@ -210,20 +210,22 @@ describe('moveBlockers and canonical', () => {
 });
 
 describe('worktree records', () => {
-  test('locked, detached and prunable are all read', () => {
+  test('locked (with its reason), detached and prunable are all read', () => {
     const porcelain = [
       'worktree /r\nHEAD a\nbranch refs/heads/main',
       'worktree /r-worktrees/x\nHEAD b\ndetached\nlocked reason',
       'worktree /gone\nHEAD c\nbranch refs/heads/g\nprunable gitdir points nowhere',
+      'worktree /bare-lock\nHEAD d\nbranch refs/heads/d\nlocked',
       'not a worktree block',
     ].join('\n\n');
     assert.deepEqual(A.worktreeRecords(porcelain), [
-      { path: '/r', head: 'a', branch: 'main', locked: false, prunable: false },
-      { path: '/r-worktrees/x', head: 'b', branch: null, locked: true, prunable: false },
-      { path: '/gone', head: 'c', branch: 'g', locked: false, prunable: true },
+      { path: '/r', head: 'a', branch: 'main', locked: false, lockReason: null, prunable: false },
+      { path: '/r-worktrees/x', head: 'b', branch: null, locked: true, lockReason: 'reason', prunable: false },
+      { path: '/gone', head: 'c', branch: 'g', locked: false, lockReason: null, prunable: true },
+      { path: '/bare-lock', head: 'd', branch: 'd', locked: true, lockReason: null, prunable: false },
     ]);
     assert.deepEqual(A.worktreeRecords('worktree /r'), [
-      { path: '/r', head: null, branch: null, locked: false, prunable: false },
+      { path: '/r', head: null, branch: null, locked: false, lockReason: null, prunable: false },
     ]);
   });
 

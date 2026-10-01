@@ -58,7 +58,8 @@ Worktrees pile up. Each one carries its own `node_modules`, `build` or `.dart_to
 | `dirty` | modified or untracked files | kept |
 | `ignored` | merged, but holds ignored files that are not build output, like a `.env` | kept, unless `--with-ignored` |
 | `nested` | merged, but another worktree or repo sits inside its folder | kept |
-| `fresh` | a branch with no commits of its own yet — a task just started | kept |
+| `unused` | a branch with no commits of its own, cut more than a day ago | removed |
+| `fresh` | the same, cut within the last day — a task just started | kept |
 | `locked` | `git worktree lock`ed | kept |
 | `unmerged` | anything else | kept |
 
@@ -66,6 +67,8 @@ Worktrees pile up. Each one carries its own `node_modules`, `build` or `.dart_to
 talea prune                  # the plan, with sizes; changes nothing
 talea prune --apply          # do it
 ```
+
+`fresh` and `unused` show the branch's age beside the verdict (`fresh · 7h`). A lock is kept unless Claude Code left it: it locks each agent's worktree with `claude agent <id> (pid N start <time>)`, and once that process has exited the worktree is judged as if unlocked, marked `· stale lock`, and `--apply` unlocks it before removing it. Any other lock is never touched. The dim line under a locked row shows its reason.
 
 The removal is `git worktree remove`, never forced, so git itself refuses a tree with uncommitted work. **The branch is kept** — only the folder goes, and `git worktree add` brings it back. git deletes ignored files without asking, so a worktree holding ones that are not build output is kept as `ignored` and the plan names them. Move them out, or add `--with-ignored`. A file byte-identical to the main checkout's copy at the same path does not count — it survives the removal — and a folder of ignored files is judged file by file, so a `.claude/` holding only a seeded settings file keeps nothing.
 

@@ -8,6 +8,7 @@
 // never deleted — it costs nothing, and `git worktree add` brings the checkout
 // back. What a removal really frees is node_modules, build and .dart_tool.
 
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -36,7 +37,8 @@ outside the workspace count too — they belong to the repo.
   dirty      modified or untracked files                  ${c.dim('→ kept')}
   ignored    merged, but holds ignored files you made     ${c.dim('→ kept')}
   nested     merged, but another worktree or repo is inside ${c.dim('→ kept')}
-  fresh      a branch with no commits of its own yet      ${c.dim('→ kept')}
+  unused     no commits of its own, untouched for a day   ${c.dim('→ removed')}
+  fresh      the same, but cut less than a day ago        ${c.dim('→ kept')}
   locked     \`git worktree lock\`ed                        ${c.dim('→ kept')}
   unmerged   anything else                                ${c.dim('→ kept')}
 
@@ -60,8 +62,15 @@ or on origin's default:
 The table shows each worktree's folder name; its full path is the dim line
 under the row.
 
-A ${c.bold('fresh')} worktree is one whose branch has never moved since it was created:
-no commits yet, so it looks merged, but it is a task just started.
+A branch that has never moved since it was created has no commits yet, so it
+looks merged. Cut in the last day it is a task just started: ${c.bold('fresh')}, kept.
+Older, it is ${c.bold('unused')} and removed like a merged one. The verdict shows its age.
+
+A lock is kept unless it is a leftover: Claude Code locks each agent worktree
+with \`claude agent <id> (pid N start <time>)\`, and when that process has
+exited the lock protects nothing. Such a worktree is judged as if unlocked
+and the verdict says ${c.bold('stale lock')}; --apply unlocks it before removing it.
+Any other lock is never touched. The lock's reason is on the dim line.
 
 A repo with no default branch recorded is skipped: run \`talea discover\`.
 
@@ -210,20 +219,71 @@ export function formatBytes(n) {
   return `${i === 0 ? n : n.toFixed(1)} ${units[i]}`;
 }
 
-/** One worktree's verdict. The order matters: a locked record is never touched. */
-async function judge(repoDir, wt, base) {
-  if (wt.locked) return 'locked';
-  if (wt.prunable || !existsSync(wt.path)) return 'missing';
-  if (await isDirty(wt.path)) return 'dirty';
-  if (!(await isMerged(repoDir, wt.head, base))) return 'unmerged';
-  // A branch cut a minute ago has no commits of its own, so it is trivially
-  // "merged" — but it is a task just started, not one finished. Its reflog
-  // still holds only the creation entry; any commit, reset or pull adds one.
+// Removed by --apply. Everything else is kept.
+const REMOVABLE = new Set(['merged', 'unused']);
+// How long a branch with no commits counts as a task just started.
+const FRESH_FOR = 24 * 3600;
+
+/**
+ * One worktree's verdict, and for a branch with no commits, its age in
+ * seconds. A held lock is decided by the caller, before this is reached.
+ */
+async function judge(repoDir, wt, base, now) {
+  if (wt.prunable || !existsSync(wt.path)) return { verdict: 'missing' };
+  if (await isDirty(wt.path)) return { verdict: 'dirty' };
+  if (!(await isMerged(repoDir, wt.head, base))) return { verdict: 'unmerged' };
+  // A branch with no commits of its own is trivially "merged". Cut a minute
+  // ago it is a task just started; cut days ago and never touched, with the
+  // folder clean, it is a task nobody started, and nothing goes with it. Its
+  // reflog still holds only the creation entry; any commit, reset or pull adds one.
   if (wt.branch) {
-    const log = await git(['reflog', 'show', '--format=%H', `refs/heads/${wt.branch}`], { cwd: repoDir });
-    if (log.code === 0 && lines(log.stdout).length === 1) return 'fresh';
+    const log = await git(['reflog', 'show', '--format=%ct', `refs/heads/${wt.branch}`], { cwd: repoDir });
+    const entries = lines(log.stdout);
+    if (log.code === 0 && entries.length === 1) {
+      const age = Math.max(0, Math.floor(now / 1000) - Number(entries[0]));
+      return { verdict: age < FRESH_FOR ? 'fresh' : 'unused', age };
+    }
   }
-  return 'merged';
+  return { verdict: 'merged' };
+}
+
+// Claude Code locks the worktree it makes for each agent with the agent's pid
+// and that process's start time, as `ps -o lstart` prints it:
+//   claude agent agent-a080e8ffc88a848e9 (pid 27815 start Wed Sep 30 20:22:41 2026)
+const AGENT_LOCK = /^claude agent \S+ \(pid (\d+) start (.+)\)$/;
+
+/** `ps`'s start time for a pid, or '' when it cannot say (no `ps`, as on Windows). */
+const processStart = (pid) =>
+  new Promise((resolve) => {
+    execFile('ps', ['-o', 'lstart=', '-p', String(pid)], (_err, out) => resolve(String(out).trim()));
+  });
+
+/**
+ * True when a lock is a leftover: it names an agent process that has exited.
+ * Any other reason — one typed into `git worktree lock --reason`, or none — is
+ * somebody's, and never stale. A live pid is stale only if it was reused: both
+ * start times parse and differ. Anything this cannot read reads as held.
+ */
+export async function staleLock(reason, { started = processStart, kill = (pid, sig) => process.kill(pid, sig) } = {}) {
+  const m = AGENT_LOCK.exec(reason ?? '');
+  if (!m) return false;
+  const pid = Number(m[1]);
+  try {
+    kill(pid, 0); // signal 0 sends nothing; it only asks whether the pid exists
+  } catch (e) {
+    // EPERM: it exists, owned by somebody else.
+    return e.code === 'ESRCH';
+  }
+  const want = Date.parse(m[2]);
+  const have = Date.parse(await started(pid));
+  return !Number.isNaN(want) && !Number.isNaN(have) && want !== have;
+}
+
+/** 12m, 7h, 3d. */
+export function formatAge(seconds) {
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
 }
 
 async function isMerged(repoDir, head, base) {
@@ -238,10 +298,11 @@ async function isMerged(repoDir, head, base) {
 /**
  * Fetch, then judge every linked worktree of one repo against its default
  * branch. `{ skip }` or `{ fail }` for a repo that cannot be judged, otherwise
- * `{ base, worktrees: [{ path, branch, verdict, size, lossy }] }`.
- * `withIgnored` lets a merged worktree go even with lossy ignored files in it.
+ * `{ base, worktrees: [{ path, branch, verdict, age, stale, lockReason, size, lossy }] }`.
+ * `withIgnored` lets a merged worktree go even with lossy ignored files in it;
+ * `now` is the clock `fresh` is measured against.
  */
-export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
+export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.now() } = {}) {
   const listed = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
   if (listed.code !== 0) return { fail: `git worktree list failed: ${listed.stderr}` };
   // The first record is the main checkout. It is the repo, and never a candidate.
@@ -264,17 +325,19 @@ export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
 
   const worktrees = [];
   for (const wt of linked) {
-    let verdict = await judge(dir, wt, base);
+    // A lock is never second-guessed except a leftover one (see staleLock).
+    const stale = wt.locked && (await staleLock(wt.lockReason));
+    let { verdict, age } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
     const { size, nested } = verdict === 'missing' ? { size: 0, nested: [] } : await measure(wt.path);
-    if (verdict === 'merged' && nested.length) verdict = 'nested';
+    if (REMOVABLE.has(verdict) && nested.length) verdict = 'nested';
     let lossy = [];
-    if (verdict === 'merged') {
+    if (REMOVABLE.has(verdict)) {
       lossy = await userIgnored(wt.path, dir, base);
       // git deletes ignored files without asking, and `--apply` plans and
       // removes in one run — so a warning here would arrive after the loss.
       if (lossy.length && !withIgnored) verdict = 'ignored';
     }
-    worktrees.push({ path: wt.path, branch: wt.branch, verdict, size, lossy });
+    worktrees.push({ path: wt.path, branch: wt.branch, verdict, age, stale, lockReason: wt.lockReason, size, lossy });
   }
   return { base, worktrees };
 }
@@ -284,13 +347,22 @@ export async function planRepo({ repo, dir }, { withIgnored = false } = {}) {
  * happened — `removed`, `cleared`, or `failed` with an `error`.
  */
 export async function applyRepo(dir, plan) {
+  // A stale lock is lifted first: `remove` and `prune` both skip a locked
+  // record, and lifting it is what keeps the removal unforced.
+  const unlock = async (wt) => {
+    if (!wt.stale) return true;
+    const res = await git(['worktree', 'unlock', wt.path], { cwd: dir });
+    if (res.code !== 0) Object.assign(wt, { verdict: 'failed', error: `git worktree unlock failed: ${res.stderr}` });
+    return res.code === 0;
+  };
   for (const wt of plan.worktrees) {
-    if (wt.verdict !== 'merged') continue;
+    if (!REMOVABLE.has(wt.verdict) || !(await unlock(wt))) continue;
     // Never --force: git refusing is the last guard on uncommitted work.
     const res = await git(['worktree', 'remove', wt.path], { cwd: dir });
     if (res.code === 0) wt.verdict = 'removed';
     else Object.assign(wt, { verdict: 'failed', error: res.stderr || 'git refused' });
   }
+  for (const wt of plan.worktrees) if (wt.verdict === 'missing') await unlock(wt);
   if (plan.worktrees.some((w) => w.verdict === 'missing')) {
     const res = await git(['worktree', 'prune'], { cwd: dir });
     for (const wt of plan.worktrees) {
@@ -304,6 +376,7 @@ export async function applyRepo(dir, plan) {
 
 const PAINT = {
   merged: c.green,
+  unused: c.green,
   removed: c.green,
   missing: c.yellow,
   cleared: c.green,
@@ -319,6 +392,12 @@ const PAINT = {
 const listFiles = (files) =>
   `${files.length === 1 ? 'file' : 'files'}: ${files.slice(0, 3).join(', ')}` +
   (files.length > 3 ? c.dim(` and ${files.length - 3} more`) : '');
+
+/** The facts beside a verdict: a no-commit branch's age, a lock left by an exited agent. */
+function verdictNote(wt) {
+  const notes = [wt.age == null ? null : formatAge(wt.age), wt.stale ? 'stale lock' : null].filter(Boolean);
+  return notes.length ? c.dim(` · ${notes.join(' · ')}`) : '';
+}
 
 function tilde(p) {
   const home = os.homedir().replace(/\\/g, '/');
@@ -391,11 +470,11 @@ export async function run(opts) {
         '  ' + c.bold(repo.name),
         path.basename(wt.path),
         wt.branch ?? c.dim('(detached)'),
-        PAINT[wt.verdict](wt.verdict),
+        PAINT[wt.verdict](wt.verdict) + verdictNote(wt),
         wt.size ? formatBytes(wt.size) : c.dim('—'),
       ]),
       ['  REPO', 'WORKTREE', 'BRANCH', 'VERDICT', 'SIZE'],
-      { below: groupRows.map(({ wt }) => tilde(wt.path)) },
+      { below: groupRows.map(({ wt }) => tilde(wt.path) + (wt.lockReason ? `  — locked: ${wt.lockReason}` : '')) },
     );
     for (const { repo, wt } of groupRows) {
       const name = `${repo.name}/${path.basename(wt.path)}`;
@@ -410,16 +489,16 @@ export async function run(opts) {
   }
 
   const count = (v) => rows.filter((r) => r.wt.verdict === v).length;
-  const tally = ['merged', 'removed', 'missing', 'cleared', 'dirty', 'ignored', 'nested', 'fresh', 'locked', 'unmerged', 'failed']
+  const tally = ['merged', 'unused', 'removed', 'missing', 'cleared', 'dirty', 'ignored', 'nested', 'fresh', 'locked', 'unmerged', 'failed']
     .map((v) => [v, count(v)])
     .filter(([, n]) => n)
     .map(([v, n]) => `${n} ${v}`);
   plain(tally.join(c.dim(', ')));
 
   failed += count('failed');
-  const done = opts.apply ? count('removed') + count('cleared') : count('merged') + count('missing');
+  const done = opts.apply ? count('removed') + count('cleared') : count('merged') + count('unused') + count('missing');
   const freed = rows
-    .filter((r) => r.wt.verdict === (opts.apply ? 'removed' : 'merged'))
+    .filter((r) => (opts.apply ? r.wt.verdict === 'removed' : REMOVABLE.has(r.wt.verdict)))
     .reduce((n, r) => n + r.wt.size, 0);
 
   summary({ ok: done, okLabel: opts.apply ? 'removed' : 'to remove', skipped, failed });

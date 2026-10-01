@@ -155,7 +155,7 @@ ${c.bold('The first machine')}
 ${c.bold('Every day')}
   talea sync                    ${c.dim('# clone the new, fast-forward the rest')}
   talea status --drift          ${c.dim('# what is not where I left it')}
-  talea prune                   ${c.dim('# which merged worktrees can go')}
+  talea prune                   ${c.dim('# which finished worktrees can go')}
 
 ${c.bold('With an agent')}
   talea skill install           ${c.dim('# then ask Claude Code "where is eklavya?"')}
