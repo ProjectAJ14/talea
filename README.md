@@ -4,6 +4,8 @@
 
 [talea-run.web.app](https://talea-run.web.app) — the site, and [the manual](https://talea-run.web.app/docs/).
 
+![Watercolor illustration of Talea organizing a shared repository catalogue into consistent workspace paths across a laptop, desktop, and work machine](assets/talea-readme-banner.png)
+
 You have a laptop, a desktop, and a work machine. On each one, the repo you want
 is either missing or somewhere you have to go and find. `talea` fixes that: one
 catalogue of your GitHub repos, one tree, and a command that makes any machine
