@@ -22,7 +22,7 @@ A second copy of a repo moves to `.talea-duplicates/<GROUP>/<repo>` with everyth
 
 The module that moves checkouts contains no `rmSync`. That is a property of the file, not a promise in a document.
 
-`talea prune --apply` is the one exception, and it is narrow. It removes a linked worktree only when every commit on it is already on origin's default branch — or it has no commits of its own and has sat untouched for a day — never one that is dirty, locked by anything but an agent that has exited, has another repo inside it or holds ignored files you made (unless you pass `--with-ignored`), never the main checkout, and never the branch. The removal is `git worktree remove` without `--force`, so git refuses a tree with uncommitted work on its own. Without `--apply` it is a plan and nothing more.
+`talea prune --apply` is the one exception, and it is narrow. It removes a linked worktree only when every commit on it is already on origin's default branch — or it has no commits of its own and has sat untouched for a day — never one that is dirty, locked by anything but an agent that has exited, has another repo inside it or holds ignored files you made (unless you pass `--with-ignored`), never one it could not fully read, never the main checkout, and never the branch. A merge commit counts as merged only when it is the merge git would make by itself. Each worktree is checked again just before it goes, so anything that appeared after the plan keeps it. The removal is `git worktree remove` without `--force`, so git refuses a tree with uncommitted work on its own. Without `--apply` it is a plan and nothing more.
 
 ### It will not merge a divergence
 

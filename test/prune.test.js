@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import test, { describe, before, after } from 'node:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, realpathSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -303,11 +303,18 @@ describe('prune judges each worktree', () => {
   });
 
   test('a stale lock git will not lift is reported, and nothing is removed', async () => {
+    // Lifted by somebody else between the plan and the removal: git refuses to
+    // unlock a worktree that is not locked, and that refusal stops it.
     const dir = makeRepo('unlock-fails');
-    const plan = { worktrees: [{ path: path.join(tmp, 'not-a-worktree'), verdict: 'merged', stale: true, lossy: [] }] };
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    git(['worktree', 'lock', '--reason', agentLock(deadPid()), wt], dir);
+    const plan = await planRepo(repo(dir));
+    git(['worktree', 'unlock', wt], dir);
     await applyRepo(dir, plan);
-    assert.equal(plan.worktrees[0].verdict, 'failed');
-    assert.ok(plan.worktrees[0].error);
+    assert.equal(verdictOf(plan, wt), 'failed');
+    assert.match(entryOf(plan, wt).error, /unlock failed/);
+    assert.equal(existsSync(wt), true);
   });
 
   test('a worktree deleted by hand is cleared from the record', async () => {
@@ -589,6 +596,162 @@ describe('prune judges each worktree', () => {
 
     const plan = await planRepo(repo(dir), { now: Date.now() + 2 * DAY });
     assert.equal(verdictOf(plan, wt), 'ignored');
+  });
+});
+
+describe('prune never turns unknown into permission', () => {
+  /** A merged worktree whose repo ignores `ignore` (a .gitignore line each). */
+  const mergedWith = (name, ignore) => {
+    const dir = makeRepo(name);
+    writeFileSync(path.join(dir, '.gitignore'), ignore.map((l) => `${l}\n`).join(''));
+    commit(dir, 'keep.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    return { dir, wt };
+  };
+
+  test('a clean clone under build output still has its own ignored files judged', async () => {
+    // Found in review: `build/` is regenerable, so the outer listing never
+    // opened it, the clean clone inside was cleared, and its .env went.
+    makeRepo('dep16');
+    for (const at of ['build/dep', 'node_modules/dep', '.dart_tool/pkg/dep']) {
+      const { dir, wt } = mergedWith(`under-${at.split('/')[0].replace('.', '')}`, ['build/', 'node_modules/', '.dart_tool/']);
+      const dep = path.join(wt, at);
+      git(['clone', '-q', path.join(tmp, 'dep16.git'), dep], tmp);
+      writeFileSync(path.join(dep, '.git', 'info', 'exclude'), '.env\nnode_modules/\n');
+      writeFileSync(path.join(dep, '.env'), 'SECRET=1\n');
+      // Its own build output is still build output.
+      mkdirSync(path.join(dep, 'node_modules', 'x'), { recursive: true });
+      writeFileSync(path.join(dep, 'node_modules', 'x', 'i.js'), '1\n');
+
+      const plan = await planRepo(repo(dir));
+      const entry = entryOf(plan, wt);
+      assert.equal(entry.verdict, 'ignored', at);
+      assert.deepEqual(entry.lossy, [`${at}/.env`]);
+      await applyRepo(dir, plan);
+      assert.equal(existsSync(path.join(dep, '.env')), true, `${at}/.env was deleted`);
+
+      rmSync(path.join(dep, '.env'));
+      assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged', at);
+    }
+  });
+
+  test('a clean clone inside a clean clone is judged, and so are its files', async () => {
+    makeRepo('outer16');
+    makeRepo('inner16');
+    const { dir, wt } = mergedWith('clone-in-clone', ['build/']);
+    const outer = path.join(wt, 'build', 'outer');
+    git(['clone', '-q', path.join(tmp, 'outer16.git'), outer], tmp);
+    writeFileSync(path.join(outer, '.git', 'info', 'exclude'), 'deps/\n');
+    const inner = path.join(outer, 'deps', 'inner');
+    git(['clone', '-q', path.join(tmp, 'inner16.git'), inner], tmp);
+    // A clean clone is not somebody's folder, at any depth.
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged');
+
+    writeFileSync(path.join(inner, '.git', 'info', 'exclude'), 'notes.md\n');
+    writeFileSync(path.join(inner, 'notes.md'), 'mine\n');
+    assert.deepEqual(entryOf(await planRepo(repo(dir)), wt).lossy, ['build/outer/deps/inner/notes.md']);
+  });
+
+  test('a merge commit with content origin lacks is kept as unmerged', async () => {
+    // Found in review: `cherry` skips merge commits, so a local merge holding
+    // a file of its own read as merged next to a different merge of the same parents.
+    const dir = makeRepo('evil-merge');
+    const wt = addWorktree(dir, 'feat');
+    commit(dir, 'other.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    // Origin merges feat cleanly.
+    git(['merge', '-q', '--no-ff', '-m', 'merge', 'feat'], dir);
+    git(['push', '-q', 'origin', 'main'], dir);
+    // The worktree merges the same parents, but adds a file in the merge.
+    git(['merge', '-q', '--no-ff', '--no-commit', 'origin/main~1'], wt);
+    writeFileSync(path.join(wt, 'only-here.txt'), 'mine\n');
+    git(['add', 'only-here.txt'], wt);
+    git(['commit', '-qm', 'local merge'], wt);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'unmerged');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(path.join(wt, 'only-here.txt')), true);
+  });
+
+  test('an octopus merge is never vouched for', async () => {
+    const dir = makeRepo('octopus');
+    const wt = addWorktree(dir, 'feat');
+    for (const b of ['s1', 's2']) {
+      git(['checkout', '-q', '-b', b, 'main'], dir);
+      commit(dir, `${b}.txt`);
+    }
+    git(['checkout', '-q', 'main'], dir);
+    git(['merge', '-q', '-m', 'both', 's1', 's2'], dir);
+    git(['cherry-pick', 'feat'], dir);
+    git(['push', '-q', 'origin', 'main'], dir);
+    git(['merge', '-q', '-m', 'both here', 's1', 's2'], wt);
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'unmerged');
+  });
+
+  test('a mechanical merge of main, then a rebase merge, still reads as merged', async () => {
+    // The everyday shape: main merged into the branch, the branch rebased onto main.
+    const dir = makeRepo('clean-merge');
+    const wt = addWorktree(dir, 'feat');
+    commit(dir, 'other.txt');
+    git(['push', '-q', 'origin', 'main'], dir);
+    git(['fetch', '-q', 'origin'], wt);
+    git(['merge', '-q', '--no-ff', '-m', 'merge main', 'origin/main'], wt);
+    git(['cherry-pick', 'feat~1'], dir); // the branch's own commit, rebased
+    git(['push', '-q', 'origin', 'main'], dir);
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'merged');
+  });
+
+  test('an ignored file made between the plan and the removal keeps it', async () => {
+    const { dir, wt } = mergedWith('raced', ['.env']);
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'merged');
+    writeFileSync(path.join(wt, '.env'), 'SECRET=1\n');
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'ignored');
+    assert.deepEqual(entryOf(plan, wt).lossy, ['.env']);
+    assert.equal(existsSync(path.join(wt, '.env')), true, 'the .env was deleted');
+  });
+
+  test('with --with-ignored, only the ignored files the plan named go', async () => {
+    const { dir, wt } = mergedWith('raced-opted', ['*.env']);
+    writeFileSync(path.join(wt, 'a.env'), '1\n');
+    const plan = await planRepo(repo(dir), { withIgnored: true });
+    assert.equal(verdictOf(plan, wt), 'merged');
+    writeFileSync(path.join(wt, 'b.env'), '2\n');
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'ignored');
+    assert.equal(existsSync(path.join(wt, 'b.env')), true);
+  });
+
+  test('nested work made between the plan and the removal keeps it', async () => {
+    makeRepo('dep16b');
+    const { dir, wt } = mergedWith('raced-nested', ['build/']);
+    const dep = path.join(wt, 'build', 'dep');
+    git(['clone', '-q', path.join(tmp, 'dep16b.git'), dep], tmp);
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'merged');
+    writeFileSync(path.join(dep, 'WIP.txt'), 'unsaved\n');
+    await applyRepo(dir, plan);
+    assert.equal(verdictOf(plan, wt), 'nested');
+    assert.equal(existsSync(path.join(dep, 'WIP.txt')), true, 'nested work was deleted');
+  });
+
+  test('a folder the walk cannot read keeps it as unreadable', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, async () => {
+    const { dir, wt } = mergedWith('sealed', ['build/']);
+    const sealed = path.join(wt, 'build', 'sealed');
+    mkdirSync(sealed, { recursive: true });
+    chmodSync(sealed, 0o000);
+    try {
+      const plan = await planRepo(repo(dir));
+      assert.equal(verdictOf(plan, wt), 'unreadable');
+      await applyRepo(dir, plan);
+      assert.equal(existsSync(wt), true);
+    } finally {
+      chmodSync(sealed, 0o755);
+    }
   });
 });
 
