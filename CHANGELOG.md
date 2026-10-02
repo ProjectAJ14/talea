@@ -4,6 +4,12 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2026-10-02
+
+### Fixed
+- **manifest**: scan the uploaded bytes for credentials, refuse --new with --gist
+- **manifest**: refuse public gists and credentials, call the gist unlisted
+
 ## [0.9.9] - 2026-10-02
 
 ### Fixed
