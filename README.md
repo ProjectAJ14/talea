@@ -222,6 +222,28 @@ the other.
 The gist is private, but it still holds the names of your private repositories.
 Treat the id like a bookmark you would not paste into a public channel.
 
+### A catalogue from somebody else
+
+A catalogue can come from anywhere — a gist, a teammate, a file in a team repo
+— so talea checks it before anything reads a path out of it, on every command
+and before `manifest pull` writes one. A repo's `name`, `owner`, `group` and
+`dir`, and a group's `dir`, must be folders below the workspace: an absolute
+path, a `..`, a backslash or a drive letter is refused, and on Windows a name
+ending in a dot or space or one Windows reserves (`CON`, `AUX`), as are fields
+of the wrong type. The error names each
+entry and field, and nothing changes until it is fixed. Two repos that would
+share a folder stop `clone`, `sync`, `adopt` and `add` before they start, when
+the run places either; `list` and `where` still work. Right before a move, a
+clone or a group doc is written, the real destination is checked too, so a
+symlinked folder in the workspace cannot lead anything out of it. To keep
+repos on another disk, link or move the whole workspace there; a group folder
+that links out of it is refused.
+
+What a catalogue still decides is **which repositories you clone, from which
+URLs, and where inside the workspace they go**. talea clones with git's own
+defaults, which run nothing from the repository, but a catalogue can point you
+at any repo — read one you did not write before you sync it.
+
 ---
 
 ## Commands

@@ -1,4 +1,4 @@
-import { findWorkspace, loadManifest, saveManifest } from '../config.js';
+import { catalogueError, catalogueProblems, findWorkspace, folderClashes, loadManifest, saveManifest } from '../config.js';
 import { listRepos, toEntry, token, whoami } from '../github.js';
 import { c, context, fail, heading, info, ok, plain, skip, table, warn } from '../log.js';
 import { task } from '../live.js';
@@ -188,7 +188,15 @@ export async function run(opts) {
   const groups = { ...manifest.groups };
   for (const owner of owners) groups[owner] ??= { dir: owner, title: `${owner} on GitHub` };
 
-  const file = saveManifest({ ...manifest, groups, repos });
+  // What GitHub returned is checked like any catalogue before it replaces one:
+  // written unchecked, a bad name would lock every command out, discover too.
+  const next = { ...manifest, groups, repos };
+  const problems = catalogueProblems(next);
+  if (problems.length) throw catalogueError(`What GitHub returned for ${manifest.__source}`, problems);
+  const file = saveManifest(next);
+  // A new repo can land in a folder you gave another — say so now, not at the
+  // next sync, which will refuse to place either.
+  for (const clash of folderClashes(next)) warn(clash);
   plain('');
   ok(`catalogue written ${c.dim(`→ ${file}`)}`);
   if (seeding) {

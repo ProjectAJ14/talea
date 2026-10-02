@@ -13,10 +13,11 @@
 // Repo-level CLAUDE.md files are not our business: a committed one arrives with
 // the clone, and a gitignored one belongs to whoever wrote it.
 
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { insideRoot } from './adopt.js';
 import { groupDir } from './config.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,7 +112,12 @@ export function dropDocs(manifest, root, groups, templates = TEMPLATES) {
     if (!existsSync(src)) continue;
 
     const dst = path.join(dir, 'CLAUDE.md');
-    if (existsSync(dst)) {
+    if (dir !== root && !insideRoot(root, dir)) {
+      throw new Error(`${dir} leads outside the workspace once symlinks are followed, so no CLAUDE.md is written there.`);
+    }
+    // lstat, not exists: a CLAUDE.md that is a symlink — even one pointing at
+    // nothing yet — is somebody's, and copying onto it writes wherever it leads.
+    if (lstatSync(dst, { throwIfNoEntry: false })) {
       kept.push(dst);
       continue;
     }

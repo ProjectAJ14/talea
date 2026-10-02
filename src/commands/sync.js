@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup, repoId, repoLabel } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, requireOwnFolders } from '../config.js';
 import {
   aheadBehind,
   currentBranch,
@@ -54,6 +54,10 @@ It never switches branches. If you are on a feature branch, that is where you
 are working, and a tool that moves you off it mid-task is no better than one
 that clobbers your changes — so it fast-forwards the branch you are on, or
 leaves it alone, and says which.
+
+Nothing is placed outside the workspace. A run stops before it starts when two
+of its repos would share a folder, and a repo whose folder leads outside the
+workspace through a symlink is refused — link the whole workspace, not a group.
 `;
 
 export async function run(opts) {
@@ -65,6 +69,8 @@ export async function run(opts) {
 
   const { repos: chosen } = await chooseRepos({ manifest, root, state, opts });
   const repos = selectRepos(manifest, opts, chosen);
+  // Before any pooled clone or fetch: two of them in one folder (see folderClashes).
+  requireOwnFolders(manifest, repos);
 
   if (!repos.length) {
     warn('Nothing selected for this machine. Run `talea sync --pick` to choose.');

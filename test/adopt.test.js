@@ -510,6 +510,16 @@ describe('executeMove', () => {
     assert.equal(existsSync(path.join(to, '.git')), true);
     assert.deepEqual(res.worktrees.repaired, []);
     assert.deepEqual(res.worktrees.broken.map((b) => ({ ...b, path: A.canonical(b.path) })), [{ path: A.canonical(far), why: 'nope' }]);
+    // A git that says nothing, or never gets to, still gets a reason. Pinned
+    // here because otherwise only a timing-dependent path ever reached it.
+    const other = makeRepo('quiet').dir;
+    git(['worktree', 'add', '-q', '-b', 'quiet', path.join(fresh(), 'quiet')], other);
+    const silent = await stubbed(cp, 'spawnSync', (orig) => (cmd, args, opts) =>
+      cmd === 'git' && args[0] === 'worktree' && args[1] === 'repair' ? { status: null, stdout: null, stderr: null } : orig(cmd, args, opts),
+      () => A.executeMove({ from: other, to: path.join(fresh(), 'quiet') }),
+    );
+    assert.ok(silent.worktrees.broken.every((b) => b.why === 'git exited null'), JSON.stringify(silent.worktrees.broken));
+
     // And the command it names really does fix it.
     git(['worktree', 'repair', far], to);
     assert.equal(git(['rev-parse', '--is-inside-work-tree'], far), 'true');

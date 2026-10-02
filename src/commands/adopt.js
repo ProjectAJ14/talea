@@ -2,13 +2,14 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expandHome, loadState, repoId, repoLabel, saveState } from '../config.js';
+import { expandHome, loadState, repoId, repoLabel, requireOwnFolders, saveState } from '../config.js';
 import { c, fail, glyph, heading, icon, info, ok, plain, skip, summary, warn } from '../log.js';
 import { adoptable, requireCatalogue, requireWorkspace, selectRepos } from '../workspace.js';
 import {
   DUPLICATES_DIR,
   claudeMaybeRunning,
   executeMove,
+  insideRoot,
   parkingSpot,
   findConfigHits,
   findGitDirs,
@@ -47,7 +48,9 @@ Close editors, terminals and agents working in a checkout before ${c.dim('--appl
 nothing else may change it while it moves.
 
 A repo that cannot be moved safely (it is itself a linked worktree, an occupied
-destination, another filesystem) is left alone and the reason is printed.
+destination, another filesystem, a destination a symlink leads outside the
+workspace) is left alone and the reason is printed. Two repos the catalogue
+puts in one folder stop the run before anything moves.
 
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
@@ -133,12 +136,14 @@ function reportWorktrees(root, wt) {
   return false;
 }
 
+const OUTSIDE = 'its destination leads outside the workspace once symlinks are followed — nothing was moved';
+
 export async function applyMoves(root, moves, parks = [], manifest) {
   const results = [];
   const warnedAboutClaude = moves.length > 0 && claudeMaybeRunning();
 
   for (const plan of moves) {
-    const res = executeMove(plan);
+    const res = insideRoot(root, plan.to) ? executeMove(plan) : { ok: false, message: OUTSIDE };
     if (!res.ok) {
       fail(`${c.bold(repoLabel(manifest, plan.repo))}\n    ${c.dim(res.message)}`);
       results.push({ plan, ok: false });
@@ -181,7 +186,8 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     // The spot is chosen now, not at plan time: two copies of one repo planned
     // in the same run would otherwise be handed the identical path, and the
     // -2 suffixing would never fire.
-    const res = executeMove({ ...plan, to: parkingSpot(root, plan.repo, manifest) });
+    const spot = parkingSpot(root, plan.repo, manifest);
+    const res = insideRoot(root, spot) ? executeMove({ ...plan, to: spot }) : { ok: false, message: OUTSIDE };
     if (!res.ok) {
       fail(`${c.bold(repoLabel(manifest, plan.repo))} second copy\n    ${c.dim(res.message)}`);
       continue;
@@ -376,6 +382,7 @@ export async function run(opts) {
   // worth moving into place whether or not this machine had signed up for it.
   // Minus anything marked `ignore` — see `adoptable`.
   const repos = selectRepos(manifest, opts, adoptable(manifest));
+  requireOwnFolders(manifest, repos);
 
   const extra = parseFromPaths(opts.from);
 
