@@ -4,6 +4,20 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-10-02
+
+### Fixed
+- **upgrade**: free an abandoned lock, release only our own, exit non-zero when blocked
+- **upgrade**: write state atomically, merge it fresh, install one at a time
+
+### Documentation
+- record what talea and its site expose, and what was checked
+- **web**: readable touch controls, focus that never drops, inert rows after a run
+- **web**: expose the demo picker's state, and let touch finish a run
+
+### Chores
+- **web**: force every sharp copy to the patched one
+
 ## [0.10.0] - 2026-10-02
 
 ### Breaking
