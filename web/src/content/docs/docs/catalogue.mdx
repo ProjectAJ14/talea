@@ -61,7 +61,11 @@ talea manifest where            # which file is in use, and which gist
 The id is remembered in `~/.talea/state.json`, so later pushes and pulls need no argument.
 
 :::caution
-The gist is private. It still holds the names of your private repositories, so treat the id like a bookmark you would not paste into a public channel.
+The gist is **secret**, which GitHub means as *unlisted*, not private: it is in no list and no search, but anyone who has its URL or id can read it without signing in, every earlier revision included. It holds the names of your private repositories, so treat the id like a password-reset link. `push` reads an existing gist's visibility first and refuses a public one before any content is sent, and refuses a catalogue with a password or token written into a URL (`https://token@…`, `ssh://user:pass@…`) — an SSH address like `git@github.com:me/x.git` carries no secret and is fine. Nothing else in a catalogue is meant to be secret.
+
+If a catalogue was ever pushed to a **public** gist, its repo names are public, in every revision. Delete that gist on gist.github.com — that removes its revisions, but not forks or copies somebody already made — then `talea manifest push --new` publishes to a fresh secret gist and remembers that one.
+
+A credential pushed even to a secret gist stays in its revisions — the **Revisions** tab on the gist's page lists every one. If a URL with a token in it was ever pushed, revoke the token first, then delete the gist and `push --new`: removing the token from the next push does not remove it from the history.
 :::
 
 Only the catalogue is published. What each machine keeps stays in that machine's `.talea.json` and never leaves it.

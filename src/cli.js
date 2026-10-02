@@ -95,6 +95,7 @@ const OPTIONS = {
   user: { type: 'string' },
   since: { type: 'string' },
   gist: { type: 'string' },
+  new: { type: 'boolean', default: false },
   apply: { type: 'boolean', default: false },
   'fix-paths': { type: 'boolean', default: false },
   loose: { type: 'boolean', default: false },
@@ -138,7 +139,7 @@ ${c.bold('Commands')}
   ${c.cyan('list')}       show the catalogue
   ${c.cyan('tree')}       the folder tree on disk
   ${c.cyan('exec')}       run one command in every repo
-  ${c.cyan('manifest')}   push or pull the catalogue through a private gist
+  ${c.cyan('manifest')}   push or pull the catalogue through a secret (unlisted) gist
   ${c.cyan('doctor')}     check git, SSH, GitHub auth and workspace health
   ${c.cyan('skill')}      install the skill that lets your coding agent drive talea
   ${c.cyan('upgrade')}    update the CLI itself

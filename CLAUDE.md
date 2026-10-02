@@ -397,6 +397,22 @@ The skill's content is mostly restraint — never `--apply` an unseen adopt, nev
 written for a reader who will act on them without asking. When one of them
 changes here, it changes there.
 
+## The gist is secret, not private
+
+A catalogue travels through a **secret** gist, which GitHub means as unlisted:
+in no list and no search, but readable by anyone with its URL, revisions
+included, without signing in. It holds private repo names, so every doc says
+secret or unlisted and none says private. `updateGist` reads the gist's
+visibility before writing and refuses anything but `public: false` — an id
+passed in or remembered can name a public gist, and a PATCH would have
+published the catalogue to the world (found in review). `push` refuses a
+catalogue with a credential in a URL — a `user:pass@` on any scheme, or a user
+part that looks like a token (`ghp_…`, `glpat-…`, 30+ token characters) —
+scanned over the raw file it uploads, not the parsed one, since a duplicate key
+or an unknown field survives the upload but not `JSON.parse`. A plain username
+(`git@`, Bitbucket's `https://alice@…`) is not a secret. Real confidentiality would need storage
+or encryption talea does not have, and the docs do not claim it.
+
 ## Talking to GitHub
 
 `src/github.js` prefers the `gh` CLI over `fetch` when `gh` is installed, and

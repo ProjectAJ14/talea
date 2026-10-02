@@ -1,6 +1,6 @@
 // The catalogue's trip between machines.
 //
-// A private gist, and nothing else: no server to run, no account to create, no
+// A secret gist, and nothing else: no server to run, no account to create, no
 // extra repo to remember to commit. It is reachable with the token the machine
 // already has for `discover`, it has a URL you can paste into the next laptop,
 // and it keeps a revision history for free.
@@ -25,7 +25,8 @@ import { task } from '../live.js';
 export const help = `
 ${c.bold('talea manifest')} — move the catalogue between machines
 
-  ${c.dim('talea manifest push')}              publish it to a private gist
+  ${c.dim('talea manifest push')}              publish it to a secret gist
+  ${c.dim('talea manifest push --new')}        a new secret gist, not the remembered one
   ${c.dim('talea manifest pull')}              fetch the one this machine is linked to
   ${c.dim('talea manifest pull <gist-id>')}    link this machine to a gist and fetch it
   ${c.dim('talea manifest where')}             which file is in use, and which gist
@@ -34,8 +35,16 @@ The catalogue is the only thing that travels. What each machine *keeps* stays
 in that machine's ${c.dim('.talea.json')} and is never published — so pulling on a new
 laptop gives you the full list to choose from, not the last machine's choices.
 
-The gist is ${c.bold('private')}. It still holds the names of your private repositories,
-so treat the id like a bookmark you would not paste into a public channel.
+The gist is ${c.bold('secret')}, which GitHub means as unlisted, not private: anyone who
+has its URL or id can read it, every revision included, without signing in. It
+holds the names of your private repositories, so treat the id like a password-reset
+link. push reads an existing gist's visibility first and refuses a public one
+before sending anything, and refuses a catalogue with a password or token in a URL.
+
+Pushed to a public gist once? Its repo names are public in every revision: delete
+that gist on gist.github.com (forks and copies survive), then ${c.dim('push --new')}. A
+token pushed even to a secret gist stays in its revisions (the Revisions tab on
+the gist's page shows them): revoke the token, delete the gist, and push --new.
 
 The id is remembered in ${c.dim('~/.talea/state.json')}, so after the first ${c.dim('pull <id>')}
 every later ${c.dim('push')} and ${c.dim('pull')} needs no argument.
@@ -45,7 +54,8 @@ be below the workspace, and no two repos may share one. One that fails is
 refused with each problem named, and your current catalogue is left as it was.
 
 Options
-      --gist <id>       use this gist for one command without remembering it
+      --gist <id>       use this gist, and remember it for the next push and pull
+      --new             push to a new secret gist instead of the remembered one
 `;
 
 const GIST_FILE = MANIFEST_NAME;
@@ -67,6 +77,34 @@ function currentFile() {
   return { root, manifest, file: manifest.__source };
 }
 
+// A URL's user part: `scheme://<user>[:<password>]@host`.
+const USERINFO = /[a-z][a-z0-9+.-]*:\/\/([^/@\s"'\\]+)@/gi;
+// What a token looks like when it is the whole user part: GitHub's and
+// GitLab's prefixes, or a long run of token characters. `alice` in Bitbucket's
+// `https://alice@bitbucket.org/…` is a username, and is not one.
+const TOKEN = /^(gh[pousr]_|github_pat_|glpat-|x-access-token$|oauth2$)|^[A-Za-z0-9_-]{30,}$/;
+
+/**
+ * Every line of the catalogue file with a secret in a URL, the secret masked.
+ * Read off the raw text, because that is what push uploads: a duplicate key
+ * or a field talea does not read survives the upload but not JSON.parse
+ * (found in review). A password (`user:pass@`) on any scheme is a secret, and
+ * so is a user part that looks like a token; `git@host:` and `ssh://git@host`
+ * carry neither. The rest of a catalogue is repo names, owners, folders and
+ * branches — private repo names are why the gist is secret, and nothing in it
+ * should need to be more than that.
+ */
+export function credentialsIn(content) {
+  const found = [];
+  content.split('\n').forEach((line, i) => {
+    for (const [url, user] of line.matchAll(USERINFO)) {
+      const [name] = user.split(':');
+      if (user.includes(':') || TOKEN.test(name)) found.push(`line ${i + 1}: ${url.replace(user, '***')}…`);
+    }
+  });
+  return found;
+}
+
 async function push(opts) {
   const { tok, from } = requireToken();
   const { manifest, file } = currentFile();
@@ -77,14 +115,32 @@ async function push(opts) {
     process.exit(1);
   }
 
+  // --new is a gist of its own; naming another one too is two answers.
+  if (opts.new && opts.gist) {
+    fail('--new publishes to a new gist, and --gist names an existing one — pick one.');
+    process.exit(1);
+  }
+
   const state = readUserState();
-  const id = opts.gist ?? state.gist ?? null;
+  // --new: a fresh secret gist, the way out once the remembered one is public.
+  const id = opts.new ? null : (opts.gist ?? state.gist ?? null);
 
   // Published from the file on disk, byte for byte, rather than from the parsed
   // object — a round trip through JSON.parse would drop comments-by-convention,
   // key order and anything a future version of the format adds that this
   // version does not know to keep.
   const content = readFileSync(file, 'utf8');
+
+  // Nothing in the catalogue should be a secret; a credential written into a
+  // URL would be, and push would carry it to a gist anyone with the link reads.
+  const leaks = credentialsIn(content);
+  if (leaks.length) {
+    fail(`${file} holds a credential in a URL, so it was not uploaded:`);
+    for (const where of leaks) console.error(`    - ${where}`);
+    console.error('\n  Take the password or token out of the URL — git reads it from your credential helper or SSH key.');
+    console.error('  If it was pushed before, it is in the gist\'s revisions: revoke that token, delete the gist, and push --new.');
+    process.exit(1);
+  }
 
   heading(id ? 'Updating the catalogue gist' : 'Publishing the catalogue');
   context([
@@ -93,16 +149,27 @@ async function push(opts) {
     ['repos', `${manifest.repos.length}`],
   ]);
 
-  const gistId = await task('Uploading to GitHub', () =>
-    id
-      ? updateGist({ token: tok, id, filename: GIST_FILE, content })
-      : createGist({
-          token: tok,
-          filename: GIST_FILE,
-          content,
-          description: 'talea catalogue — the repos I keep, and where they go',
-        }),
-  );
+  let gistId;
+  try {
+    gistId = await task('Uploading to GitHub', () =>
+      id
+        ? updateGist({ token: tok, id, filename: GIST_FILE, content })
+        : createGist({
+            token: tok,
+            filename: GIST_FILE,
+            content,
+            description: 'talea catalogue — the repos I keep, and where they go',
+          }),
+    );
+  } catch (err) {
+    if (err.code !== 'PUBLIC_GIST') throw err;
+    fail(err.message);
+    console.error('\n  A public gist cannot be made secret. Push to a new secret one instead:');
+    console.error(`    talea manifest push --new`);
+    console.error('  If the catalogue was ever pushed to that gist, its repo names are public, in every revision:');
+    console.error(`    delete it at https://gist.github.com/${id} — deleting removes the revisions too, but not forks or copies.`);
+    process.exit(1);
+  }
 
   writeUserState({ ...state, gist: gistId });
 

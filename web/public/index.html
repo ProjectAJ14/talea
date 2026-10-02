@@ -413,7 +413,7 @@
         <div class="dial__opt dial__opt--default">
           <span class="dial__pill">travels</span>
           <code class="dial__val">shared</code>
-          <p>Every repo you can reach, its owner, its folder and its default branch. Written by <code class="code-inline">talea discover</code>, moved between machines through a private gist.</p>
+          <p>Every repo you can reach, its owner, its folder and its default branch. Written by <code class="code-inline">talea discover</code>, moved between machines through a secret gist &mdash; unlisted, readable by anyone with its link.</p>
         </div>
         <div class="dial__opt dial__opt--note">
           <p>Discovery refreshes <em>facts</em> and never <em>choices</em>. A repo the API stops returning is kept and marked missing &mdash; a narrower token and a deleted repo look identical from here, and forgetting it is the one unrecoverable reading.</p>
@@ -467,7 +467,7 @@
     </div>
 
     <p class="modes__foot" data-reveal data-delay="300">
-      The gist is private, but it still holds the names of your private repositories. Treat the id like a bookmark you would not paste into a public channel. <code class="code-inline">talea manifest push</code> prints it once.
+      The gist is secret, which means unlisted: anyone with its link can read it, so treat the id like a password-reset link &mdash; it holds the names of your private repositories. A public gist is refused before anything is sent. <code class="code-inline">talea manifest push</code> prints it once.
     </p>
   </div>
 </section>

@@ -211,7 +211,7 @@ greyed out, and `add` refuses it.
 
 | | Where it lives | Shared |
 |---|---|---|
-| **The catalogue** — every repo, its owner, its folder, its default branch | `~/.talea/talea.repos.json` | yes, through a private gist |
+| **The catalogue** — every repo, its owner, its folder, its default branch | `~/.talea/talea.repos.json` | yes, through a secret (unlisted) gist |
 | **What this machine keeps** | `<workspace>/.talea.json` | **never** |
 
 That split is the whole design. Pulling the catalogue onto a new laptop gives
@@ -219,8 +219,21 @@ you the full list to *choose* from — not the last machine's choices. Your work
 laptop can keep three repos while the desktop keeps forty, and neither fights
 the other.
 
-The gist is private, but it still holds the names of your private repositories.
-Treat the id like a bookmark you would not paste into a public channel.
+The gist is **secret**, which GitHub means as *unlisted*, not private: it is
+in no list and no search, but anyone who has its URL or id can read it without
+signing in, along with every earlier revision. It holds the names of your
+private repositories, so treat the id like a password-reset link — not
+something to paste into a public channel. `push` only ever writes to a secret
+gist: it reads an existing one's visibility first and refuses a public one
+before sending anything. It also refuses a catalogue with a password or token
+written into a URL; nothing else in it is a secret.
+
+**If a catalogue was ever pushed to a public gist**, its repo names are public,
+in every revision. Delete that gist on gist.github.com — deleting removes its
+revisions, but not forks or copies somebody already made — and push to a new
+secret one with `talea manifest push --new`. A token pushed even to a secret
+gist stays in its revisions (the Revisions tab on the gist's page): revoke the
+token first, then delete the gist and push `--new`.
 
 ### A catalogue from somebody else
 

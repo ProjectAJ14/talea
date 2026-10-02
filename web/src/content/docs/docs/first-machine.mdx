@@ -48,10 +48,10 @@ talea manifest push          # publish the catalogue for the next machine
 talea manifest push
 ```
 
-That writes the catalogue to a **private gist** and prints its id. Every later `push` and `pull` from this machine needs no argument — the id is remembered in `~/.talea/state.json`.
+That writes the catalogue to a **secret gist** and prints its id. Every later `push` and `pull` from this machine needs no argument — the id is remembered in `~/.talea/state.json`.
 
 :::caution
-The gist is private, but it still holds the names of your private repositories. Treat the id like a bookmark you would not paste into a public channel.
+Secret means unlisted, not private: anyone who has the id can read the gist without signing in. It holds the names of your private repositories, so treat the id like a password-reset link.
 :::
 
 ### Useful flags on `init`
