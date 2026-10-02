@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] - 2026-10-02
+
+### Fixed
+- **adopt**: name git's reason for each unlinked worktree, count it as failed
+- **adopt**: clean the git environment and verify worktree repairs
+
+### Chores
+- **adopt**: compare worktree paths as git spells them on Windows
+
 ## [0.9.7] - 2026-10-02
 
 ### Fixed
