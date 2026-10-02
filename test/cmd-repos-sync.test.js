@@ -235,6 +235,47 @@ describe('talea exec', () => {
     assert.equal(exitCode, 0);
   });
 
+  test('every argument arrives as typed: spaces, empty, quotes and shell characters', async () => {
+    // Found in review: joined and re-split by sh, "two words" arrived as two.
+    const args = ['two words', '', 'say "hi"', "it's", '$HOME', 'a;b', 'x|y', '*', '%PATH%', 'back\\slash'];
+    const res = await exec.runOne(process.execPath, ['-e', 'console.log(JSON.stringify(process.argv.slice(1)))', ...args], tmp);
+    assert.equal(res.code, 0, res.out);
+    assert.deepEqual(JSON.parse(res.out), args);
+  });
+
+  test('--shell hands the line to the system shell, which interprets it', async () => {
+    const res = await exec.runOne('echo', ['one', '&&', 'echo', 'two'], tmp, { shell: true });
+    assert.equal(res.code, 0, res.out);
+    assert.deepEqual(res.out.split(/\r?\n/).map((l) => l.trim()), ['one', 'two']);
+    // Without it, `&&` is an argument like any other.
+    const plain = await exec.runOne(process.execPath, ['-e', 'console.log(process.argv[1])', '&&'], tmp);
+    assert.equal(plain.out, '&&');
+  });
+
+  test('the run shows each argument with its boundaries, and says when a shell reads it', async () => {
+    let r = await inWs(ws, () => exec.run({}, [process.execPath, '-e', 'process.stdout.write(process.argv[1])', 'two words']));
+    assert.equal(r.exitCode, 0, r.text);
+    assert.match(r.text, /-e process\.stdout\.write\(process\.argv\[1\]\) "two words" in 1 repos$/m);
+    assert.match(r.text, /^\s+two words$/m);
+    r = await inWs(ws, () => exec.run({ shell: true }, ['git rev-parse --is-inside-work-tree && echo shell']));
+    assert.match(r.text, /in 1 repos, through the shell/);
+    assert.match(r.text, /true\s+shell/);
+  });
+
+  test('on Windows a command that will not start names --shell, for .cmd scripts', async () => {
+    const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { ...desc, value: 'win32' });
+    try {
+      const res = await exec.runOne('talea-no-such-command', ['install', 'x y'], tmp);
+      assert.equal(res.code, -1);
+      assert.match(res.out, /on Windows a \.cmd or \.bat script needs --shell: talea exec --shell -- "talea-no-such-command install x y"/);
+    } finally {
+      Object.defineProperty(process, 'platform', desc);
+    }
+    // Elsewhere, or with --shell already, the error stands as it is.
+    assert.doesNotMatch((await exec.runOne('talea-no-such-command', [], tmp)).out, /--shell/);
+  });
+
   test('a command that cannot start reports -1 instead of hanging', async () => {
     const res = await exec.runOne('git', ['status'], path.join(tmp, 'no-such-dir'));
     assert.equal(res.code, -1);

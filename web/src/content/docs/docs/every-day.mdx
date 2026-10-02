@@ -7,7 +7,7 @@ sidebar:
 ```bash
 talea sync                   # clone the new, fast-forward the rest
 talea status                 # branch, clean/dirty, ahead/behind, in one table
-cd $(talea where eklavya)
+dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
 ### `talea sync`
@@ -98,11 +98,19 @@ A **squash merge** reads as `unmerged`: the squashed commit is a new change, not
 
 ```bash
 talea where eklavya          # the absolute path, one line, nothing else
-cd $(talea where eklavya)    # what it is actually for
+dest=$(talea where eklavya) && cd -- "$dest"   # what it is actually for
 talea where                  # the workspace root
 ```
 
-The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** — so `cd $(talea where typo)` fails rather than landing you in your home directory.
+The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** with nothing on stdout. A plain `cd $(talea where typo)` still runs `cd` with nothing after a failed lookup, which most shells read as "go home" — the failure of a `$( )` does not stop the command around it. Check it with `&&`, and quote the path so a folder with a space in it survives.
+
+```bash
+go() { dest=$(talea where "$@") && cd -- "$dest"; }   # bash and zsh
+```
+
+```powershell
+$dest = talea where eklavya; if ($?) { Set-Location -LiteralPath $dest }
+```
 
 If two owners have a repo of the same name it says so and exits non-zero rather than picking one. Pass `owner/name`. The same is true of `-r` and a bare repo name after `sync`, `clone`, `status`, `list`, `tree` and `prune`: `talea sync app` stops when two owners have an `app`, and `talea sync alice/app` syncs the one.
 
@@ -127,9 +135,13 @@ talea pick some-repo         # keep that one — an unknown name opens the check
 talea exec -- git log --oneline -1
 talea exec -g nonstopio -- npm install
 talea exec --all -- git branch --show-current
+talea exec -- git commit -m "two words"           # each argument arrives as typed
+talea exec --shell -- 'yarn build && yarn test'   # a pipeline: the system shell reads it
 ```
 
-Everything after `--` is the command, run once per repo with that repo as the working directory. Repos are processed one at a time so the output stays readable and attributable.
+Everything after `--` is the command, run once per repo with that repo as the working directory. Each argument arrives exactly as your shell handed it over — a space, an empty string, a quote, a `$` or a `;` included — because no second shell reads it. Repos are processed one at a time so the output stays readable and attributable.
+
+`--shell` is for when you want a shell: pipes, `&&`, globs, variables. The words are joined with spaces and handed to the system shell (`sh`, or `cmd.exe` on Windows), which splits and interprets them again with its own quoting rules — so quote the whole line once, as above, to get it past your own shell untouched. On Windows, `npm`, `yarn` and other `.cmd` scripts only start through `cmd.exe`, so they need `--shell`; without it the run says so rather than quietly re-splitting your arguments.
 
 ### Exit codes
 

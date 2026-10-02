@@ -316,7 +316,7 @@
 
       at(600, function () {
         afterEl.textContent = chosen.length
-          ? 'cd $(talea where ' + chosen[0] + ')  →  ~/Workspace/' + RUN[chosen[0]].group + '/' + chosen[0]
+          ? 'talea where ' + chosen[0] + '  →  ~/Workspace/' + RUN[chosen[0]].group + '/' + chosen[0]
           : 'nothing changed — run it again with something ticked';
         show(lines.after);
       });

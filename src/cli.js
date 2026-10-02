@@ -95,6 +95,7 @@ const OPTIONS = {
   user: { type: 'string' },
   since: { type: 'string' },
   gist: { type: 'string' },
+  shell: { type: 'boolean', default: false },
   new: { type: 'boolean', default: false },
   apply: { type: 'boolean', default: false },
   'fix-paths': { type: 'boolean', default: false },
@@ -135,7 +136,7 @@ ${c.bold('Commands')}
   ${c.cyan('prune')}      remove worktrees whose work is merged — ${c.dim('--apply')} to do it
   ${c.cyan('select')}     reopen the checklist — or ${c.dim('talea pick <repo>')} for one
   ${c.cyan('add')}        keep another repo on this machine (${c.dim('rm')} to drop one)
-  ${c.cyan('where')}      print a repo's path — ${c.dim('cd $(talea where eklavya)')}
+  ${c.cyan('where')}      print a repo's path — ${c.dim('dest=$(talea where x) && cd -- "$dest"')}
   ${c.cyan('list')}       show the catalogue
   ${c.cyan('tree')}       the folder tree on disk
   ${c.cyan('exec')}       run one command in every repo

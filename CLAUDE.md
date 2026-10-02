@@ -225,9 +225,12 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    goes to that command, and anywhere else it stops the run. Dropping it made
    `talea sync PiDom` sync every repo on the machine. `adopt` refuses one,
    because `-r` there lifts rule 3's guard and must be typed on purpose.
-   `talea where` is the sharp case: it exits non-zero and writes every
-   diagnostic to **stderr**, because `cd $(talea where typo)` must fail rather
-   than land you in your home directory.
+   `talea where` is the sharp case: it exits non-zero, prints nothing on stdout
+   and writes every diagnostic to **stderr**. That is all a command can do: a
+   bare `cd $(talea where typo)` still runs `cd` with no argument and goes home,
+   because a failed `$( )` does not stop the command around it. So every doc
+   shows the checked, quoted form, `dest=$(talea where x) && cd -- "$dest"`, and
+   none shows the bare one (found in review).
 
 10. **Bulk commands exit non-zero on any failure.** `summary()` in `src/log.js`
    sets `process.exitCode`. Commands print per-repo errors and keep going, so
@@ -396,6 +399,17 @@ The skill's content is mostly restraint — never `--apply` an unseen adopt, nev
 `--loose`, never call a removal a delete. Those are the same rules as above,
 written for a reader who will act on them without asking. When one of them
 changes here, it changes there.
+
+## `exec` runs argv, not a string
+
+`talea exec -- cmd args…` spawns `cmd` with `args` and **no shell**, so each
+argument arrives exactly as the caller's shell handed it over. It used to join
+them with spaces and run the result through `sh`, which re-split `"two words"`
+into two and gave a literal `;` its meaning back (found in review). A pipeline
+is `--shell`, explicit: the words are joined and the system shell interprets
+them, its quoting and all. On Windows a `.cmd`/`.bat` script (`npm`, `yarn`)
+starts only through `cmd.exe`; that is not done quietly — re-splitting is the
+bug — so the failure names `--shell` instead.
 
 ## The gist is secret, not private
 
