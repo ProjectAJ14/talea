@@ -16,7 +16,7 @@
 // State is never shared. The catalogue is the thing that travels (see
 // `talea manifest push`); the selection is the thing that does not.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
@@ -33,6 +33,24 @@ export const USER_STATE = path.join(USER_DIR, 'state.json');
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 
+/**
+ * `renameSync`, retried briefly on Windows: there a rename over a file that
+ * anything holds open — an antivirus scan of the file just written, the search
+ * indexer, another talea reading it — fails with EPERM or EBUSY for a few
+ * milliseconds, and giving up at once would lose the write.
+ */
+export function renameInto(from, to, { rename = renameSync, platform = process.platform } = {}) {
+  for (let tries = 1; tries < 10; tries++) {
+    try {
+      return rename(from, to);
+    } catch (e) {
+      if (platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  return rename(from, to); // the last try: its error is the one reported
+}
+
 /** Machine-wide state: the update-check stamp, the gist id, the workspace list. Not per workspace. */
 export function readUserState() {
   try {
@@ -46,14 +64,37 @@ export function readUserState() {
 }
 
 export function writeUserState(state) {
+  // Written beside the file and renamed over it, which is atomic: written in
+  // place, a run reading it mid-write — the background upgrade and the command
+  // you typed, at once — saw half a file, read it as {}, and wrote that back,
+  // losing the workspace list, the gist id and `upgrade --off` (found in review).
+  const tmp = `${USER_STATE}.${process.pid}.tmp`;
   try {
     mkdirSync(USER_DIR, { recursive: true });
-    writeFileSync(USER_STATE, JSON.stringify(state, null, 2) + '\n');
+    writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+    renameInto(tmp, USER_STATE);
   } catch {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // ~/.talea is not a directory at all: there is no temp file to remove.
+    }
     // A read-only home directory must not break the actual command. The only
     // things kept here are a cache stamp, a gist id and the workspace list,
     // and a lost list re-fills itself the next time a command runs inside one.
   }
+}
+
+/**
+ * Change machine-wide state from what is on disk now. Every write that follows
+ * a network call goes through this: a state read before the call and written
+ * after it put back whatever another run had changed in between. Read and
+ * written in one breath, so the window is microseconds, not seconds.
+ */
+export function updateUserState(change) {
+  const next = change(readUserState());
+  writeUserState(next);
+  return next;
 }
 
 /** The catalogue files in precedence order, nearest first. */

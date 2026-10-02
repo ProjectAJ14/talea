@@ -16,7 +16,7 @@ import {
   findWorkspace,
   loadManifest,
   readUserState,
-  writeUserState,
+  updateUserState,
 } from '../config.js';
 import { createGist, readGist, token, updateGist } from '../github.js';
 import { c, context, fail, heading, info, ok, plain, warn } from '../log.js';
@@ -171,7 +171,7 @@ async function push(opts) {
     process.exit(1);
   }
 
-  writeUserState({ ...state, gist: gistId });
+  updateUserState((now) => ({ ...now, gist: gistId }));
 
   plain('');
   ok(`gist ${c.bold(gistId)}`);
@@ -226,7 +226,7 @@ async function pull(opts, positionals) {
 
   mkdirSync(path.dirname(USER_MANIFEST), { recursive: true });
   writeFileSync(USER_MANIFEST, content.endsWith('\n') ? content : content + '\n');
-  writeUserState({ ...state, gist: id });
+  updateUserState((now) => ({ ...now, gist: id }));
 
   plain('');
   ok(`${parsed.repos.length} repos ${c.dim(`→ ${USER_MANIFEST}`)}`);

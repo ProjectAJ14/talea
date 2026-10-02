@@ -7,11 +7,11 @@
 // and the next run says which version it is now. `talea upgrade --off` stops it.
 
 import { spawn } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { USER_DIR, readUserState, writeUserState } from './config.js';
+import { USER_DIR, readUserState, updateUserState } from './config.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.join(here, '..');
@@ -89,6 +89,72 @@ export function installLatest(name = pkgJson().name) {
   });
 }
 
+export const UPGRADE_LOCK = path.join(USER_DIR, 'upgrade.lock');
+// Longer than any npm install; a lock older than this was left by a run that died.
+const LOCK_STALE_MS = 30 * 60 * 1000;
+
+/** Is there a process with this pid? EPERM means yes, owned by somebody else. */
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
+
+/**
+ * Hold the one-install-at-a-time lock: a release function, or null when
+ * another install holds it. Created with O_EXCL, so two runs asking at the same
+ * instant cannot both get it, and holding `<pid> <time>`: a lock whose process
+ * has gone — a Ctrl-C mid-install kills it before any `finally` runs — or that
+ * is older than any install is abandoned, and taken over (found in review).
+ * Release removes the lock only while it is still this run's, so a run that
+ * took over a slow one is not freed by the slow one finishing. A home
+ * directory where no lock can be made at all does not stop the upgrade — it
+ * only loses the guard.
+ */
+export function takeUpgradeLock(now = Date.now(), { alive = pidAlive } = {}) {
+  const mine = `${process.pid} ${now}`;
+  const release = () => {
+    try {
+      if (readFileSync(UPGRADE_LOCK, 'utf8') === mine) rmSync(UPGRADE_LOCK, { force: true });
+    } catch {
+      // gone already: nothing to release
+    }
+  };
+  for (let tries = 0; tries < 3; tries++) {
+    try {
+      mkdirSync(USER_DIR, { recursive: true });
+      writeFileSync(UPGRADE_LOCK, mine, { flag: 'wx' });
+      return release;
+    } catch (e) {
+      if (e.code !== 'EEXIST') return () => {};
+    }
+    let held;
+    try {
+      held = readFileSync(UPGRADE_LOCK, 'utf8');
+    } catch {
+      continue; // released between the two calls: ask again
+    }
+    const [pid, at] = held.split(' ').map(Number);
+    if (now - at < LOCK_STALE_MS && alive(pid)) return null;
+    // Abandoned. Claimed by renaming it away, which only one run can do; a run
+    // that loses that race asks again and finds the winner's fresh lock.
+    // ponytail: a run that read the old lock just before another replaced it
+    // can still rename the new one away; that needs two runs to meet an
+    // abandoned lock within microseconds, and costs one overlapping install.
+    try {
+      const claimed = `${UPGRADE_LOCK}.${process.pid}.stale`;
+      renameSync(UPGRADE_LOCK, claimed);
+      rmSync(claimed, { force: true });
+    } catch {
+      // another run claimed it first
+    }
+  }
+  return null;
+}
+
 const checksDisabled = () =>
   process.env.TALEA_NO_UPDATE_CHECK === '1' || readUserState().updateCheck === false;
 
@@ -157,21 +223,25 @@ export async function autoUpdateAsync() {
     );
   }
   if (outcome) {
-    const { autoUpdate, ...rest } = state;
-    writeUserState((state = rest));
+    state = updateUserState(({ autoUpdate, ...rest }) => rest);
   }
 
   // Once a day. Only a fresh check starts an install, so a failing one is
   // retried daily, not on every command.
   if (Date.now() - (state.lastCheck ?? 0) > CHECK_INTERVAL_MS) {
     const latest = await latestRelease();
-    state = { ...state, lastCheck: Date.now(), ...(latest ? { latestSeen: latest } : {}) };
-    // A record a day old with no outcome is a background run that died before
-    // it could write one; it must not block every update after it.
-    const pending = state.autoUpdate && Date.now() - state.autoUpdate.at < CHECK_INTERVAL_MS;
-    const due = latest && isNewer(version, latest) && installKind() === 'npm' && !pending;
-    if (due) state.autoUpdate = { from: version, to: latest, at: Date.now() };
-    writeUserState(state);
+    // Decided on the state as it is after the network call, not before it:
+    // another run may have started an update, or saved a workspace, meanwhile.
+    let due = false;
+    state = updateUserState((now) => {
+      const next = { ...now, lastCheck: Date.now(), ...(latest ? { latestSeen: latest } : {}) };
+      // A record a day old with no outcome is a background run that died before
+      // it could write one; it must not block every update after it.
+      const pending = next.autoUpdate && Date.now() - next.autoUpdate.at < CHECK_INTERVAL_MS;
+      due = Boolean(latest && isNewer(version, latest) && installKind() === 'npm' && !pending);
+      if (due) next.autoUpdate = { from: version, to: latest, at: Date.now() };
+      return next;
+    });
     if (due) {
       spawnBackgroundUpgrade();
       say(`${c.dim('Updating in the background')} ${c.dim(version)} ${glyph.arrow} ${c.green(latest)}`);
