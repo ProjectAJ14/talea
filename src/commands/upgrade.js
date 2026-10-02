@@ -1,6 +1,6 @@
-import { readUserState, writeUserState } from '../config.js';
+import { updateUserState } from '../config.js';
 import { c, fail, heading, icon, info, ok, plain, skip, warn } from '../log.js';
-import { installKind, installLatest, isNewer, lookupLatestRelease, pkgJson } from '../update.js';
+import { installKind, installLatest, isNewer, lookupLatestRelease, pkgJson, takeUpgradeLock } from '../update.js';
 import { task } from '../live.js';
 
 export const help = `
@@ -18,6 +18,10 @@ background, with the output in ${c.dim('~/.talea/update.log')}. The command you 
 finishes on the old version, and the next one says it was updated — the
 version never changes mid-run, and never without a line saying so.
 
+Two upgrades never install at once — a second one, background or typed, stops
+while the first holds ${c.dim('~/.talea/upgrade.lock')} — and ${c.dim('~/.talea/state.json')} is written
+whole, so a run that overlaps an update never loses your workspaces or settings.
+
 A copy that is a git checkout is never updated, only told. Set
 ${c.dim('TALEA_NO_UPDATE_CHECK=1')} to turn checking off for a single shell.
 
@@ -28,10 +32,8 @@ Options
 `;
 
 export async function run(opts) {
-  const state = readUserState();
-
   if (opts.on || opts.off) {
-    writeUserState({ ...state, updateCheck: Boolean(opts.on) });
+    updateUserState((now) => ({ ...now, updateCheck: Boolean(opts.on) }));
     ok(`automatic updates ${opts.on ? c.green('on') : c.dim('off')}`);
     return;
   }
@@ -54,7 +56,7 @@ export async function run(opts) {
 
   // Cached for the passive notice, whatever happens next. A `--check` that
   // silently refreshed nothing would make the cached version go stale for a day.
-  writeUserState({ ...state, lastCheck: Date.now(), latestSeen: latest.version });
+  updateUserState((now) => ({ ...now, lastCheck: Date.now(), latestSeen: latest.version }));
 
   if (!isNewer(version, latest.version)) {
     ok(`already on the latest version ${c.dim(version)}`);
@@ -78,16 +80,27 @@ export async function run(opts) {
 
   // npm's own output is inherited and says it is working; this line says what
   // it is about to do, so the pause before npm's first byte is not silence.
+  // One install at a time: two npm installs into one global prefix race each
+  // other, and the background run and a hand-typed upgrade can easily meet.
+  const release = takeUpgradeLock();
+  if (!release) {
+    skip('another talea upgrade is installing right now — this one stops; run it again in a minute');
+    return;
+  }
   info(c.dim(`npm install -g ${name}@latest`));
   plain('');
-  const code = await installLatest(name);
+  let code;
+  try {
+    code = await installLatest(name);
+  } finally {
+    release();
+  }
   plain('');
   if (code !== 0) {
     // A background run has nobody watching it. The exit code goes where the
     // next command will find it and say so.
     if (process.env.TALEA_BACKGROUND_UPGRADE === '1') {
-      const now = readUserState();
-      if (now.autoUpdate) writeUserState({ ...now, autoUpdate: { ...now.autoUpdate, failed: code } });
+      updateUserState((now) => (now.autoUpdate ? { ...now, autoUpdate: { ...now.autoUpdate, failed: code } } : now));
     }
     fail(`npm install exited ${code}.`);
     plain(c.dim(`  Try it yourself: npm install -g ${name}@latest`));

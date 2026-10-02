@@ -43,6 +43,8 @@ talea **updates itself automatically**, at most once a day. After a command fini
 
 If the background install fails (a global npm folder that needs `sudo`, a proxy that blocks the registry), the next command says so and points at the log. It retries the next day; `talea upgrade` retries now and shows the error.
 
+The background update and the command you typed often run at once, and that is safe: two upgrades never install together — the second, background or typed, stops while the first holds `~/.talea/upgrade.lock` — and `~/.talea/state.json` is written whole and re-read before each change, so neither run loses the other's workspaces, gist or settings. A command started at the very moment npm is replacing talea's files may fail to load; run it again and it loads the new version.
+
 `talea upgrade --off` turns automatic updates and the check off, `--on` turns them back on, and `TALEA_NO_UPDATE_CHECK=1` disables both for a single shell. Every update message goes to stderr, so `$(talea where)` reads a path and nothing else.
 
 :::caution

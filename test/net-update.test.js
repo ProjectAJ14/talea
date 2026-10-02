@@ -19,7 +19,8 @@ process.chdir(HOME);
 
 const update = await import('../src/update.js');
 const upgrade = await import('../src/commands/upgrade.js');
-const { readUserState, writeUserState } = await import('../src/config.js');
+const { readUserState, writeUserState, USER_STATE, updateUserState } = await import('../src/config.js');
+const { existsSync, readdirSync, utimesSync, writeFileSync: write, mkdirSync: mkdir, chmodSync } = await import('node:fs');
 
 const { version, name } = update.pkgJson();
 const realFetch = globalThis.fetch;
@@ -367,5 +368,111 @@ describe('talea upgrade', () => {
     await capture(() => upgrade.run({}));
     assert.deepEqual(readUserState().autoUpdate, { from: version, to: newer, at: 1, failed: 243 });
     assert.equal(process.exitCode, 243);
+  });
+});
+
+// ── two talea processes at once ─────────────────────────────────
+// The background upgrade and the command the developer typed share
+// ~/.talea/state.json and one global npm prefix. Issue #23.
+
+describe('runs that overlap', () => {
+
+  test('state is written whole or not at all: no half file, no temp left behind', () => {
+    writeUserState({ workspaces: ['/a'], gist: 'g' });
+    assert.deepEqual(readUserState(), { workspaces: ['/a'], gist: 'g' });
+    assert.deepEqual(readdirSync(path.dirname(USER_STATE)).filter((f) => f.endsWith('.tmp')), []);
+  });
+
+  test('a write that cannot land removes its temp file and never throws', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+    writeUserState({ gist: 'kept' });
+    chmodSync(path.dirname(USER_STATE), 0o500);
+    try {
+      writeUserState({ gist: 'lost' });
+    } finally {
+      chmodSync(path.dirname(USER_STATE), 0o700);
+    }
+    assert.equal(readUserState().gist, 'kept');
+    assert.deepEqual(readdirSync(path.dirname(USER_STATE)).filter((f) => f.endsWith('.tmp')), []);
+  });
+
+  test('upgrade keeps what another run saved while it waited on the registry', async () => {
+    writeUserState({ workspaces: ['/a'] });
+    registry(() => {
+      // Mid-request: `talea init` elsewhere records a workspace.
+      updateUserState((s) => ({ ...s, workspaces: [...s.workspaces, '/b'] }));
+      return new Response(JSON.stringify({ version }));
+    });
+    await capture(() => upgrade.run({}));
+    assert.deepEqual(readUserState().workspaces, ['/a', '/b']);
+    assert.ok(readUserState().lastCheck);
+  });
+
+  test('the daily check decides on the state after the registry answers, so two runs start one update', async () => {
+    asNpmInstall();
+    writeUserState({ lastCheck: 0 });
+    const calls = stubSpawn('close', 0);
+    registry(() => {
+      // Mid-request: the other run already started this update.
+      updateUserState((s) => ({ ...s, autoUpdate: { from: version, to: newer, at: Date.now() }, workspaces: ['/kept'] }));
+      return new Response(JSON.stringify({ version: newer }));
+    });
+    await capture(() => update.autoUpdateAsync());
+    assert.equal(calls.length, 0, 'a second background install was started');
+    assert.deepEqual(readUserState().workspaces, ['/kept']);
+  });
+
+  test('one install at a time: a held lock stops a second upgrade before npm runs', async () => {
+    asNpmInstall();
+    registry(newer);
+    const calls = stubSpawn('close', 0);
+    const release = update.takeUpgradeLock();
+    assert.equal(typeof release, 'function');
+    assert.equal(update.takeUpgradeLock(), null, 'two holders at once');
+    const r = await capture(() => upgrade.run({}));
+    assert.match(r.out, /another talea upgrade is installing right now/);
+    assert.equal(calls.length, 0);
+    release();
+    // Free again: the install runs and lets go of the lock afterwards.
+    await capture(() => upgrade.run({}));
+    assert.equal(calls.length, 1);
+    assert.equal(existsSync(update.UPGRADE_LOCK), false);
+  });
+
+  test('a lock left by a run that died is taken over; a vanished one is simply taken', async () => {
+    mkdir(path.dirname(update.UPGRADE_LOCK), { recursive: true });
+    write(update.UPGRADE_LOCK, '');
+    const old = (Date.now() - DAY) / 1000;
+    utimesSync(update.UPGRADE_LOCK, old, old);
+    const release = update.takeUpgradeLock();
+    assert.equal(typeof release, 'function');
+    release();
+    // Present when opened, gone when its age is read: as old as can be.
+    write(update.UPGRADE_LOCK, '');
+    const fs = await import('node:fs');
+    const { syncBuiltinESMExports } = await import('node:module');
+    const real = fs.default.statSync;
+    fs.default.statSync = () => undefined;
+    syncBuiltinESMExports();
+    try {
+      assert.equal(typeof update.takeUpgradeLock(), 'function');
+    } finally {
+      fs.default.statSync = real;
+      syncBuiltinESMExports();
+    }
+    // Still fresh after the takeover attempt: held.
+    write(update.UPGRADE_LOCK, '');
+    assert.equal(update.takeUpgradeLock(Date.now()), null);
+  });
+
+  test('a home where no lock can be made still upgrades, without the guard', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+    mkdir(path.dirname(update.UPGRADE_LOCK), { recursive: true });
+    chmodSync(path.dirname(update.UPGRADE_LOCK), 0o500);
+    try {
+      const release = update.takeUpgradeLock();
+      assert.equal(typeof release, 'function');
+      release(); // a no-op, and no throw
+    } finally {
+      chmodSync(path.dirname(update.UPGRADE_LOCK), 0o700);
+    }
   });
 });

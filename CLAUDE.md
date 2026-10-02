@@ -258,6 +258,13 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    as part of the path.
    `talea update` is an alias of `upgrade`, not of `sync` — "update" is what
    people type to update a tool, and `pull` already covers syncing.
+   The background run and a typed command overlap all the time, so
+   `state.json` is written atomically (temp file, then rename), every write
+   after a network call re-reads it first (`updateUserState`), and `npm
+   install -g` happens under `~/.talea/upgrade.lock` (O_EXCL, stale after 30
+   minutes). Written in place, a half-read file became `{}` and was written
+   back, losing the workspace list and `--off` (found in review).
+   `docs/security.md` has the full account.
 
 13. **`prune` deletes, and only what is already on origin.** It is the first
    command that removes anything, and the case for it is disk: thirty forgotten
@@ -528,6 +535,14 @@ and now a version that exists in the history and has never existed on the
 registry. Past the publish step the version is public and cannot be withdrawn,
 which is why the tag follows it; a push that fails after a successful publish
 leaves a published version with no tag, and that is recoverable by hand.
+
+## Security posture
+
+`docs/security.md` is the standing record of what talea and its site expose:
+which `npm audit` advisories are reachable and why, who can put content into a
+site build, the account settings that were checked (branch protection, Firebase
+key and service-account scope, npm trusted publishing) with what is recommended,
+and the credential scan of the history. Update it when any of those change.
 
 ## The site
 

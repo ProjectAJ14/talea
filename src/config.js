@@ -16,7 +16,7 @@
 // State is never shared. The catalogue is the thing that travels (see
 // `talea manifest push`); the selection is the thing that does not.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
@@ -46,14 +46,33 @@ export function readUserState() {
 }
 
 export function writeUserState(state) {
+  // Written beside the file and renamed over it, which is atomic: written in
+  // place, a run reading it mid-write — the background upgrade and the command
+  // you typed, at once — saw half a file, read it as {}, and wrote that back,
+  // losing the workspace list, the gist id and `upgrade --off` (found in review).
+  const tmp = `${USER_STATE}.${process.pid}.tmp`;
   try {
     mkdirSync(USER_DIR, { recursive: true });
-    writeFileSync(USER_STATE, JSON.stringify(state, null, 2) + '\n');
+    writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+    renameSync(tmp, USER_STATE);
   } catch {
+    rmSync(tmp, { force: true });
     // A read-only home directory must not break the actual command. The only
     // things kept here are a cache stamp, a gist id and the workspace list,
     // and a lost list re-fills itself the next time a command runs inside one.
   }
+}
+
+/**
+ * Change machine-wide state from what is on disk now. Every write that follows
+ * a network call goes through this: a state read before the call and written
+ * after it put back whatever another run had changed in between. Read and
+ * written in one breath, so the window is microseconds, not seconds.
+ */
+export function updateUserState(change) {
+  const next = change(readUserState());
+  writeUserState(next);
+  return next;
 }
 
 /** The catalogue files in precedence order, nearest first. */
