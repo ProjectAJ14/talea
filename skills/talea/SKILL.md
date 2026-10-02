@@ -114,8 +114,9 @@ the guard exists because an FVM Flutter SDK cache reports `origin` as
 Flutter project on the machine.
 
 If a move reports worktrees that "could not be re-linked", the repo has moved
-and nothing is lost: run the `git worktree repair` command it prints, exactly as
-printed, and tell the developer. Never move the repo back or delete the
+and nothing is lost. Show the developer git's reason line; once its cause is
+dealt with (often a permission or an unmounted drive), run the printed
+`git worktree repair` command in a shell with no `GIT_DIR` set. Never move the repo back or delete the
 worktree to get rid of the message.
 
 A second copy of the same repo is **parked** in `.talea-duplicates/`, not

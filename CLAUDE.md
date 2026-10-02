@@ -133,7 +133,11 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    review). A list git cannot give refuses the move — failure read as "no
    worktrees" is how they all get stranded — and a repair counts only once the
    worktree's `--git-common-dir` is the moved repo's. One that is not is
-   `broken`: the move stands, the fix command is printed, and the run fails.
+   `broken`: the move stands, git's reason and the fix command are printed,
+   and the run fails — counted in the summary, so sync never says ALL CLEAR
+   over it. Each worktree is repaired in its own call for its own reason, but
+   git rewrites every worktree's link on any repair, so one it cannot write
+   fails them all; no ordering avoids that, and the reason names the culprit.
    Concurrent changes to a checkout during a move are not supported; the docs
    say to close what is working in it.
 

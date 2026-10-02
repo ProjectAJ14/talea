@@ -660,18 +660,27 @@ function relocateWorktrees(from, to, recorded) {
     .map((p) => remapWorktree(p, { from, to, siblings }))
     .filter((p) => existsSync(p));
 
-  // Repaired means it resolves to this repo afterwards, checked one by one —
-  // not that the repair command was run. One that does not is `broken`, and
-  // the caller says how to finish it; the move itself stands, because moving
-  // the repo back could fail the same way and nothing here is lost.
-  if (now.length) gitSync(['worktree', 'repair', ...now], to);
-  const repaired = now.filter((p) => linkedTo(p, to));
-  const broken = now.filter((p) => !repaired.includes(p));
+  // One repair per worktree, so each one that fails carries git's own reason.
+  // Every repair call also rewrites the links of every worktree the repo has,
+  // so one git cannot write fails them all — and its reason names that one,
+  // which is the thing to fix (found in review, checked against git 2.54).
+  // Repaired means it resolves to this repo afterwards, not that the command
+  // ran. The move itself stands: moving the repo back could fail the same way,
+  // and nothing here is lost.
+  const repaired = [];
+  const broken = [];
+  for (const p of now) {
+    const res = gitSync(['worktree', 'repair', p], to);
+    if (linkedTo(p, to)) repaired.push(p);
+    else broken.push({ path: p, why: String(res.stderr ?? '').trim().split('\n').pop() || `git exited ${res.status}` });
+  }
   return { repaired, broken, siblings, stale: recorded.length - now.length };
 }
 
 export function executeMove(plan) {
   try {
+    // Gone since the plan: said as itself, not as a git that cannot list.
+    if (!existsSync(plan.from)) return { ok: false, message: `${plan.from} is no longer there — nothing was moved` };
     // Read before the rename: see readWorktrees.
     const recorded = readWorktrees(plan.from);
     if (recorded.error) {

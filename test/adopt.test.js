@@ -508,10 +508,37 @@ describe('executeMove', () => {
     assert.equal(res.ok, true);
     assert.equal(existsSync(path.join(to, '.git')), true);
     assert.deepEqual(res.worktrees.repaired, []);
-    assert.deepEqual(res.worktrees.broken, [far]);
+    assert.deepEqual(res.worktrees.broken, [{ path: far, why: 'nope' }]);
     // And the command it names really does fix it.
     git(['worktree', 'repair', far], to);
     assert.equal(git(['rev-parse', '--is-inside-work-tree'], far), 'true');
+  });
+
+  test('a worktree git cannot write is named in every failure it causes, and the printed fix works once it is writable', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+    const { dir } = makeRepo('halfway');
+    const stuck = path.join(fresh(), 'stuck');
+    const fine = path.join(fresh(), 'fine');
+    git(['worktree', 'add', '-q', '-b', 'stuck', stuck], dir);
+    git(['worktree', 'add', '-q', '-b', 'fine', fine], dir);
+    // git rewrites every worktree's link on any repair, so this one fails both.
+    fs.chmodSync(path.join(stuck, '.git'), 0o444);
+    fs.chmodSync(stuck, 0o555);
+    const to = path.join(fresh(), 'halfway');
+    let res;
+    try {
+      res = A.executeMove({ from: dir, to });
+    } finally {
+      fs.chmodSync(stuck, 0o755);
+      fs.chmodSync(path.join(stuck, '.git'), 0o644);
+    }
+    assert.equal(res.ok, true, res.message);
+    assert.deepEqual(res.worktrees.repaired, []);
+    assert.deepEqual(res.worktrees.broken.map((b) => b.path), [stuck, fine]);
+    for (const b of res.worktrees.broken) assert.ok(b.why.includes(stuck), `the reason does not name the cause: ${b.why}`);
+    // Writable again, the command talea prints finishes it.
+    for (const b of res.worktrees.broken) git(['worktree', 'repair', b.path], to);
+    assert.equal(git(['rev-parse', '--is-inside-work-tree'], fine), 'true');
+    assert.equal(git(['rev-parse', '--is-inside-work-tree'], stuck), 'true');
   });
 
   const failing = (code) => (fn) =>
@@ -533,9 +560,14 @@ describe('executeMove', () => {
     const plan = { from: makeRepo('busy').dir, to: path.join(fresh(), 'x') };
     const busy = await failing('EBUSY')(() => A.executeMove(plan));
     assert.match(busy.message, /could not be moved \(EBUSY\) — something has it open/);
-    const other = A.executeMove({ from: path.join(tmp, 'nope'), to: path.join(fresh(), 'x') });
-    assert.equal(other.ok, false);
-    assert.match(other.message, /ENOENT/);
+    const gone = A.executeMove({ from: path.join(tmp, 'nope'), to: path.join(fresh(), 'x') });
+    assert.equal(gone.ok, false);
+    assert.match(gone.message, /nope is no longer there — nothing was moved/);
+    const full = { from: makeRepo('full').dir, to: path.join(fresh(), 'x') };
+    const other = await stubbed(fs, 'mkdirSync', () => () => {
+      throw errno('ENOSPC');
+    }, () => A.executeMove(full));
+    assert.equal(other.message, 'ENOSPC');
   });
 });
 

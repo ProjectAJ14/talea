@@ -39,7 +39,8 @@ ${c.bold('Worktrees come too.')} The sibling ${c.dim('<repo>-worktrees/')} folde
 repo, and every worktree — there, nested inside the repo, or anywhere else on
 disk — is re-linked afterwards. A worktree that does not move is repaired where
 it sits. Each one is checked to resolve to the moved repo; one that does not is
-named with the ${c.dim('git worktree repair')} command that finishes it, and the run fails.
+named with git's reason and the ${c.dim('git worktree repair')} command to run once that is
+fixed, and the run fails.
 A repo whose worktrees git cannot list is not moved.
 
 Close editors, terminals and agents working in a checkout before ${c.dim('--apply')}:
@@ -120,8 +121,15 @@ function reportWorktrees(root, wt) {
     );
   }
   if (!wt.broken.length) return true;
-  fail(`    ${wt.broken.length} worktree${wt.broken.length > 1 ? 's' : ''} could not be re-linked — the files are untouched; finish it with:`);
-  plain(`      git -C "${wt.to}" worktree repair ${wt.broken.map((p) => `"${p}"`).join(' ')}`);
+  fail(`    ${wt.broken.length} worktree${wt.broken.length > 1 ? 's' : ''} could not be re-linked — the files are untouched:`);
+  for (const { path: p, why } of wt.broken) {
+    plain(`      ${p}`);
+    plain(`        ${c.dim(`git: ${why}`)}`);
+    plain(`        ${c.dim('once that is fixed:')} git -C "${wt.to}" worktree repair "${p}"`);
+  }
+  // The fix this run needed was GIT_DIR cleared; a shell that exported it
+  // aims the printed command at the wrong repo too.
+  plain(c.dim('      Run it in a shell with no GIT_DIR or GIT_WORK_TREE set.'));
   return false;
 }
 
@@ -502,13 +510,12 @@ export async function run(opts) {
 
   plain('');
   const applied = await applyMoves(root, willMove, willPark, manifest);
-  const okCount = applied.results.filter((r) => r.ok).length;
+  // A move that left a worktree unlinked is one failure, not also a success.
+  const okCount = applied.results.filter((r) => r.ok && !r.partial).length;
   summary({
-    ok: okCount + applied.parked.length,
+    ok: okCount + applied.parked.filter((p) => !p.partial).length,
     skipped: inPlace.length,
-    failed:
-      applied.results.length - okCount + (willPark.length - applied.parked.length) +
-      [...applied.results, ...applied.parked].filter((r) => r.partial).length,
+    failed: applied.results.length - okCount + (willPark.length - applied.parked.length) + applied.parked.filter((p) => p.partial).length,
     okLabel: 'relocated',
   });
 
