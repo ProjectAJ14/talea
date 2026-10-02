@@ -8,6 +8,7 @@ import { board } from '../live.js';
 import { c, heading, icon, ok, plain, summary, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
 import { adoptable, requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
+import { insideRoot } from '../adopt.js';
 import { applyMoves, parseFromPaths, planFor } from './adopt.js';
 
 export const help = `
@@ -150,6 +151,13 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
         'warn',
         `${path.relative(root, dir)} already exists and is not a git repo, leaving it untouched`,
       );
+      return;
+    }
+
+    // A symlinked folder above it would take the clone out of the workspace.
+    if (!insideRoot(root, dir)) {
+      counts.failed++;
+      view.set(repoId(repo), 'fail', `${path.relative(root, dir)} leads outside the workspace once symlinks are followed, not cloned`);
       return;
     }
 

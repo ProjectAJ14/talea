@@ -224,6 +224,10 @@ so a typo is loud.
 - Report a move as *moved*, a removal as *taken off the list*, and a duplicate
   as *parked*. Those are three different things and the words are the whole
   safety story.
+- When a command says the catalogue "is not a usable catalogue", show the
+  developer the listed problems. Do not edit `dir`, `group` or `owner` values,
+  or delete entries, to make it load — those decide where their checkouts
+  live — and never point one outside the workspace or through a symlink.
 - Do not add `ignore: true` to a catalogue entry to work around a conflict
   without saying so — it means another tool owns that checkout, and every talea
   command will skip it from then on.

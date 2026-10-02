@@ -515,10 +515,24 @@ describe('talea manifest', () => {
     assert.equal(r.exit, 1);
     assert.match(r.err, /That gist is not a catalogue/);
 
-    content = '{"groups":{}}';
+    for (content of ['{"groups":{}}', 'null']) {
+      r = await capture(() => manifest.run({}, ['pull', 'g']));
+      assert.equal(r.exit, 1);
+      assert.match(r.err, /no `repos` array/);
+    }
+
+    // A catalogue in shape, but one entry would land outside the workspace.
+    content = '{"repos":[{"name":"ok","owner":"me"},{"name":"app","owner":"me","dir":"../../outside/app"}]}';
     r = await capture(() => manifest.run({}, ['pull', 'g']));
     assert.equal(r.exit, 1);
-    assert.match(r.err, /no `repos` array/);
+    assert.match(r.err, /That gist is not a usable catalogue, so .* was left as it was/);
+    assert.match(r.err, /repos\[1\] \(me\/app\): "dir" has a part that is "\.\."/);
+    assert.equal(readFileSync(USER_MANIFEST, 'utf8'), before);
+
+    // Past ten problems, the rest are counted rather than listed.
+    content = JSON.stringify({ repos: Array.from({ length: 12 }, (_, i) => ({ name: `r${i}`, owner: '..' })) });
+    r = await capture(() => manifest.run({}, ['pull', 'g']));
+    assert.match(r.err, /… and 2 more/);
     assert.equal(readFileSync(USER_MANIFEST, 'utf8'), before);
   });
 

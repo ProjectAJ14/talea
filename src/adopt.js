@@ -277,6 +277,18 @@ export async function moveBlockers(dir) {
 }
 
 /**
+ * True when `dest`, every symlink above it followed, is below `root` — not
+ * `root` itself. The catalogue check keeps a path's spelling inside the
+ * workspace; this keeps where it really leads there too, so a symlinked folder
+ * in the tree cannot carry a move, a clone or a doc out of it. Asked right
+ * before each one, because a symlink can appear after the catalogue was read.
+ */
+export function insideRoot(root, dest) {
+  const rel = path.relative(canonical(root), canonical(dest));
+  return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
+}
+
+/**
  * A path spelled the way the filesystem spells it.
  *
  * Two absolute paths to the same place compare unequal often enough to matter:

@@ -97,6 +97,22 @@ does not pin down one repo.
 Absent is "never asked" and falls back to the catalogue defaults; empty is "I
 chose nothing". A test pins that.
 
+**A catalogue is input, not configuration.** It travels — a gist, a teammate,
+a team repo — and every path field in it becomes a folder that is created,
+renamed into and written to. So `loadManifest()` refuses one that fails
+`catalogueProblems()` before any command reads a path out of it, and `manifest
+pull` checks before it writes: names and owners are single folder names, groups
+and dirs are relative paths with no `..`, both platforms' rules applied at once
+(a catalogue written on one is read on the other), fields have the types read,
+and no two repos talea places share a folder or nest. A `dir` of
+`../../outside/app` used to resolve outside the workspace (found in review).
+The spelling check is not enough on its own, so `insideRoot()` resolves every
+symlink above a destination right before a move, a park, a clone or a group
+doc. A symlinked workspace is fine; a symlink inside it to elsewhere is refused.
+The trust boundary that is left: a catalogue chooses which URLs are cloned and
+where in the workspace they land. git's clone defaults run nothing from the
+repo, and the docs tell a developer to read a catalogue they did not write.
+
 **Commands run from anywhere.** Inside a workspace the upward walk to
 `.talea.json` wins, as git's does. Outside one, `requireWorkspace()` falls back
 to the workspaces this machine knows: every root `init` recorded in

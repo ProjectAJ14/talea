@@ -46,6 +46,10 @@ The remote URL is the identity. A folder that merely shares a name is listed and
 
 `ignore: true` on a catalogue entry means another tool owns that checkout. No command touches it — not `sync`, not `adopt`, not `exec --all`, not an explicit selection, not `-r`. Naming it with `-r` skips it with a note saying why, `talea add` refuses it, and the checklist shows it greyed out with no key that ticks it. A checkout whose remote is exactly an ignored repo's is never matched to another repo of the same name, either.
 
+### It will not put anything outside the workspace
+
+A catalogue can come from somebody else, so every folder it names is checked before anything is created, moved or written: no absolute paths, no `..`, no two repos in one folder. Right before each move, clone or doc, the destination is resolved through every symlink above it as well, so a link inside the workspace cannot lead anywhere outside it. A catalogue that fails is refused whole, with every problem named, and `manifest pull` refuses one before it replaces yours.
+
 ### It will not quietly do nothing
 
 An unknown group or repo name exits non-zero. `talea where` is the sharp case: it exits non-zero and writes every diagnostic to stderr, because `cd $(talea where typo)` must fail rather than land you in your home directory.

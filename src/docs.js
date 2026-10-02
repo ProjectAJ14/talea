@@ -17,6 +17,7 @@ import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { insideRoot } from './adopt.js';
 import { groupDir } from './config.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,9 @@ export function dropDocs(manifest, root, groups, templates = TEMPLATES) {
     if (!existsSync(src)) continue;
 
     const dst = path.join(dir, 'CLAUDE.md');
+    if (dir !== root && !insideRoot(root, dir)) {
+      throw new Error(`${dir} leads outside the workspace once symlinks are followed, so no CLAUDE.md is written there.`);
+    }
     if (existsSync(dst)) {
       kept.push(dst);
       continue;

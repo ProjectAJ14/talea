@@ -9,6 +9,7 @@ import {
   DUPLICATES_DIR,
   claudeMaybeRunning,
   executeMove,
+  insideRoot,
   parkingSpot,
   findConfigHits,
   findGitDirs,
@@ -133,12 +134,14 @@ function reportWorktrees(root, wt) {
   return false;
 }
 
+const OUTSIDE = 'its destination leads outside the workspace once symlinks are followed — nothing was moved';
+
 export async function applyMoves(root, moves, parks = [], manifest) {
   const results = [];
   const warnedAboutClaude = moves.length > 0 && claudeMaybeRunning();
 
   for (const plan of moves) {
-    const res = executeMove(plan);
+    const res = insideRoot(root, plan.to) ? executeMove(plan) : { ok: false, message: OUTSIDE };
     if (!res.ok) {
       fail(`${c.bold(repoLabel(manifest, plan.repo))}\n    ${c.dim(res.message)}`);
       results.push({ plan, ok: false });
@@ -181,7 +184,8 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     // The spot is chosen now, not at plan time: two copies of one repo planned
     // in the same run would otherwise be handed the identical path, and the
     // -2 suffixing would never fire.
-    const res = executeMove({ ...plan, to: parkingSpot(root, plan.repo, manifest) });
+    const spot = parkingSpot(root, plan.repo, manifest);
+    const res = insideRoot(root, spot) ? executeMove({ ...plan, to: spot }) : { ok: false, message: OUTSIDE };
     if (!res.ok) {
       fail(`${c.bold(repoLabel(manifest, plan.repo))} second copy\n    ${c.dim(res.message)}`);
       continue;

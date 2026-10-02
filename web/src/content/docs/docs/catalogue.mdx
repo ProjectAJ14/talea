@@ -66,6 +66,22 @@ The gist is private. It still holds the names of your private repositories, so t
 
 Only the catalogue is published. What each machine keeps stays in that machine's `.talea.json` and never leaves it.
 
+### What a catalogue may say
+
+A catalogue travels — through the gist, from a teammate, as a file in a team repo — so talea treats it as input and checks it before any command reads a path out of it, and before `manifest pull` writes one over yours:
+
+- **Paths stay below the workspace.** A repo's `name` and `owner` are single folder names. Its `group` and `dir`, and a group's `dir`, are relative paths like `work/api`. An absolute path, a `..`, a backslash, a drive letter or an empty part is refused.
+- **Fields have the types talea reads.** `name` is required text; `owner`, `url` and `defaultBranch` are text; `default`, `ignore`, `archived`, `fork` and `missing` are `true` or `false`. Fields talea does not know are left alone.
+- **No two repos share a folder.** Two repos that would land in one folder — two owners' `app` in one group — or one inside the other, are a conflict until one gets a `dir` of its own. Case does not count: macOS and Windows treat `App` and `app` as one folder. An `ignore: true` repo is placed by nobody, so it conflicts with nothing.
+
+Each problem is named with its entry and field — `repos[3] (acme/app): "dir" has a part that is ".."` — and nothing changes until the file is fixed.
+
+The spelling is not the whole check. Right before a move, a clone or a group doc is written, the real destination is resolved through every symlink above it, and anything that would land outside the workspace is refused. A workspace that is itself a link to another drive is fine; a link *inside* it to somewhere else is not followed.
+
+:::caution
+A catalogue still decides **which repositories you clone, from which URLs, and where inside the workspace they land**. talea clones with git's own defaults, which run nothing from the repository, but a catalogue can point you at any repo. Read one you did not write before you sync it.
+:::
+
 ### Groups are just folders
 
 A group is the directory a repo lives in, resolved in this order: an explicit `group` field, then the repo's `owner`, then `repos`. Two owners can be consolidated into one group by giving both sets of entries the same `group`.

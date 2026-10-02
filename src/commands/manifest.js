@@ -11,6 +11,7 @@ import path from 'node:path';
 import {
   MANIFEST_NAME,
   USER_MANIFEST,
+  catalogueProblems,
   findWorkspace,
   loadManifest,
   readUserState,
@@ -37,6 +38,10 @@ so treat the id like a bookmark you would not paste into a public channel.
 
 The id is remembered in ${c.dim('~/.talea/state.json')}, so after the first ${c.dim('pull <id>')}
 every later ${c.dim('push')} and ${c.dim('pull')} needs no argument.
+
+A pulled catalogue is checked before it is written: every folder it names must
+be below the workspace, and no two repos may share one. One that fails is
+refused with each problem named, and your current catalogue is left as it was.
 
 Options
       --gist <id>       use this gist for one command without remembering it
@@ -136,8 +141,18 @@ async function pull(opts, positionals) {
     fail(`That gist is not a catalogue — ${err.message}`);
     process.exit(1);
   }
-  if (!Array.isArray(parsed.repos)) {
+  if (!Array.isArray(parsed?.repos)) {
     fail('That gist has no `repos` array, so it is not a talea catalogue.');
+    process.exit(1);
+  }
+  // Every field, the same check a load makes: written first and checked on
+  // the next command, a bad one would already have replaced the good copy.
+  const problems = catalogueProblems(parsed);
+  if (problems.length) {
+    fail(`That gist is not a usable catalogue, so ${USER_MANIFEST} was left as it was:`);
+    for (const p of problems.slice(0, 10)) console.error(`    - ${p}`);
+    if (problems.length > 10) console.error(`    … and ${problems.length - 10} more`);
+    console.error('\n  Fix the catalogue where it was pushed from, then pull again.');
     process.exit(1);
   }
 
