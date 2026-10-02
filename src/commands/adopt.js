@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expandHome, loadState, saveState } from '../config.js';
+import { expandHome, loadState, repoId, repoLabel, saveState } from '../config.js';
 import { c, fail, glyph, heading, icon, info, ok, plain, skip, summary, warn } from '../log.js';
 import { adoptable, requireCatalogue, requireWorkspace, selectRepos } from '../workspace.js';
 import {
@@ -54,7 +54,7 @@ files in the workspace and the repo (.idea, .vscode, .claude, CLAUDE.md).
 
 Options
   -g, --group <names>   restrict to groups
-  -r, --repo <names>    restrict to repos
+  -r, --repo <names>    restrict to repos (name or owner/name)
       --from <path>     extra folder to search (repeatable, remembered)
       --apply           perform the moves (default is a dry run)
       --loose           also move repos matched by name when the remote differs
@@ -101,12 +101,12 @@ export async function applyMoves(root, moves, parks = [], manifest) {
   for (const plan of moves) {
     const res = executeMove(plan);
     if (!res.ok) {
-      fail(`${c.bold(plan.repo.name)}\n    ${c.dim(res.message)}`);
+      fail(`${c.bold(repoLabel(manifest, plan.repo))}\n    ${c.dim(res.message)}`);
       results.push({ plan, ok: false });
       continue;
     }
     ok(
-      `${c.bold(plan.repo.name)} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, plan.to))}`,
+      `${c.bold(repoLabel(manifest, plan.repo))} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, plan.to))}`,
     );
 
     // Said out loud, always. A worktree folder moving is a second directory
@@ -142,7 +142,7 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     const winner = path.resolve(plan.keeping);
     if (failedMoves.has(winner) || !existsSync(winner)) {
       warn(
-        `${c.bold(plan.repo.name)} second copy left where it is — ` +
+        `${c.bold(repoLabel(manifest, plan.repo))} second copy left where it is — ` +
           `${where(root, plan.keeping)} is not in place\n    ${c.dim(shorten(plan.from))}`,
       );
       continue;
@@ -153,13 +153,13 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     // -2 suffixing would never fire.
     const res = executeMove({ ...plan, to: parkingSpot(root, plan.repo, manifest) });
     if (!res.ok) {
-      fail(`${c.bold(plan.repo.name)} second copy\n    ${c.dim(res.message)}`);
+      fail(`${c.bold(repoLabel(manifest, plan.repo))} second copy\n    ${c.dim(res.message)}`);
       continue;
     }
     parked.push({ ...plan, to: res.to });
     const landed = parked[parked.length - 1];
     ok(
-      `${c.bold(plan.repo.name)} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, landed.to))}`,
+      `${c.bold(repoLabel(manifest, plan.repo))} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, landed.to))}`,
     );
     plain(
       `    ${c.dim(glyph.pending)} second copy — ${c.bold(where(root, plan.keeping))} is the one in use`,
@@ -181,7 +181,7 @@ export async function applyMoves(root, moves, parks = [], manifest) {
       ...state,
       adopted: [
         ...(state.adopted ?? []),
-        ...done.map((r) => ({ repo: r.plan.repo.name, from: r.plan.from, to: r.plan.to, at })),
+        ...done.map((r) => ({ repo: repoId(r.plan.repo), from: r.plan.from, to: r.plan.to, at })),
       ],
     });
   }
@@ -404,7 +404,7 @@ export async function run(opts) {
     for (const p of moves) {
       const mark = p.confidence === 'name' ? c.yellow(glyph.maybe) : c.green(glyph.arrow);
       plain(
-        `  ${mark} ${c.bold(p.repo.name)}\n` +
+        `  ${mark} ${c.bold(repoLabel(manifest, p.repo))}\n` +
           `      from  ${c.dim(shorten(p.from))}\n` +
           `      to    ${c.dim(path.relative(root, p.to))}`,
       );
@@ -429,7 +429,7 @@ export async function run(opts) {
     plain('');
     for (const p of parks) {
       plain(
-        `  ${c.yellow('⇉')} ${c.bold(p.repo.name)} ${c.dim('— second copy')}\n` +
+        `  ${c.yellow('⇉')} ${c.bold(repoLabel(manifest, p.repo))} ${c.dim('— second copy')}\n` +
           `      from  ${c.dim(shorten(p.from))}\n` +
           `      to    ${c.dim(path.relative(root, p.to))}\n` +
           `      keep  ${c.dim(where(root, p.keeping))}` +
@@ -446,7 +446,7 @@ export async function run(opts) {
   if (refused.length) {
     plain('');
     for (const p of refused) {
-      warn(`${c.bold(p.repo.name)} left alone — ${p.reason}\n    ${c.dim(shorten(p.from))}`);
+      warn(`${c.bold(repoLabel(manifest, p.repo))} left alone — ${p.reason}\n    ${c.dim(shorten(p.from))}`);
     }
   }
 
@@ -469,7 +469,7 @@ export async function run(opts) {
     plain('');
     for (const p of unsure) {
       warn(
-        `${c.bold(p.repo.name)} left alone — matched on name only, not on remote\n` +
+        `${c.bold(repoLabel(manifest, p.repo))} left alone — matched on name only, not on remote\n` +
           `    ${c.dim(shorten(p.from))}\n` +
           `    ${c.dim(p.originUrl)}`,
       );

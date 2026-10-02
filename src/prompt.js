@@ -8,7 +8,7 @@
 import readline from 'node:readline/promises';
 
 import { c, glyph } from './log.js';
-import { repoGroup } from './config.js';
+import { repoGroup, repoId } from './config.js';
 
 const ESC = '\u001b';
 const CTRL_C = '\u0003';
@@ -21,6 +21,10 @@ const CTRL_C = '\u0003';
  * `preselected` is either a boolean for every row, or a predicate — which is
  * how the picker opens with your default set already ticked and everything
  * else visible but off.
+ *
+ * An `ignore: true` repo is listed, so the tree is the whole catalogue, but as
+ * `ignored`: never ticked, and no key ticks it — another tool owns it. Two
+ * repos of one name in one group read `owner/name`, or the rows are identical.
  */
 export function buildTree(manifest, repos = manifest.repos, preselected = true) {
   const tick = typeof preselected === 'function' ? preselected : () => preselected;
@@ -46,7 +50,10 @@ export function buildTree(manifest, repos = manifest.repos, preselected = true) 
     if (!members?.length) continue;
     rows.push({ kind: 'group', group, label: group, title: manifest.groups?.[group]?.title });
     for (const repo of members) {
-      rows.push({ kind: 'repo', group, label: repo.name, repo, checked: Boolean(tick(repo)) });
+      const twin = members.some((r) => r !== repo && r.name.toLowerCase() === repo.name.toLowerCase());
+      const label = twin && repo.owner ? `${repo.owner}/${repo.name}` : repo.name;
+      const ignored = Boolean(repo.ignore);
+      rows.push({ kind: 'repo', group, label, repo, ignored, checked: !ignored && Boolean(tick(repo)) });
     }
   }
   return rows;
@@ -54,7 +61,7 @@ export function buildTree(manifest, repos = manifest.repos, preselected = true) 
 
 /** 'all' | 'some' | 'none' for a group, derived from its repos — never stored. */
 export function groupState(rows, group) {
-  const members = rows.filter((r) => r.kind === 'repo' && r.group === group);
+  const members = rows.filter((r) => r.kind === 'repo' && r.group === group && !r.ignored);
   const on = members.filter((r) => r.checked).length;
   if (on === 0) return 'none';
   return on === members.length ? 'all' : 'some';
@@ -73,24 +80,24 @@ export function toggle(rows, i) {
   if (!row) return rows;
 
   if (row.kind === 'repo') {
-    row.checked = !row.checked;
+    if (!row.ignored) row.checked = !row.checked;
     return rows;
   }
 
   const next = groupState(rows, row.group) !== 'all';
   for (const r of rows) {
-    if (r.kind === 'repo' && r.group === row.group) r.checked = next;
+    if (r.kind === 'repo' && r.group === row.group && !r.ignored) r.checked = next;
   }
   return rows;
 }
 
 export function setAll(rows, checked) {
-  for (const r of rows) if (r.kind === 'repo') r.checked = checked;
+  for (const r of rows) if (r.kind === 'repo' && !r.ignored) r.checked = checked;
   return rows;
 }
 
 export const selectedRepos = (rows) =>
-  rows.filter((r) => r.kind === 'repo' && r.checked).map((r) => r.repo);
+  rows.filter((r) => r.kind === 'repo' && r.checked && !r.ignored).map((r) => r.repo);
 
 const GROUP_MARK = { all: '◼', some: '◐', none: '◻' };
 
@@ -133,6 +140,7 @@ export function renderRow(rows, i, cursor) {
     return `${pointer} ${box} ${c.bold(row.label)}  ${c.dim(row.title ?? '')}`;
   }
 
+  if (row.ignored) return `${pointer}   ${c.grey('–')} ${c.dim(`${row.label}  ignored — another tool owns it`)}`;
   const box = row.checked ? c.green('◼') : c.grey('◻');
   return `${pointer}   ${box} ${i === cursor ? c.bold(row.label) : row.label}`;
 }
@@ -230,7 +238,7 @@ export function pickRepos(rows, { title = 'Select what to clone' } = {}) {
       if (cursor < top) top = cursor;
       if (cursor >= top + height) top = cursor - height + 1;
 
-      const total = rows.filter((r) => r.kind === 'repo').length;
+      const total = rows.filter((r) => r.kind === 'repo' && !r.ignored).length;
       const lines = [
         c.bold(title),
         c.dim(`${selectedRepos(rows).length} of ${total} selected`),
@@ -333,7 +341,7 @@ export async function pickByLine(rows) {
   const groups = [...new Set(rows.map((r) => r.group))];
   console.log(`\n${c.bold('Groups')}`);
   for (const g of groups) {
-    const members = rows.filter((r) => r.kind === 'repo' && r.group === g);
+    const members = rows.filter((r) => r.kind === 'repo' && r.group === g && !r.ignored);
     console.log(`  ${c.cyan(g.padEnd(10))} ${c.dim(`${members.length} repos`)}`);
   }
   console.log(c.dim('\nEnter group and/or repo names, comma separated. Empty = everything.'));
@@ -342,31 +350,33 @@ export async function pickByLine(rows) {
   const answer = (await rl.question('\n> ')).trim();
   rl.close();
 
-  if (!answer) return { picked: selectedRepos(setAll(rows, true)), unknown: [] };
+  if (!answer) return { picked: selectedRepos(setAll(rows, true)), unknown: [], refused: [] };
   return applyNames(rows, answer.split(','));
 }
 
 /**
  * Resolve typed group/repo names against the tree. Unknown names are returned
  * rather than ignored — a typo that silently clones nothing is the failure
- * mode this project treats as worse than stopping.
+ * mode this project treats as worse than stopping. So are `refused` ones: a
+ * name two owners share, which cannot say which, and an ignored repo typed by
+ * name, which cannot be kept.
  */
 export function applyNames(rows, names) {
-  const wanted = new Set(names.map((s) => String(s).trim().toLowerCase()).filter(Boolean));
+  const wanted = [...new Set(names.map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
   setAll(rows, false);
+  const repos = rows.filter((r) => r.kind === 'repo');
+  const unknown = [];
+  const refused = [];
 
-  for (const r of rows) {
-    if (r.kind !== 'repo') continue;
-    if (wanted.has(r.group.toLowerCase()) || wanted.has(r.label.toLowerCase())) r.checked = true;
+  for (const w of wanted) {
+    const inGroup = repos.filter((r) => r.group.toLowerCase() === w);
+    const byId = repos.filter((r) => repoId(r.repo) === w || r.label.toLowerCase() === w);
+    const byName = repos.filter((r) => r.repo.name.toLowerCase() === w);
+    const hit = inGroup.length ? inGroup : byId.length ? byId : byName;
+    if (!hit.length) unknown.push(w);
+    else if (!inGroup.length && hit.length > 1) refused.push(`${w} is ambiguous — name the owner: ${hit.map((r) => repoId(r.repo)).join(', ')}`);
+    else if (!inGroup.length && hit[0].ignored) refused.push(`${w} is marked ignore: true — another tool owns it`);
+    else for (const r of hit) if (!r.ignored) r.checked = true;
   }
-
-  const known = new Set();
-  for (const r of rows) {
-    known.add(r.group.toLowerCase());
-    if (r.kind === 'repo') known.add(r.label.toLowerCase());
-  }
-  return {
-    picked: selectedRepos(rows),
-    unknown: [...wanted].filter((w) => !known.has(w)),
-  };
+  return { picked: selectedRepos(rows), unknown, refused };
 }

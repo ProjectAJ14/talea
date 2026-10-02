@@ -99,7 +99,7 @@ talea pick PiDom                # keep that repo; no such name opens the checkli
 
 A name that matches exactly one repo is `talea add`. A name that matches none — or two owners' repos — opens the checklist instead.
 
-Space toggles, Enter saves, Esc cancels and changes nothing. Needs a terminal; in a non-interactive session it prints a summary instead of hanging.
+A repo marked `ignore: true` is listed greyed out, and nothing ticks it. Two repos of one name in one group are listed as `owner/name`. Space toggles, Enter saves, Esc cancels and changes nothing. Needs a terminal; in a non-interactive session it prints a summary instead of hanging.
 
 ### talea add / talea rm
 
@@ -108,6 +108,8 @@ talea add eklavya                  # add it to the list and clone it now
 talea add nonstopio/json-viewer    # when two owners share a repo name
 talea rm eklavya                   # take it off the list — the folder stays
 ```
+
+The list is written as `owner/name`, so removing one owner's repo never touches another's of the same name. `add` refuses a repo marked `ignore: true`.
 
 ### talea where
 
@@ -147,7 +149,7 @@ talea exec -g nonstopio -- npm install
 talea exec --all -- git branch --show-current
 ```
 
-Everything after `--` is the command. One repo at a time, so the output stays attributable.
+Everything after `--` is the command. One repo at a time, so the output stays attributable. `--all` reaches every repo in the catalogue except one marked `ignore: true`.
 
 ### talea manifest
 

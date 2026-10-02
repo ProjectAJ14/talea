@@ -9,6 +9,7 @@
 // because `clone` and `sync` ask the same question, and the cloning is
 // `clone.run`, re-entered after the new selection is on disk.
 
+import { repoLabel } from '../config.js';
 import { c, fail, heading, ok, plain, skip, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
 import { machineRepos, requireCatalogue, requireWorkspace } from '../workspace.js';
@@ -26,7 +27,9 @@ ${c.bold('talea select')} — change what this machine keeps
 The checklist opens with the current selection ticked. Space toggles, Enter
 saves, Esc cancels and changes nothing. Everything in the catalogue is listed,
 including the archived and the forks — this machine is allowed to keep
-something the default set does not have.
+something the default set does not have. A repo marked ${c.dim('ignore: true')} is listed
+greyed out and nothing ticks it; two repos of one name in one group read
+${c.dim('owner/name')}.
 
 It writes ${c.dim('.talea.json')}, which never leaves this machine, so no other machine's
 selection changes. Unticking a repo takes it off the list and leaves the
@@ -77,9 +80,11 @@ export async function run(opts, positionals = []) {
     warn(`No single repo called ${missing.map((n) => `"${n}"`).join(', ')} — opening the checklist.`);
   }
 
-  const before = machineRepos(manifest, state).map((r) => r.name);
+  // Labels, not names: `owner/name` wherever two owners share one.
+  const label = (r) => repoLabel(manifest, r);
+  const before = machineRepos(manifest, state).map(label);
   const { repos } = await chooseRepos({ manifest, root, state, opts: { ...opts, pick: true } });
-  const after = repos.map((r) => r.name);
+  const after = repos.map(label);
   const { added, dropped } = changes(before, after);
 
   heading('This machine keeps');

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup, repoUrl, saveState } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, repoUrl, saveState } from '../config.js';
 import { dropDocs } from '../docs.js';
 import { clone, defaultJobs, isMissingRemote, pooled } from '../git.js';
 import { board } from '../live.js';
@@ -20,7 +20,7 @@ ${c.bold('talea clone')} — clone what is missing, and nothing else
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names; a bare name works too
+  -r, --repo <names>    repo names or owner/name, comma-separated; a bare name works too
       --pick            choose what this machine keeps before cloning
       --protocol <p>    ssh (default) or https
       --from <path>     also search here for existing checkouts (repeatable)
@@ -79,25 +79,36 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
   // where they are shown before anything moves.
   const certain = moves.filter((m) => m.confidence === 'exact');
   const unsure = moves.filter((m) => m.confidence !== 'exact');
+  // Parks are gated the same way (rule 3): parking is a move, and a name-only
+  // second copy may be somebody else's repo cloned from a mirror.
+  const parking = parks.filter((p) => p.confidence === 'exact');
+  const unsureParks = parks.filter((p) => p.confidence !== 'exact');
 
+  // Keyed by identity: by name, one owner's refused `app` kept the other's
+  // from being cloned, and the two reasons overwrote each other.
   const skip = new Map();
-  for (const m of unsure) skip.set(m.repo.name, 'its remote host is not one the catalogue lists');
-  for (const r of refused) skip.set(r.repo.name, r.reason);
+  const leave = (repo, reason) => skip.set(repoId(repo), { label: repoLabel(manifest, repo), reason });
+  for (const m of unsure) leave(m.repo, 'its remote host is not one the catalogue lists');
+  for (const r of refused) leave(r.repo, r.reason);
 
-  if (certain.length || parks.length) {
+  if (certain.length || parking.length) {
     const bits = [];
     if (certain.length) bits.push(`${certain.length} to move into place`);
-    if (parks.length) bits.push(`${parks.length} second cop${parks.length === 1 ? 'y' : 'ies'} to park`);
+    if (parking.length) bits.push(`${parking.length} second cop${parking.length === 1 ? 'y' : 'ies'} to park`);
     heading(`Existing checkouts: ${bits.join(', ')}`);
 
-    const applied = await applyMoves(root, certain, parks, manifest);
-    for (const r of applied.results.filter((x) => !x.ok)) skip.set(r.plan.repo.name, 'its move failed');
+    const applied = await applyMoves(root, certain, parking, manifest);
+    for (const r of applied.results.filter((x) => !x.ok)) leave(r.plan.repo, 'its move failed');
   }
 
   if (skip.size) {
     plain('');
-    for (const [name, reason] of skip) warn(`${c.bold(name)} left alone — ${reason}`);
+    for (const { label, reason } of skip.values()) warn(`${c.bold(label)} left alone — ${reason}`);
     plain(c.dim('  Not cloned either, so nothing lands beside it. Run `talea adopt` to sort it out.'));
+  }
+  for (const p of unsureParks) {
+    // The repo itself is in place, so nothing is held back from cloning.
+    warn(`a second copy of ${c.bold(repoLabel(manifest, p.repo))} at ${p.from} left alone — its remote host is not one the catalogue lists. Run \`talea adopt\` to see it.`);
   }
 
   return { skip };
@@ -114,16 +125,16 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
 export async function cloneMissing({ manifest, root, entries, protocol, jobs, counts }) {
   const view = board(
     entries.map(({ repo }) => ({
-      id: repo.name,
+      id: repoId(repo),
       group: groupDir(manifest, repoGroup(repo)),
-      label: repo.name,
+      label: repoLabel(manifest, repo),
     })),
   );
 
   await pooled(entries, jobs, async ({ repo, dir }) => {
     const url = repoUrl(manifest, repo, protocol);
     const branch = defaultBranch(repo);
-    view.set(repo.name, 'busy', branch ? `cloning ${branch} …` : 'cloning …');
+    view.set(repoId(repo), 'busy', branch ? `cloning ${branch} …` : 'cloning …');
 
     // Anything already sitting at the destination belongs to the developer, not
     // to us. A folder with no .git could be hand-made notes, a half-finished
@@ -131,7 +142,7 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
     if (existsSync(dir) && readdirSync(dir).length > 0) {
       counts.skipped++;
       view.set(
-        repo.name,
+        repoId(repo),
         'warn',
         `${path.relative(root, dir)} already exists and is not a git repo, leaving it untouched`,
       );
@@ -155,12 +166,12 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
       const retry = await clone(url, dir, undefined);
       if (retry.code === 0) {
         counts.ok++;
-        view.set(repo.name, 'skip', `cloned on the default branch (no ${branch} on origin)`);
+        view.set(repoId(repo), 'skip', `cloned on the default branch (no ${branch} on origin)`);
         return;
       }
       counts.failed++;
-      view.set(repo.name, 'fail', 'clone failed');
-      view.note(repo.name, retry.stderr.split('\n')[0]);
+      view.set(repoId(repo), 'fail', 'clone failed');
+      view.note(repoId(repo), retry.stderr.split('\n')[0]);
       return;
     }
 
@@ -168,20 +179,20 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
       // The catalogue lists it, the server does not hand it over. Not a broken
       // workspace and not something a retry mends — skip it, clone the rest.
       counts.skipped++;
-      view.set(repo.name, 'skip', 'origin is gone or not granted to you, not cloned');
+      view.set(repoId(repo), 'skip', 'origin is gone or not granted to you, not cloned');
       return;
     }
 
     if (res.code !== 0) {
       counts.failed++;
-      view.set(repo.name, 'fail', 'clone failed');
-      view.note(repo.name, res.stderr.split('\n')[0]);
+      view.set(repoId(repo), 'fail', 'clone failed');
+      view.note(repoId(repo), res.stderr.split('\n')[0]);
       return;
     }
 
     counts.ok++;
     view.set(
-      repo.name,
+      repoId(repo),
       'ok',
       `${icon.arrow} ${branch ? c.cyan(branch) : c.dim('default')} ${c.dim(path.relative(root, dir))}`,
     );
@@ -220,7 +231,7 @@ export async function run(opts) {
   writeDocs(manifest, root, repos);
 
   const entries = withPaths(manifest, root, repos);
-  const todo = entries.filter((e) => !e.cloned && !adoption.skip.has(e.repo.name));
+  const todo = entries.filter((e) => !e.cloned && !adoption.skip.has(repoId(e.repo)));
   const already = entries.filter((e) => e.cloned).length;
 
   heading(`Cloning into ${root}`);

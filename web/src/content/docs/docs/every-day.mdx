@@ -104,7 +104,7 @@ talea where                  # the workspace root
 
 The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** — so `cd $(talea where typo)` fails rather than landing you in your home directory.
 
-If two owners have a repo of the same name it says so and exits non-zero rather than picking one. Pass `owner/name`.
+If two owners have a repo of the same name it says so and exits non-zero rather than picking one. Pass `owner/name`. The same is true of `-r` and a bare repo name after `sync`, `clone`, `status`, `list`, `tree` and `prune`: `talea sync app` stops when two owners have an `app`, and `talea sync alice/app` syncs the one.
 
 ### Changing what this machine keeps
 

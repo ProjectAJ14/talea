@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
+import { repoLabel } from '../config.js';
 import { c, fail, heading, info, ok, plain, summary } from '../log.js';
 import { clonedOnly, machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 import { task } from '../live.js';
@@ -17,8 +18,9 @@ repo as the working directory.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
-      --all             every repo in the catalogue, not just what this machine keeps
+  -r, --repo <names>    repo names or owner/name, comma-separated
+      --all             every repo in the catalogue, not just what this machine keeps —
+                        never one marked ignore: true
 
 Repos are processed one at a time so the output stays readable and attributable.
 `;
@@ -56,8 +58,9 @@ export async function run(opts, positionals) {
   const counts = { ok: 0, skipped: 0, failed: 0, okLabel: 'ok' };
 
   for (const { repo, dir } of entries) {
-    const res = await task(`${repo.name}  ${c.dim([command, ...args].join(' '))}`, () => runOne(command, args, dir));
-    const label = `${c.bold(repo.name)} ${c.dim(path.relative(root, dir))}`;
+    const name = repoLabel(manifest, repo);
+    const res = await task(`${name}  ${c.dim([command, ...args].join(' '))}`, () => runOne(command, args, dir));
+    const label = `${c.bold(name)} ${c.dim(path.relative(root, dir))}`;
     if (res.code === 0) {
       counts.ok++;
       ok(label);

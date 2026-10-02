@@ -241,7 +241,7 @@ describe('talea adopt, over the life of one workspace', () => {
     assert.doesNotMatch(applied.text, /these need you/);
     assert.doesNotMatch(applied.text, /A Claude Code process is running/);
     const state = JSON.parse(readFileSync(path.join(ws, '.talea.json'), 'utf8'));
-    assert.deepEqual(state.adopted.map((a) => a.repo), ['app', 'lib']);
+    assert.deepEqual(state.adopted.map((a) => a.repo), ['me/app', 'me/lib']);
   });
 
   test('--fix-paths replays every recorded move and lists what it will not touch', async () => {

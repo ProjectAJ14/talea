@@ -194,7 +194,8 @@ Without this, two tools that both organise repositories will each drag the same
 checkout back to where it thinks it belongs, on every run. Use it for repos
 inside another workspace manager's tree, vendored checkouts, and SDK caches.
 Naming an ignored repo with `-r` does not override it: talea skips it and
-says why.
+says why. Nor do `--all`, the checklist, or `talea add` — the checklist shows it
+greyed out, and `add` refuses it.
 
 ## What travels, and what does not
 
@@ -238,6 +239,8 @@ Treat the id like a bookmark you would not paste into a public channel.
 Every one of them takes `-g <group>` and `-r <repo>` to narrow the run, and
 `--help` for its own examples. For `sync`, `clone`, `status`, `list`, `tree` and
 `prune` a bare name means the same as `-r`, so `talea sync eklavya` syncs that one repo.
+When two owners each have a repo of that name the run stops and lists both;
+name the one you mean, `talea sync alice/app`.
 A command that takes no names refuses a stray word instead of ignoring it.
 
 ---

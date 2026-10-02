@@ -15,7 +15,7 @@ the catalogue's opinion — what a brand new machine would start with.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names; a bare name works too
+  -r, --repo <names>    repo names or owner/name, comma-separated; a bare name works too
       --all             include archived and quiet repos (default: hidden)
       --groups          show groups only
       --json            emit JSON
@@ -28,16 +28,17 @@ export function run(opts) {
   const root = findWorkspace();
   const manifest = loadManifest(root);
   const state = root ? loadState(root) : {};
-  const kept = new Set(machineRepos(manifest, state).map((r) => r.name));
+  // The repos themselves, not their names: keeping alice/app is not keeping bob/app.
+  const kept = new Set(machineRepos(manifest, state));
 
-  let repos = selectRepos(manifest, opts, manifest.repos);
-  if (!opts.all) repos = repos.filter((r) => !r.archived || kept.has(r.name));
+  let repos = selectRepos(manifest, opts, manifest.repos, { includeIgnored: true });
+  if (!opts.all) repos = repos.filter((r) => !r.archived || kept.has(r));
 
   if (opts.json) {
     // Data, so stdout and nothing else — this is what a script reads.
     process.stdout.write(
       JSON.stringify(
-        repos.map((r) => ({ ...r, group: repoGroup(r), kept: kept.has(r.name) })),
+        repos.map((r) => ({ ...r, group: repoGroup(r), kept: kept.has(r) })),
         null,
         2,
       ) + '\n',
@@ -58,7 +59,7 @@ export function run(opts) {
       [...byGroup.entries()].map(([g, members]) => [
         c.bold(`${groupDir(manifest, g)}/`),
         `${members.length}`,
-        c.dim(`${members.filter((r) => kept.has(r.name)).length} kept here`),
+        c.dim(`${members.filter((r) => kept.has(r)).length} kept here`),
       ]),
       ['GROUP', 'REPOS', ''],
     );
@@ -72,8 +73,8 @@ export function run(opts) {
     group(`${groupDir(manifest, g)}/`, members.length);
     table(
       members.map((r) => [
-        '  ' + (kept.has(r.name) ? c.bold(r.name) : c.dim(r.name)),
-        kept.has(r.name) ? c.green(glyph.ok) : c.dim(''),
+        '  ' + (kept.has(r) ? c.bold(r.name) : c.dim(r.name)),
+        kept.has(r) ? c.green(glyph.ok) : c.dim(''),
         r.default ? c.dim('default') : c.dim(''),
         c.dim(r.defaultBranch ?? '?'),
         [

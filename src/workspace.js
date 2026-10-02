@@ -19,6 +19,8 @@ import {
   readUserState,
   repoDir,
   repoGroup,
+  repoId,
+  repoLabel,
   writeUserState,
 } from './config.js';
 import { isRepo } from './git.js';
@@ -119,12 +121,34 @@ export async function requireWorkspace() {
 }
 
 /**
+ * Every catalogue entry `name` or `owner/name` could mean, ignoring case. A
+ * bare name that an ignored or `missing` entry shares still means the one live
+ * repo: neither of those can be kept, and counting them made an old `["lib"]`
+ * drop the repo that moved to a new owner.
+ */
+export function lookup(manifest, name) {
+  const wanted = String(name).toLowerCase();
+  const found = manifest.repos.filter((r) => r.name.toLowerCase() === wanted || repoId(r) === wanted);
+  const live = found.filter((r) => !r.ignore && !r.missing);
+  return found.length > 1 && live.length === 1 ? live : found;
+}
+
+// A legacy entry is named once per run, however many commands read the list.
+const warnedAmbiguous = new Set();
+
+/**
  * The repos this machine has signed up for.
  *
  * `state.selected` is an explicit list, written by the picker on first sync or
  * by `talea add`. Until it exists, the catalogue's own `default: true` repos
  * stand in — that is what "a default set, already ticked" means on a machine
  * that has never been asked.
+ *
+ * Entries are `owner/name`. A bare name, as every list was written before
+ * owners were recorded, still counts while exactly one catalogue repo has it;
+ * once two owners do, it says nothing about which, so neither is kept and the
+ * run says so on stderr — selecting both was how keeping alice/app started
+ * syncing bob/app.
  *
  * A name in `selected` that the catalogue no longer has is ignored rather than
  * fatal: repos get renamed and deleted on GitHub, and a machine that has not
@@ -135,8 +159,34 @@ export function machineRepos(manifest, state) {
   if (!Array.isArray(chosen)) {
     return manifest.repos.filter((r) => r.default && !r.archived && !r.ignore);
   }
-  const wanted = new Set(chosen.map((n) => n.toLowerCase()));
-  return manifest.repos.filter((r) => wanted.has(r.name.toLowerCase()) && !r.ignore);
+  const kept = new Set();
+  for (const entry of chosen) {
+    const found = lookup(manifest, entry);
+    if (found.length === 1) kept.add(found[0]);
+    else if (found.length > 1 && !warnedAmbiguous.has(entry)) {
+      warnedAmbiguous.add(entry);
+      const ids = found.map((r) => repoLabel(manifest, r));
+      console.error(
+        `${icon.warn} "${entry}" in this machine's list could be ${ids.join(' or ')}, so neither is kept — \`talea add ${ids[0]}\` to choose.`,
+      );
+    }
+  }
+  return manifest.repos.filter((r) => kept.has(r) && !r.ignore);
+}
+
+/**
+ * The selection as `talea add` / `rm` rewrite it: an entry that names exactly
+ * one repo becomes that repo's id, anything else — a repo the catalogue lost,
+ * a bare name two owners share — stays as written, for the developer to settle
+ * rather than for a rewrite to drop.
+ */
+export function selectionIds(manifest, state) {
+  if (!Array.isArray(state.selected)) return machineRepos(manifest, state).map(repoId);
+  const ids = state.selected.map((entry) => {
+    const found = lookup(manifest, entry);
+    return found.length === 1 ? repoId(found[0]) : entry;
+  });
+  return ids.filter((id, i) => ids.indexOf(id) === i);
 }
 
 /**
@@ -162,9 +212,15 @@ export const hasChosen = (state) => Array.isArray(state.selected);
  * Filter a repo list by group / repo name.
  *
  * Unknown names are a hard error: silently doing nothing because of a typo is
- * the worst possible outcome for a bulk command.
+ * the worst possible outcome for a bulk command. So is a name two owners share:
+ * `talea sync app` acting on both would be the bulk command nobody asked for.
+ *
+ * `ignore: true` repos never come out, whatever the pool holds — `--all`, a
+ * picker result, an explicit -r — because this is where every command that
+ * touches a checkout gets its list. Only `list` and `tree`, which show the
+ * catalogue rather than act on it, pass `includeIgnored`.
  */
-export function selectRepos(manifest, opts = {}, pool = manifest.repos) {
+export function selectRepos(manifest, opts = {}, pool = manifest.repos, { includeIgnored = false } = {}) {
   const groups = csv(opts.group).map((g) => g.toLowerCase());
   const names = csv(opts.repo);
 
@@ -176,32 +232,33 @@ export function selectRepos(manifest, opts = {}, pool = manifest.repos) {
     process.exit(1);
   }
 
-  const byName = new Set(manifest.repos.map((r) => r.name.toLowerCase()));
-  const unknownRepo = names.find((n) => !byName.has(n.toLowerCase()));
-  if (unknownRepo) {
-    fail(`Unknown repo "${unknownRepo}".`);
-    console.error('\n  Run `talea list` to see every repo in the catalogue.');
-    process.exit(1);
+  const named = new Set();
+  for (const n of names) {
+    const found = lookup(manifest, n);
+    if (!found.length) {
+      fail(`Unknown repo "${n}".`);
+      console.error('\n  Run `talea list` to see every repo in the catalogue.');
+      process.exit(1);
+    }
+    if (found.length > 1) {
+      fail(`"${n}" is ambiguous — name the owner too: ${found.map((r) => repoLabel(manifest, r)).join(', ')}`);
+      process.exit(1);
+    }
+    named.add(found[0]);
   }
 
   // An explicit -r reaches past the machine's selection on purpose: naming a
   // repo is a request for that repo, not a request filtered by what was ticked
   // six months ago. It never reaches past `ignore: true`, though — another tool
-  // owns that checkout — so an ignored repo comes through only when the
-  // caller's pool already holds it, as `list`'s whole-catalogue view does.
-  // It is a known name, not a typo, so it is explained rather than refused.
-  let repos = pool;
-  if (names.length) {
-    const wanted = new Set(names.map((n) => n.toLowerCase()));
-    const named = manifest.repos.filter((r) => wanted.has(r.name.toLowerCase()));
-    const owned = named.filter((r) => r.ignore && !pool.includes(r));
-    for (const r of owned) {
-      console.error(`${icon.warn} ${r.name} is marked ignore: true — another tool owns that checkout, so talea leaves it alone.`);
-    }
-    repos = named.filter((r) => !owned.includes(r));
-  }
+  // owns that checkout. A named one is a known name, not a typo, so it is
+  // explained rather than refused.
+  let repos = names.length ? manifest.repos.filter((r) => named.has(r)) : pool;
   if (groups.length) repos = repos.filter((r) => groups.includes(repoGroup(r).toLowerCase()));
-  return repos;
+  const owned = repos.filter((r) => r.ignore && !(includeIgnored && pool.includes(r)));
+  for (const r of owned.filter((r) => named.has(r))) {
+    console.error(`${icon.warn} ${repoLabel(manifest, r)} is marked ignore: true — another tool owns that checkout, so talea leaves it alone.`);
+  }
+  return repos.filter((r) => !owned.includes(r));
 }
 
 /** Attach the on-disk path and cloned-ness to each repo. */

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 
-import { repoDir } from '../config.js';
+import { repoDir, repoLabel } from '../config.js';
 import { c, fail, plain } from '../log.js';
 import { requireWorkspace } from '../workspace.js';
 
@@ -64,7 +64,7 @@ export async function run(opts, positionals = []) {
   process.stdout.write(dir + '\n');
 
   if (!existsSync(dir)) {
-    console.error(c.dim(`\n  Not cloned yet — \`talea sync -r ${matches[0].name}\` will fetch it.`));
+    console.error(c.dim(`\n  Not cloned yet — \`talea sync -r ${repoLabel(manifest, matches[0])}\` will fetch it.`));
     process.exit(1);
   }
 }

@@ -172,19 +172,25 @@ export function matchRepo(manifest, repos, originUrl) {
   const norm = normalizeUrl(originUrl);
   if (!norm) return null;
 
-  for (const repo of repos) {
-    if (catalogueUrls(manifest, repo).some((u) => normalizeUrl(u) === norm)) {
-      return { repo, confidence: 'exact' };
-    }
-  }
+  // Exact against the whole catalogue, not only `repos`: a checkout that is
+  // exactly another catalogue repo — another owner's same-named one, one marked
+  // `ignore: true` — is that repo. Searched only within `repos`, it fell through
+  // to a name match and was moved or parked as this one (found in review).
+  // A `missing` entry is the exception: GitHub no longer has it, and a repo
+  // that moved owners leaves exactly that behind (rule 11) while its old URL
+  // still redirects — so that checkout falls through to the name match below,
+  // or sync would clone a second copy beside it.
+  const all = [...repos, ...(manifest.repos ?? [])];
+  const exact = all.find((repo) => catalogueUrls(manifest, repo).some((u) => normalizeUrl(u) === norm));
+  if (exact && repos.includes(exact)) return { repo: exact, confidence: 'exact' };
+  if (exact && !exact.missing) return null;
 
+  // Counted across the whole catalogue, not only `repos`: a mirror of bob/app
+  // is not alice/app because `-r alice/app` narrowed the list, nor because
+  // bob/app is ignored. Two live repos with the name: neither.
   const name = urlRepoName(originUrl);
-  for (const repo of repos) {
-    if (name && repo.name.toLowerCase() === name) {
-      return { repo, confidence: 'name' };
-    }
-  }
-  return null;
+  const named = [...new Set(all)].filter((repo) => name && !repo.missing && repo.name.toLowerCase() === name);
+  return named.length === 1 && repos.includes(named[0]) ? { repo: named[0], confidence: 'name' } : null;
 }
 
 /**
@@ -478,7 +484,9 @@ export async function planAdoptions(manifest, root, repos, candidates) {
     // who uses them buried the real findings under fifteen lines of noise.
     if (isLinkedWorktree(dir)) continue;
 
-    const key = match.repo.name;
+    // Keyed by the repo itself: by name, alice/app and bob/app shared a bucket
+    // and bob's checkout was parked as alice's second copy.
+    const key = match.repo;
     if (!byRepo.has(key)) byRepo.set(key, { repo: match.repo, copies: [] });
     byRepo.get(key).copies.push({ dir, originUrl, confidence: match.confidence });
   }

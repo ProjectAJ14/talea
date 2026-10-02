@@ -8,7 +8,7 @@
 // `default: true` to a repo in the catalogue would silently start cloning it on
 // every machine you own, which is not a decision the catalogue gets to make.
 
-import { saveState } from './config.js';
+import { repoId, saveState } from './config.js';
 import { c, fail, plain, warn } from './log.js';
 import { askScope, buildTree, pickByLine, pickRepos, selectedRepos } from './prompt.js';
 import { hasChosen, machineRepos } from './workspace.js';
@@ -26,11 +26,10 @@ export async function runPicker(rows, title) {
     return await pickRepos(rows, { title });
   } catch (err) {
     warn(`This terminal could not enter raw mode (${err.code ?? err.message}).`);
-    const { picked, unknown } = await pickByLine(rows);
-    if (unknown.length) {
-      fail(`Unknown name${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')}`);
-      process.exit(1);
-    }
+    const { picked, unknown, refused } = await pickByLine(rows);
+    if (unknown.length) fail(`Unknown name${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')}`);
+    for (const why of refused) fail(why);
+    if (unknown.length || refused.length) process.exit(1);
     return picked;
   }
 }
@@ -64,7 +63,8 @@ export async function chooseRepos({ manifest, root, state, opts = {} }) {
   }
 
   const groups = new Set(manifest.repos.map((r) => r.group ?? r.owner ?? 'repos'));
-  const chosenNames = new Set(already.map((r) => r.name));
+  // The repos, not their names: alice/app ticked is not bob/app ticked.
+  const chosen = new Set(already);
 
   if (!opts.pick) {
     const scope = await askScope({
@@ -73,7 +73,7 @@ export async function chooseRepos({ manifest, root, state, opts = {} }) {
       groups: groups.size,
     });
     if (scope === 'defaults') {
-      saveState(root, { ...state, selected: already.map((r) => r.name) });
+      saveState(root, { ...state, selected: already.map(repoId) });
       return { repos: already, asked: true };
     }
   }
@@ -82,7 +82,7 @@ export async function chooseRepos({ manifest, root, state, opts = {} }) {
   // the checklist is that this machine can take something the default set does
   // not have — a repo you only touch on the desktop should not need a catalogue
   // edit to reach.
-  const rows = buildTree(manifest, manifest.repos, (repo) => chosenNames.has(repo.name));
+  const rows = buildTree(manifest, manifest.repos, (repo) => chosen.has(repo));
   const picked = await runPicker(rows, 'What should this machine keep?');
 
   if (picked === null) {
@@ -90,7 +90,9 @@ export async function chooseRepos({ manifest, root, state, opts = {} }) {
     process.exit(0);
   }
 
-  saveState(root, { ...state, selected: picked.map((r) => r.name) });
+  // The tree never ticks an ignored repo (rule 4), so this list can go
+  // straight into the run.
+  saveState(root, { ...state, selected: picked.map(repoId) });
   return { repos: picked, asked: true };
 }
 
