@@ -80,7 +80,7 @@ check it with `&&`, and quote the path for folders with spaces in them. A shell
 function saves the typing:
 
 ```sh
-go() { dest=$(talea where "$@") && cd -- "$dest"; }
+tcd() { local dest; dest=$(talea where "$@") && cd -- "$dest"; }
 ```
 
 ## Cleaning up worktrees

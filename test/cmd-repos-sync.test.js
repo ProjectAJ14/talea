@@ -268,12 +268,26 @@ describe('talea exec', () => {
     try {
       const res = await exec.runOne('talea-no-such-command', ['install', 'x y'], tmp);
       assert.equal(res.code, -1);
-      assert.match(res.out, /on Windows a \.cmd or \.bat script needs --shell: talea exec --shell -- "talea-no-such-command install x y"/);
+      assert.match(res.out, /if it is a \.cmd or \.bat script, such as npm, run it with --shell/);
+      // No ready-made command line: one would re-split "x y".
+      assert.doesNotMatch(res.out, /x y/);
+      Object.defineProperty(process, 'platform', { ...desc, value: 'linux' });
+      // Elsewhere, the error stands as it is.
+      assert.doesNotMatch((await exec.runOne('talea-no-such-command', [], tmp)).out, /--shell/);
     } finally {
       Object.defineProperty(process, 'platform', desc);
     }
-    // Elsewhere, or with --shell already, the error stands as it is.
-    assert.doesNotMatch((await exec.runOne('talea-no-such-command', [], tmp)).out, /--shell/);
+  });
+
+  test('a refusal spawn throws is a failed repo, not the end of the run', async () => {
+    // A NUL byte is refused by spawn itself, the way Windows refuses a .cmd.
+    const res = await exec.runOne('git', ['a\u0000b'], tmp);
+    assert.equal(res.code, -1);
+    assert.match(res.out, /null bytes/);
+    const r = await inWs(ws, () => exec.run({ all: true }, ['git', 'a\u0000b']));
+    assert.equal(r.error, null, r.text);
+    assert.match(r.text, /2 failed/);
+    assert.equal(r.exitCode, 1);
   });
 
   test('a command that cannot start reports -1 instead of hanging', async () => {

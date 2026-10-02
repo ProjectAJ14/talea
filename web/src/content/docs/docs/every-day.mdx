@@ -105,7 +105,7 @@ talea where                  # the workspace root
 The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** with nothing on stdout. A plain `cd $(talea where typo)` still runs `cd` with nothing after a failed lookup, which most shells read as "go home" — the failure of a `$( )` does not stop the command around it. Check it with `&&`, and quote the path so a folder with a space in it survives.
 
 ```bash
-go() { dest=$(talea where "$@") && cd -- "$dest"; }   # bash and zsh
+tcd() { local dest; dest=$(talea where "$@") && cd -- "$dest"; }   # bash and zsh
 ```
 
 ```powershell
@@ -133,7 +133,7 @@ talea pick some-repo         # keep that one — an unknown name opens the check
 
 ```bash
 talea exec -- git log --oneline -1
-talea exec -g nonstopio -- npm install
+talea exec -g nonstopio --shell -- 'npm install'
 talea exec --all -- git branch --show-current
 talea exec -- git commit -m "two words"           # each argument arrives as typed
 talea exec --shell -- 'yarn build && yarn test'   # a pipeline: the system shell reads it

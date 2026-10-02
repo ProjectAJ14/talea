@@ -145,7 +145,7 @@ Every folder from the workspace root down to each repo, with a marker saying whe
 
 ```bash
 talea exec -- git log --oneline -1
-talea exec -g nonstopio -- npm install
+talea exec -g nonstopio --shell -- 'npm install'
 talea exec --all -- git branch --show-current
 talea exec -- git commit -m "two words"           # each argument arrives as typed
 talea exec --shell -- 'yarn build && yarn test'   # a pipeline: the system shell reads it

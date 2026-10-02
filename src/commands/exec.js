@@ -10,7 +10,7 @@ export const help = `
 ${c.bold('talea exec')} — run one command in every repo
 
   ${c.dim('talea exec -- git log --oneline -1')}
-  ${c.dim('talea exec -g nonstopio -- npm install')}
+  ${c.dim("talea exec -g nonstopio --shell -- 'npm install'")}
   ${c.dim('talea exec -- git commit -m "two words"')}
   ${c.dim("talea exec --shell -- 'yarn build && yarn test'")}
 
@@ -46,22 +46,33 @@ export function runOne(command, args, cwd, { shell = false } = {}) {
     // words" arrived as two arguments and a literal `;` ran a second command
     // (found in review). Without one, argv goes to the program as it is.
     const stdio = ['ignore', 'pipe', 'pipe'];
-    const child = shell
-      ? spawn([command, ...args].join(' '), { cwd, shell: true, stdio })
-      : spawn(command, args, { cwd, shell: false, stdio });
+    // Windows starts a .cmd or .bat script only through cmd.exe, so without a
+    // shell `npm` is "not found" (ENOENT) and `npm.cmd` is refused (EINVAL).
+    // Said, rather than run through cmd.exe quietly — which would re-split
+    // every argument. No ready-made line: one built here would re-split them
+    // too (found in review), and the cause may be a typo or a missing folder.
+    const failed = (e) => {
+      const hint =
+        process.platform === 'win32' && !shell && ['ENOENT', 'EINVAL'].includes(e.code)
+          ? ' — if it is a .cmd or .bat script, such as npm, run it with --shell, where cmd.exe reads the line'
+          : '';
+      resolve({ code: -1, out: e.message + hint });
+    };
+    let child;
+    try {
+      child = shell
+        ? spawn([command, ...args].join(' '), { cwd, shell: true, stdio })
+        : spawn(command, args, { cwd, shell: false, stdio });
+    } catch (e) {
+      // Some refusals are thrown, not emitted — EINVAL for a .cmd among them —
+      // and one uncaught here stopped the whole run at the first repo.
+      failed(e);
+      return;
+    }
     let out = '';
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));
-    child.on('error', (e) => {
-      // Windows starts a .cmd or .bat script only through cmd.exe, so without
-      // a shell `npm` is "not found". Said, rather than run through cmd.exe
-      // quietly — which would re-split every argument.
-      const hint =
-        process.platform === 'win32' && !shell && ['ENOENT', 'EINVAL'].includes(e.code)
-          ? ` — on Windows a .cmd or .bat script needs --shell: talea exec --shell -- "${[command, ...args].join(' ')}"`
-          : '';
-      resolve({ code: -1, out: e.message + hint });
-    });
+    child.on('error', failed);
     child.on('close', (code) => resolve({ code, out: out.trimEnd() }));
   });
 }

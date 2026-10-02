@@ -183,7 +183,7 @@ reads like data loss.
 
 ```bash
 talea exec -- git status --short
-talea exec -g NonStop -- npm test
+talea exec -g NonStop --shell -- 'npm test'   # npm is a .cmd on Windows
 ```
 
 Everything after `--` runs in each repo, each argument exactly as given — no
