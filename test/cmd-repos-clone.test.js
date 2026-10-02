@@ -347,7 +347,7 @@ describe('talea add / rm', () => {
 
     res = await inWs(ws, () => add.run({}, ['twin']));
     assert.match(res.error.message, /exit 1/);
-    assert.match(res.text, /ambiguous — name the owner too, e\.g\. me\/twin/);
+    assert.match(res.text, /ambiguous — name the owner too: me\/twin, you\/twin/);
   });
 
   test('rm takes repos off the list and leaves every checkout where it is', async () => {
@@ -364,7 +364,7 @@ describe('talea add / rm', () => {
   test('add of a repo already on disk clones nothing; adding it twice is a no-op', async () => {
     let res = await inWs(ws, () => add.run({}, ['p']));
     assert.match(res.text, /Nothing to clone — already on disk/);
-    assert.deepEqual(readState(ws).selected, ['p']);
+    assert.deepEqual(readState(ws).selected, ['me/p']);
 
     res = await inWs(ws, () => add.run({}, ['p']));
     assert.match(res.text, /p is already on this machine's list/);
@@ -383,7 +383,7 @@ describe('talea add / rm', () => {
 
     res = await inWs(ws, () => add.run({ protocol: 'ssh', jobs: 1 }, ['t']));
     assert.ok(existsSync(path.join(ws, 'me', 't', '.git')));
-    assert.deepEqual(readState(ws).selected, ['p', 'r', 'bad', 't']);
+    assert.deepEqual(readState(ws).selected, ['me/p', 'me/bad', 'me/r', 'me/t']);
     assert.equal(readState(ws).protocol, 'https');
   });
 });

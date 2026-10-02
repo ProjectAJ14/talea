@@ -161,6 +161,19 @@ export const groupDir = (manifest, group) => manifest.groups?.[group]?.dir ?? gr
 /** A repo's group: explicit, else its owner — so a fresh catalogue needs no curation. */
 export const repoGroup = (repo) => repo.group ?? repo.owner ?? 'repos';
 
+/**
+ * A repo's identity: `owner/name`, lowercased. The name alone is not one —
+ * discovery reaches every org you belong to, and two of them can each have an
+ * `app`. Selection state, adoption and every per-repo map key on this.
+ */
+export const repoId = (repo) => (repo.owner ? `${repo.owner}/${repo.name}` : repo.name).toLowerCase();
+
+/** How a repo is named to a person: its name, or `owner/name` when the catalogue has two. */
+export function repoLabel(manifest, repo) {
+  const same = manifest?.repos?.filter((r) => r.name.toLowerCase() === repo.name.toLowerCase()) ?? [];
+  return same.length > 1 && repo.owner ? `${repo.owner}/${repo.name}` : repo.name;
+}
+
 export const repoDir = (manifest, workspaceRoot, repo) =>
   path.join(workspaceRoot, groupDir(manifest, repoGroup(repo)), repo.dir ?? repo.name);
 

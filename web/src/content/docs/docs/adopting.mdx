@@ -69,7 +69,7 @@ talea adopt --fix-paths          # re-run just that repair, moving nothing
 
 ### When another tool owns a checkout
 
-Mark it in the catalogue and talea leaves it completely alone — not `sync`, not `adopt`, not even an explicit `-r`:
+Mark it in the catalogue and talea leaves it completely alone — not `sync`, not `adopt`, not `exec --all`, not `talea add`, not even an explicit `-r`:
 
 ```json
 { "name": "some-repo", "owner": "someone", "ignore": true }

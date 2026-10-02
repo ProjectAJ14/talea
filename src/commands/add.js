@@ -8,10 +8,10 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { repoDir, saveState } from '../config.js';
+import { repoDir, repoId, repoLabel, saveState } from '../config.js';
 import { defaultJobs } from '../git.js';
 import { c, fail, heading, info, ok, plain, skip } from '../log.js';
-import { machineRepos, requireCatalogue, requireWorkspace, withPaths } from '../workspace.js';
+import { lookup, requireCatalogue, requireWorkspace, selectionIds, withPaths } from '../workspace.js';
 import { adoptInPlace, cloneMissing, writeDocs } from './clone.js';
 
 export const help = `
@@ -29,18 +29,16 @@ ${c.dim('rm')} removes the repo from the list and stops there. The checkout is l
 exactly where it is and the path is printed — deleting it is your call, and
 ${c.dim('rm -rf')} already exists for when you mean it.
 
+The list is written as ${c.dim('owner/name')}, so keeping one owner's repo never keeps
+another's of the same name. A repo marked ${c.dim('ignore: true')} is refused: another tool
+owns that checkout.
+
 Options
       --protocol <p>    ssh (default) or https
   -j, --jobs <n>        parallel clones
 `;
 
-/** Every catalogue entry `name` or `owner/name` could mean, ignoring case. */
-export function lookup(manifest, name) {
-  const wanted = String(name).toLowerCase();
-  return manifest.repos.filter(
-    (r) => r.name.toLowerCase() === wanted || `${r.owner}/${r.name}`.toLowerCase() === wanted,
-  );
-}
+export { lookup };
 
 /** Resolve `name` or `owner/name` against the catalogue, or exit saying why. */
 export function resolve(manifest, name) {
@@ -52,7 +50,7 @@ export function resolve(manifest, name) {
     process.exit(1);
   }
   if (matches.length > 1) {
-    fail(`"${name}" is ambiguous — name the owner too, e.g. ${matches[0].owner}/${matches[0].name}`);
+    fail(`"${name}" is ambiguous — name the owner too: ${matches.map((r) => repoLabel(manifest, r)).join(', ')}`);
     process.exit(1);
   }
   return matches[0];
@@ -68,43 +66,57 @@ export async function run(opts, positionals = []) {
   }
 
   const targets = positionals.map((n) => resolve(manifest, n));
+  const label = (repo) => repoLabel(manifest, repo);
 
-  // The current list, made explicit. Until now this machine may have been
-  // running on the catalogue's defaults; the moment it adds or removes one it
-  // has an opinion, and that opinion has to be written down or the next sync
-  // would silently undo it.
-  const current = new Map(machineRepos(manifest, state).map((r) => [r.name, r]));
+  // The current list as ids, made explicit. Until now this machine may have
+  // been running on the catalogue's defaults; the moment it adds or removes
+  // one it has an opinion, and that opinion has to be written down or the next
+  // sync would silently undo it. Entries this cannot pin to one repo stay as
+  // written (see selectionIds), so removing alice/app never touches bob/app.
+  let list = selectionIds(manifest, state);
 
   if (opts.removing) {
     heading('Removing from this machine');
     for (const repo of targets) {
-      if (!current.delete(repo.name)) {
-        skip(`${c.bold(repo.name)} was not on this machine's list`);
+      if (!list.includes(repoId(repo))) {
+        skip(`${c.bold(label(repo))} was not on this machine's list`);
         continue;
       }
+      list = list.filter((id) => id !== repoId(repo));
       const dir = repoDir(manifest, root, repo);
-      ok(`${c.bold(repo.name)} ${c.dim('off the list')}`);
+      ok(`${c.bold(label(repo))} ${c.dim('off the list')}`);
       if (existsSync(dir)) {
         plain(`    ${c.dim(`the checkout is still at ${path.relative(root, dir)} — delete it yourself if you want it gone`)}`);
       }
     }
-    saveState(root, { ...state, selected: [...current.keys()] });
+    saveState(root, { ...state, selected: list });
     return;
+  }
+
+  // Rule 4: another tool owns an ignored repo's checkout. Keeping it here would
+  // clone it now and fight that tool on every sync after.
+  const owned = targets.filter((r) => r.ignore);
+  if (owned.length) {
+    for (const r of owned) fail(`${label(r)} is marked ignore: true — another tool owns that checkout, so talea will not keep it.`);
+    process.exit(1);
   }
 
   heading('Adding to this machine');
   const added = [];
   for (const repo of targets) {
-    if (current.has(repo.name)) {
-      skip(`${c.bold(repo.name)} is already on this machine's list`);
+    if (list.includes(repoId(repo))) {
+      skip(`${c.bold(label(repo))} is already on this machine's list`);
       continue;
     }
-    current.set(repo.name, repo);
+    // Naming one owner answers what a bare legacy entry two owners share could
+    // not, so that entry goes; any other entry stays as written.
+    const stale = (entry) => entry.toLowerCase() === repo.name.toLowerCase() && lookup(manifest, entry).length > 1;
+    list = [...list.filter((entry) => !stale(entry)), repoId(repo)];
     added.push(repo);
-    ok(`${c.bold(repo.name)} ${c.dim(`→ ${path.relative(root, repoDir(manifest, root, repo))}`)}`);
+    ok(`${c.bold(label(repo))} ${c.dim(`→ ${path.relative(root, repoDir(manifest, root, repo))}`)}`);
   }
 
-  saveState(root, { ...state, selected: [...current.keys()] });
+  saveState(root, { ...state, selected: list });
   if (!added.length) return;
 
   // Adopt first, in case the repo being added is one already sitting somewhere
@@ -112,7 +124,7 @@ export async function run(opts, positionals = []) {
   const adoption = await adoptInPlace({
     manifest,
     root,
-    state: { ...state, selected: [...current.keys()] },
+    state: { ...state, selected: list },
     repos: added,
     opts,
   });
@@ -120,7 +132,7 @@ export async function run(opts, positionals = []) {
   writeDocs(manifest, root, added);
 
   const todo = withPaths(manifest, root, added).filter(
-    (e) => !e.cloned && !adoption.skip.has(e.repo.name),
+    (e) => !e.cloned && !adoption.skip.has(repoId(e.repo)),
   );
   if (!todo.length) {
     info('Nothing to clone — already on disk.');

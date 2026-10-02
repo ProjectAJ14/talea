@@ -40,11 +40,13 @@ Three files, and confusing them is how this tool would go wrong.
 | `ignore` | you | nothing touches this checkout, ever |
 | `fork`, `pushedAt`, `archived` | GitHub | facts, refreshed by `discover` |
 
-### Why the selection is a list of names
+### Why the selection is a list of repos
 
-`.talea.json` holds `selected`, and it is a list of repo names — not a filter over `default: true`.
+`.talea.json` holds `selected`, and it is a list of repos, written `owner/name` — not a filter over `default: true`.
 
 A filter would re-evaluate on every run, so adding `default: true` to a repo in the shared catalogue would silently start cloning it on every machine you own. The catalogue does not get to make that decision.
+
+It names the owner because two of the accounts discovery reaches can each have a repo of the same name, and keeping one is not keeping both. A list written before talea recorded owners holds bare names; each still counts while only one repo in the catalogue has that name. Once two do, neither is kept and every run says so, until `talea add <owner>/<name>` settles which.
 
 `selected` being **absent** and being **empty** are different things. Absent means "never asked" and falls back to the catalogue defaults; empty means "I chose nothing", and is respected.
 

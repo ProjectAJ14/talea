@@ -169,7 +169,7 @@ describe('chooseRepos', () => {
     assert.match(r.out, /choose from all 4 across 3 owners/);
     assert.deepEqual(names(r.value.repos), ['alpha', 'beta']);
     assert.equal(r.value.asked, true);
-    assert.deepEqual(readState(), { protocol: 'ssh', selected: ['alpha', 'beta'] });
+    assert.deepEqual(readState(), { protocol: 'ssh', selected: ['me/alpha', 'me/beta'] });
   });
 
   test('choosing opens the checklist with the defaults ticked', async () => {
@@ -185,7 +185,7 @@ describe('chooseRepos', () => {
     assert.equal(r.left, 0);
     assert.match(r.out, /What should this machine keep\?/);
     assert.deepEqual(names(r.value.repos), ['beta']);
-    assert.deepEqual(readState().selected, ['beta']);
+    assert.deepEqual(readState().selected, ['me/beta']);
   });
 
   test('cancelling the checklist changes nothing and exits 0', async () => {
@@ -243,6 +243,16 @@ describe('runPicker without raw mode', () => {
     assert.match(two.err, /Unknown names: bogus, nope/);
   });
 
+  test('a name it cannot keep stops the run too, saying why', async () => {
+    const stdin = terminal();
+    stdin.failRaw = new Error('x');
+    const list = rows();
+    list[2].ignored = true; // gamma, owned by another tool
+    const r = await capture(() => runPicker(list, 'pick'), { stdin, steps: [[BY_LINE, 'gamma\n']] });
+    assert.equal(r.code, 1);
+    assert.match(r.err, /gamma is marked ignore: true — another tool owns it/);
+  });
+
   test('selectedRepos is re-exported from the picker', () => {
     assert.equal(typeof selectedRepos, 'function');
   });
@@ -269,7 +279,7 @@ describe('talea select', () => {
     terminal({ stdinTTY: false });
     const r = await capture(() => select.run({}, ['ALPHA']));
     assert.match(r.out, /alpha is already on this machine's list/);
-    assert.deepEqual(readState().selected, ['alpha']);
+    assert.deepEqual(readState().selected, ['me/alpha']);
   });
 
   test('a name that matches nothing opens the checklist instead', async () => {

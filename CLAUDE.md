@@ -75,9 +75,19 @@ general one's name.
 The split that everything hangs off: **the catalogue is shared, the selection is
 not.** Pulling the catalogue onto a new laptop gives you the full list to choose
 from — never the last machine's choices. That is why `state.selected` is a list
-of names rather than a filter over `default: true`: a filter would re-evaluate,
+of repos rather than a filter over `default: true`: a filter would re-evaluate,
 and adding `default: true` to a repo would silently start cloning it on every
 machine you own. The catalogue does not get to make that decision.
+
+A repo's identity is `owner/name` (`repoId()` in `src/config.js`), never the
+name alone: discovery reaches every org you belong to, and two of them can each
+have an `app`. `selected` is written as ids, and every per-repo map — adoption
+buckets, the clone skip list, board rows — is keyed on the repo or its id.
+Keyed by name, keeping alice/app also synced bob/app, and a stray bob/app was
+parked as alice's second copy. A bare name in an older `selected` still counts
+while one catalogue repo has it; once two do, neither is kept and the run says
+so on stderr, because guessing would sync a repo nobody chose. A `-r` or a typed
+name two owners share stops the run, as `add` and `where` already did.
 
 `state.selected` being **absent** and being **empty** mean different things.
 Absent is "never asked" and falls back to the catalogue defaults; empty is "I
@@ -120,7 +130,11 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    explicit `-r` is how you say otherwise. Found on a real machine: an FVM
    Flutter SDK cache has origin `flutter/flutter`, which name-matches a personal
    `flutter` fork, and adopting it breaks every Flutter project there. Parks are
-   gated the same way — parking is a move, and that case was a park.
+   gated the same way — parking is a move, and that case was a park — and in
+   `clone` and `sync` too, where a name-only second copy is named and left.
+   `matchRepo` tries the exact match against the **whole catalogue** first: a
+   checkout that is exactly another repo — another owner's, an ignored one — is
+   that repo, and a name match against this one would claim it.
 
 4. **`ignore: true` means another tool owns that checkout.** No command touches
    it — not `sync`, not `adopt`, not even an explicit `selected` entry. Two
@@ -128,7 +142,12 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    checkout back where it thinks it belongs, on every run, forever. Found on a
    real machine: two repos living inside a second workspace manager's tree.
    Enforced in `adoptable()` as well as `machineRepos()`, because `adopt`
-   deliberately reaches past this machine's selection.
+   deliberately reaches past this machine's selection, and in `selectRepos()`,
+   which every command that touches a checkout gets its list from — so `exec
+   --all`, a picker result and `-r` cannot carry one through. Only `list` and
+   `tree`, which show the catalogue rather than act on it, pass
+   `includeIgnored`. `add` refuses one outright, and the picker shows it
+   greyed out with no key that ticks it.
 
 5. **Never destroy uncommitted work.** No `reset --hard`, no `clean -fd`, no
    `checkout --force`. Check `isDirty()` and skip with a warning.

@@ -194,7 +194,8 @@ Without this, two tools that both organise repositories will each drag the same
 checkout back to where it thinks it belongs, on every run. Use it for repos
 inside another workspace manager's tree, vendored checkouts, and SDK caches.
 Naming an ignored repo with `-r` does not override it: talea skips it and
-says why.
+says why. Nor do `--all`, the checklist, or `talea add` — the checklist shows it
+greyed out, and `add` refuses it.
 
 ## What travels, and what does not
 

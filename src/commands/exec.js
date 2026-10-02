@@ -17,8 +17,9 @@ repo as the working directory.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names
-      --all             every repo in the catalogue, not just what this machine keeps
+  -r, --repo <names>    repo names or owner/name, comma-separated
+      --all             every repo in the catalogue, not just what this machine keeps —
+                        never one marked ignore: true
 
 Repos are processed one at a time so the output stays readable and attributable.
 `;

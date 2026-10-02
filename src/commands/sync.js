@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoId, repoLabel } from '../config.js';
 import {
   aheadBehind,
   currentBranch,
@@ -37,7 +37,7 @@ the workspace ${c.dim('talea init')} made, or asks which when this machine has s
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names; a bare name works too
+  -r, --repo <names>    repo names or owner/name, comma-separated; a bare name works too
       --pick            re-open the checklist before syncing
       --no-clone        do not clone anything new
       --no-adopt        do not look for checkouts to move into place
@@ -84,7 +84,7 @@ export async function run(opts) {
   writeDocs(manifest, root, repos);
 
   const entries = withPaths(manifest, root, repos);
-  const missing = entries.filter((e) => !e.cloned && !adoption.skip.has(e.repo.name));
+  const missing = entries.filter((e) => !e.cloned && !adoption.skip.has(repoId(e.repo)));
   const present = entries.filter((e) => e.cloned);
 
   heading(`Syncing ${root}`);
@@ -131,14 +131,14 @@ export async function run(opts) {
 async function fastForward({ manifest, root, entries, jobs, counts }) {
   const view = board(
     entries.map(({ repo }) => ({
-      id: repo.name,
+      id: repoId(repo),
       group: groupDir(manifest, repoGroup(repo)),
-      label: repo.name,
+      label: repoLabel(manifest, repo),
     })),
   );
 
   await pooled(entries, jobs, async ({ repo, dir }) => {
-    view.set(repo.name, 'busy', 'fetching …');
+    view.set(repoId(repo), 'busy', 'fetching …');
     const fetched = await fetch(dir);
 
     if (fetched.code !== 0) {
@@ -147,12 +147,12 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       // let the rest of the run stand.
       if (isMissingRemote(fetched.stderr)) {
         counts.skipped++;
-        view.set(repo.name, 'skip', 'origin is gone or not granted to you, left as it is');
+        view.set(repoId(repo), 'skip', 'origin is gone or not granted to you, left as it is');
         return;
       }
       counts.failed++;
-      view.set(repo.name, 'fail', 'fetch failed');
-      view.note(repo.name, fetched.stderr.split('\n')[0]);
+      view.set(repoId(repo), 'fail', 'fetch failed');
+      view.note(repoId(repo), fetched.stderr.split('\n')[0]);
       return;
     }
 
@@ -173,7 +173,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
 
     if (dirty) {
       counts.skipped++;
-      view.set(repo.name, 'warn', `uncommitted changes on ${where}, fetched only`);
+      view.set(repoId(repo), 'warn', `uncommitted changes on ${where}, fetched only`);
       return;
     }
 
@@ -181,7 +181,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       // A local-only branch has nothing to fast-forward onto. Saying so beats
       // the "no upstream configured" git spits out of a bare merge.
       counts.skipped++;
-      view.set(repo.name, 'skip', `${where} tracks no remote branch, fetched only`);
+      view.set(repoId(repo), 'skip', `${where} tracks no remote branch, fetched only`);
       return;
     }
 
@@ -191,7 +191,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       const reason = /diverge|non-fast-forward|not possible to fast-forward/i.test(res.stderr)
         ? 'diverged from origin — needs a manual merge or rebase'
         : res.stderr.split('\n')[0];
-      view.set(repo.name, 'fail', `${branch} — ${reason}`);
+      view.set(repoId(repo), 'fail', `${branch} — ${reason}`);
       return;
     }
 
@@ -199,7 +199,7 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
     const delta = await aheadBehind(dir);
     const note = res.stdout.includes('Already up to date') ? c.dim('up to date') : c.green('updated');
     const ahead = delta?.ahead ? c.yellow(` ${glyph.up}${delta.ahead}`) : '';
-    view.set(repo.name, 'ok', `${c.cyan(branch)}${away} ${note}${ahead}`);
+    view.set(repoId(repo), 'ok', `${c.cyan(branch)}${away} ${note}${ahead}`);
   });
 
   view.stop();

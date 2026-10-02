@@ -253,7 +253,9 @@ describe('selection', () => {
   });
 
   test('selectRepos filters by group and name, flattening csv and arrays', async () => {
-    assert.deepEqual(names(ws.selectRepos(manifest)), names(manifest.repos));
+    // Never an ignored one, whatever the pool — unless a view asks for it.
+    assert.deepEqual(names(ws.selectRepos(manifest)), ['api', 'old', 'dots']);
+    assert.deepEqual(names(ws.selectRepos(manifest, {}, manifest.repos, { includeIgnored: true })), names(manifest.repos));
     assert.deepEqual(names(ws.selectRepos(manifest, { group: 'WORK' })), ['api', 'old']);
     assert.deepEqual(names(ws.selectRepos(manifest, { group: ['me', ''], repo: 'dots, api' })), ['dots']);
     // -r reaches past the pool; without it the pool is what is filtered.
@@ -267,8 +269,12 @@ describe('selection', () => {
     assert.equal(code, undefined);
     assert.deepEqual(names(result), ['api']);
     assert.match(errors.join('\n'), /vendored is marked ignore: true/);
-    // A pool that already holds it — list's whole-catalogue view — keeps it, quietly.
-    const listed = await trapped(() => ws.selectRepos(manifest, { repo: 'vendored' }, manifest.repos));
+    // A pool that already holds it — `exec --all`, a picker result — still does not.
+    const all = await trapped(() => ws.selectRepos(manifest, { repo: 'vendored' }, manifest.repos));
+    assert.deepEqual(names(all.result), []);
+    assert.match(all.errors.join('\n'), /vendored is marked ignore: true/);
+    // A view of the catalogue that holds it keeps it, quietly.
+    const listed = await trapped(() => ws.selectRepos(manifest, { repo: 'vendored' }, manifest.repos, { includeIgnored: true }));
     assert.deepEqual(names(listed.result), ['vendored']);
     assert.deepEqual(listed.errors, []);
   });

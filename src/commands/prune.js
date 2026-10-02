@@ -98,7 +98,7 @@ A repo with no default branch recorded is skipped: run \`talea discover\`.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names; a bare name works too
+  -r, --repo <names>    repo names or owner/name, comma-separated; a bare name works too
       --all             ignore this machine's selection
       --apply           actually remove; without it nothing changes
       --with-ignored    also remove merged worktrees holding ignored files

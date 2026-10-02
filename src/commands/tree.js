@@ -24,7 +24,7 @@ their docs come from the CLI — run \`talea sync\` to drop in any that are new.
 
 Options
   -g, --group <names>   comma-separated groups
-  -r, --repo <names>    comma-separated repo names; a bare name works too
+  -r, --repo <names>    repo names or owner/name, comma-separated; a bare name works too
       --all             the whole catalogue, not just what this machine keeps
 `;
 
@@ -33,7 +33,7 @@ const hasDoc = (dir) => existsSync(path.join(dir, 'CLAUDE.md'));
 export async function run(opts) {
   const { root, manifest, state } = await requireWorkspace();
   const pool = opts.all ? manifest.repos : machineRepos(manifest, state);
-  const entries = withPaths(manifest, root, selectRepos(manifest, opts, pool));
+  const entries = withPaths(manifest, root, selectRepos(manifest, opts, pool, { includeIgnored: true }));
 
   // A node per folder, keyed by path segment, so work/api and work/web share
   // the one work node instead of printing it twice.
