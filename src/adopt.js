@@ -32,7 +32,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-import { git, pooled } from './git.js';
+import { cleanGitEnv, git, pooled } from './git.js';
 import { repoUrl, repoDir, repoGroup } from './config.js';
 
 // Directories that never contain a checkout we care about but do contain
@@ -589,12 +589,28 @@ export async function planAdoptions(manifest, root, repos, candidates) {
  * entry is indistinguishable from a genuinely dead one. Read after the move
  * and the worktrees that most need repairing are exactly the ones filtered out.
  */
+// The same cleaned environment the async wrapper uses: a GIT_DIR exported by
+// a hook would otherwise make every call here read another repository.
+const gitSync = (args, cwd) => spawnSync('git', args, { cwd, encoding: 'utf8', env: cleanGitEnv() });
+
+/**
+ * The linked worktrees, or `{ error }` when git could not say. Never `[]` for
+ * a failure: "no worktrees" is the answer that lets a move go ahead and strand
+ * every one of them.
+ */
 export function readWorktrees(dir) {
-  const listed = spawnSync('git', ['worktree', 'list', '--porcelain'], {
-    cwd: dir,
-    encoding: 'utf8',
-  });
-  return listed.status === 0 ? linkedWorktrees(listed.stdout) : [];
+  const listed = gitSync(['worktree', 'list', '--porcelain'], dir);
+  if (listed.status === 0) return linkedWorktrees(listed.stdout);
+  const why = listed.error?.message ?? String(listed.stderr ?? '').trim().split('\n')[0];
+  return { error: why || `git exited ${listed.status}` };
+}
+
+/** True when `wt` is a worktree whose repository is the one at `repo` now. */
+function linkedTo(wt, repo) {
+  const res = gitSync(['rev-parse', '--git-common-dir'], wt);
+  // canonical(): git prints /private/var where Node has /var, and the long
+  // Windows name where Node has the 8.3 one.
+  return res.status === 0 && samePath(canonical(path.resolve(wt, res.stdout.trim())), canonical(path.join(repo, '.git')));
 }
 
 /**
@@ -617,7 +633,7 @@ export function readWorktrees(dir) {
  * the folder stays where it is, and the worktrees in it are repaired in place.
  */
 function relocateWorktrees(from, to, recorded) {
-  if (!recorded.length) return { repaired: [], siblings: null, stale: 0 };
+  if (!recorded.length) return { repaired: [], broken: [], siblings: null, stale: 0 };
 
   // The sibling folder moves only if it exists, is going somewhere new, and
   // that somewhere is free. Anything else and the worktrees stay put — still
@@ -644,17 +660,24 @@ function relocateWorktrees(from, to, recorded) {
     .map((p) => remapWorktree(p, { from, to, siblings }))
     .filter((p) => existsSync(p));
 
-  if (now.length) {
-    spawnSync('git', ['worktree', 'repair', ...now], { cwd: to, stdio: 'ignore' });
-  }
-  return { repaired: now, siblings, stale: recorded.length - now.length };
+  // Repaired means it resolves to this repo afterwards, checked one by one —
+  // not that the repair command was run. One that does not is `broken`, and
+  // the caller says how to finish it; the move itself stands, because moving
+  // the repo back could fail the same way and nothing here is lost.
+  if (now.length) gitSync(['worktree', 'repair', ...now], to);
+  const repaired = now.filter((p) => linkedTo(p, to));
+  const broken = now.filter((p) => !repaired.includes(p));
+  return { repaired, broken, siblings, stale: recorded.length - now.length };
 }
 
 export function executeMove(plan) {
   try {
-    mkdirSync(path.dirname(plan.to), { recursive: true });
     // Read before the rename: see readWorktrees.
     const recorded = readWorktrees(plan.from);
+    if (recorded.error) {
+      return { ok: false, message: `git could not list its worktrees (${recorded.error}) — nothing was moved` };
+    }
+    mkdirSync(path.dirname(plan.to), { recursive: true });
     renameSync(plan.from, plan.to);
     const worktrees = relocateWorktrees(plan.from, plan.to, recorded);
     return { ok: true, to: plan.to, worktrees };

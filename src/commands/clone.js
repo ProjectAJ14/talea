@@ -99,6 +99,9 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
 
     const applied = await applyMoves(root, certain, parking, manifest);
     for (const r of applied.results.filter((x) => !x.ok)) leave(r.plan.repo, 'its move failed');
+    // Moved, but a worktree left unlinked: reported above with its fix, and
+    // it fails the run.
+    if ([...applied.results, ...applied.parked].some((r) => r.partial)) process.exitCode = 1;
   }
 
   if (skip.size) {
