@@ -36,6 +36,8 @@
     var groupRows = [].slice.call(screen.querySelectorAll('.ask__grp'));
     var board = $('[data-board]'), countsEl = $('[data-counts]'), afterEl = $('[data-after]');
     var statusEl = term.querySelector('[data-status]');
+    var announceEl = $('[data-announce]');
+    function announce(text) { announceEl.textContent = text; }
 
     var CMD = 'talea init ~/Workspace';
 
@@ -182,6 +184,8 @@
     }
     function setPicked(el, on) {
       el.classList.toggle('is-picked', on);
+      // The box is aria-hidden, so the state a screen reader hears is this.
+      el.setAttribute('aria-pressed', String(on));
       el.querySelector('.ask__box').textContent = on ? BOX.on : BOX.off;
     }
     function toggle(el) {
@@ -222,8 +226,9 @@
       keysEl.hidden = true;
       opts.forEach(function (o) { o.classList.remove('is-cur'); o.blur(); });
       afterEl.textContent = 'cancelled — .talea.json not written, nothing changed';
+      announce('Cancelled. Nothing changed.');
       show(lines.after);
-      at(500, function () { state = 'done'; arm(true); toBottom(); });
+      at(500, function () { state = 'done'; arm(true); input.focus({ preventScroll: true }); toBottom(); });
     }
 
     /* ---------- the live block ---------- */
@@ -236,6 +241,7 @@
       opts.forEach(function (o) { o.classList.remove('is-cur'); o.blur(); });
 
       var chosen = picked().map(function (o) { return o.dataset.repo; });
+      announce(chosen.length ? 'Running for ' + chosen.length + ' repo' + (chosen.length === 1 ? '' : 's') + '.' : 'Nothing selected.');
       if (!chosen.length) {
         // An empty selection is a real answer — "I chose nothing" — and talea
         // says so rather than drawing an empty box.
@@ -312,6 +318,7 @@
         .map(function (l) { return '<b>' + by[l] + '</b> ' + l; });
 
       countsEl.innerHTML = parts.length ? parts.join(' · ') : 'nothing to do';
+      announce('Done: ' + countsEl.textContent + '. Press Enter on the prompt to run it again.');
       show(lines.done);
 
       at(600, function () {
@@ -338,6 +345,7 @@
       board.innerHTML = '';
       countsEl.textContent = '';
       afterEl.textContent = '';
+      announce('');
       optWrap.classList.remove('is-live');
       keysEl.hidden = false;
       calm();
@@ -361,9 +369,27 @@
       input.focus({ preventScroll: true });
     });
 
+    /* The key hints, as buttons: the same four actions, for a pointer or a
+       finger. Space and the arrows stay on the rows themselves. */
+    keysEl.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!b) return;
+      calm();
+      var act = b.dataset.act;
+      if (act === 'ok') accept();
+      else if (act === 'cancel') cancel();
+      else if (state === 'picking') { setAll(act === 'all'); setCur(cur); }
+    });
+
     optWrap.addEventListener('click', function (e) {
       var el = e.target.closest ? e.target.closest('.ask__opt') : null;
       if (el) { calm(); toggle(el); setCur(opts.indexOf(el)); }
+    });
+    /* Tab moves focus without the arrows; the cursor follows it, so space
+       toggles the row the keyboard is on, not the one ❯ was left on. */
+    optWrap.addEventListener('focusin', function (e) {
+      var i = opts.indexOf(e.target);
+      if (state === 'picking' && i > -1 && i !== cur) setCur(i);
     });
     optWrap.addEventListener('mousemove', function (e) {
       if (state !== 'picking') return;

@@ -162,17 +162,19 @@
                 <p class="ask__stem">What should this machine keep?</p>
                 <div class="ask__opts" data-opts role="group" aria-label="Choose the repos this machine keeps">
                   <div class="ask__grp" data-group="ProjectAJ14"><span class="ask__cur" aria-hidden="true">&nbsp;</span><span class="ask__box" aria-hidden="true">&#9680;</span><span class="ask__txt">ProjectAJ14</span></div>
-                  <button class="ask__opt is-picked" type="button" data-repo="eklavya"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">eklavya</span></button>
-                  <button class="ask__opt is-picked" type="button" data-repo="talea"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">talea</span></button>
-                  <button class="ask__opt" type="button" data-repo="Morph"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">Morph</span></button>
+                  <button class="ask__opt is-picked" type="button" aria-pressed="true" data-repo="eklavya"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">eklavya</span></button>
+                  <button class="ask__opt is-picked" type="button" aria-pressed="true" data-repo="talea"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">talea</span></button>
+                  <button class="ask__opt" type="button" aria-pressed="false" data-repo="Morph"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">Morph</span></button>
                   <div class="ask__grp" data-group="nonstopio"><span class="ask__cur" aria-hidden="true">&nbsp;</span><span class="ask__box" aria-hidden="true">&#9680;</span><span class="ask__txt">nonstopio</span></div>
-                  <button class="ask__opt is-picked" type="button" data-repo="flutter_forge"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">flutter_forge</span></button>
-                  <button class="ask__opt is-picked" type="button" data-repo="json-viewer"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">json-viewer</span></button>
-                  <button class="ask__opt" type="button" data-repo="ns_puzzle"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">ns_puzzle</span></button>
+                  <button class="ask__opt is-picked" type="button" aria-pressed="true" data-repo="flutter_forge"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">flutter_forge</span></button>
+                  <button class="ask__opt is-picked" type="button" aria-pressed="true" data-repo="json-viewer"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9724;</span><span class="ask__txt">json-viewer</span></button>
+                  <button class="ask__opt" type="button" aria-pressed="false" data-repo="ns_puzzle"><span class="ask__cur" aria-hidden="true">&#10095;</span><span class="ask__box" aria-hidden="true">&#9723;</span><span class="ask__txt">ns_puzzle</span></button>
                 </div>
               </div>
-              <div class="ask__keys" data-keys>&#8593;&#8595; move &middot; space toggle &middot; a all &middot; n none &middot; <kbd>&#9166;</kbd> ok &middot; q cancel</div>
-              <div class="ask__count" data-count>4 of 6 selected</div>
+              <!-- the keys the real picker binds; the last four are buttons too, so a
+                   phone can finish the run without a keyboard -->
+              <div class="ask__keys" data-keys>&#8593;&#8595; move &middot; space toggle &middot; <button class="ask__key" type="button" data-act="all">a all</button> &middot; <button class="ask__key" type="button" data-act="none">n none</button> &middot; <button class="ask__key" type="button" data-act="ok"><kbd>&#9166;</kbd> ok</button> &middot; <button class="ask__key" type="button" data-act="cancel">q cancel</button></div>
+              <div class="ask__count" data-count role="status">4 of 6 selected</div>
               <!-- the same nudge the prompt gets, for the same reason: nothing
                    moves until the list is accepted -->
               <button class="nudge" type="button" data-nudge-pick hidden>
@@ -190,6 +192,10 @@
                 <div class="box__counts" data-counts></div>
               </div>
             </div>
+            <!-- what a screen reader hears when the run starts, ends or is cancelled:
+                 a line that is always there, because one that appears with its
+                 text already in it is not announced -->
+            <p class="visually-hidden" data-announce role="status"></p>
             <div class="ln ln--done" data-line="after" hidden><span class="done__tick">&#10003;</span> <span data-after></span></div>
             </div>
           </div>

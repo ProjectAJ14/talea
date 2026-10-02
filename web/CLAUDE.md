@@ -99,6 +99,16 @@ colour, row format and count in it comes from the CLI:
 | the row: glyph, name, note | `statusLine()` in `src/log.js` |
 | the results box and its counts | `summary()` in `src/log.js` |
 
+The picker is drawn as glyphs, and the glyphs are `aria-hidden`, so its state
+lives in the attributes too: every repo row is a button with `aria-pressed`,
+kept in step by `setPicked()` for space, `a`, `n` and a tap alike; the count is
+a `role="status"`, and one always-present `[data-announce]` status line says
+when a run starts, ends or is cancelled — a line that appears with its text
+already in it is not announced. The `a all · n none · ⏎ ok · q cancel` hints
+are buttons as well, at least 24px tall, so a phone can finish or cancel the
+run without a keyboard; the rows' own cursor follows Tab focus, so space
+toggles the row the keyboard is on.
+
 `RUN` in `app.js` holds the four outcomes a row can settle into. If the CLI gains
 a fifth, it belongs there too — a terminal on the landing page that prints
 something the tool does not is worse than no terminal.

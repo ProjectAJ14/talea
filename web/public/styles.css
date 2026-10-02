@@ -507,6 +507,14 @@ kbd {
 .ask__opt.is-blank .ask__mark { color: var(--neutral-400); }
 .ask__keys { color: var(--neutral-600); font-size: 11.5px; padding: 4px 0 0 2px; }
 .ask__keys[hidden] { display: none; }
+/* The four hints that are also buttons: drawn as the text they were, with a
+   tap target big enough for a finger and a ring for the keyboard. */
+.ask__key {
+  font: inherit; color: inherit; background: none; border: 0; cursor: pointer;
+  padding: 4px 2px; margin: -4px 0; min-height: 24px; border-radius: var(--radius-xs);
+}
+.ask__key:hover { color: var(--green-300); }
+.ask__key:focus-visible { outline: 1px solid var(--green-400); outline-offset: 0; }
 
 /* ---------- the checklist, as prompt.js draws it ----------
    talea's picker is a list of checkboxes driven from raw mode: space toggles,
