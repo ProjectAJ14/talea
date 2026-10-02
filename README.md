@@ -231,7 +231,9 @@ written into a URL; nothing else in it is a secret.
 **If a catalogue was ever pushed to a public gist**, its repo names are public,
 in every revision. Delete that gist on gist.github.com — deleting removes its
 revisions, but not forks or copies somebody already made — and push to a new
-secret one with `talea manifest push --new`.
+secret one with `talea manifest push --new`. A token pushed even to a secret
+gist stays in its revisions (the Revisions tab on the gist's page): revoke the
+token first, then delete the gist and push `--new`.
 
 ### A catalogue from somebody else
 

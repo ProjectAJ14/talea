@@ -406,8 +406,11 @@ secret or unlisted and none says private. `updateGist` reads the gist's
 visibility before writing and refuses anything but `public: false` — an id
 passed in or remembered can name a public gist, and a PATCH would have
 published the catalogue to the world (found in review). `push` refuses a
-catalogue with a credential in a URL (`user:pass@` on any scheme, any user part
-on http(s)); SSH's `git@` is not one. Real confidentiality would need storage
+catalogue with a credential in a URL — a `user:pass@` on any scheme, or a user
+part that looks like a token (`ghp_…`, `glpat-…`, 30+ token characters) —
+scanned over the raw file it uploads, not the parsed one, since a duplicate key
+or an unknown field survives the upload but not `JSON.parse`. A plain username
+(`git@`, Bitbucket's `https://alice@…`) is not a secret. Real confidentiality would need storage
 or encryption talea does not have, and the docs do not claim it.
 
 ## Talking to GitHub

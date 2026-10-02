@@ -525,28 +525,54 @@ describe('talea manifest', () => {
     assert.equal(readUserState().gist, 'pub');
   });
 
-  test('push refuses a catalogue with a credential in a URL, and sends nothing', async () => {
+  test('push refuses a catalogue file with a credential in a URL anywhere in it, and sends nothing', async () => {
     process.env.GITHUB_TOKEN = 't';
-    catalogue([
-      { owner: 'o', name: 'ssh', url: 'git@github.com:o/ssh.git' },
-      { owner: 'o', name: 'sshurl', url: 'ssh://git@github.com/o/sshurl.git' },
-      { owner: 'o', name: 'plain', url: 'https://github.com/o/plain.git' },
-      { owner: 'o', name: 'tok', url: 'https://ghp_secret@github.com/o/tok.git' },
-      { owner: 'o', name: 'pass', url: 'ssh://me:hunter2@host/o/pass.git' },
-    ]);
+    const lines = (repos, extra = {}) =>
+      `{\n  "repos": [\n${repos.map((r) => `    ${JSON.stringify(r)}`).join(',\n')}\n  ]${Object.keys(extra).length ? `,\n  ${JSON.stringify(extra).slice(1, -1)}` : ''}\n}\n`;
+    mkdirSync(path.dirname(USER_MANIFEST), { recursive: true });
+    writeFileSync(
+      USER_MANIFEST,
+      lines([
+        { owner: 'o', name: 'ssh', url: 'git@github.com:o/ssh.git' },
+        { owner: 'o', name: 'sshurl', url: 'ssh://git@github.com/o/sshurl.git' },
+        { owner: 'o', name: 'bb', url: 'https://alice@bitbucket.org/team/bb.git' },
+        { owner: 'o', name: 'tok', url: 'https://ghp_secret@github.com/o/tok.git' },
+        { owner: 'o', name: 'pass', url: 'ssh://me:hunter2@host/o/pass.git' },
+      ]),
+    );
     const calls = stubFetch({});
     let r = await capture(() => manifest.run({}, ['push']));
     assert.equal(r.exit, 1);
     assert.match(r.err, /holds a credential in a URL, so it was not uploaded/);
-    assert.match(r.err, /repos\[3\] \(tok\): url/);
-    assert.match(r.err, /repos\[4\] \(pass\): url/);
-    assert.doesNotMatch(r.err, /repos\[[0-2]\]/);
+    assert.match(r.err, /line 6: https:\/\/\*\*\*@…/);
+    assert.match(r.err, /line 7: ssh:\/\/\*\*\*@…/);
+    assert.doesNotMatch(r.err, /line [1-5]:|ghp_secret|hunter2/);
+    assert.match(r.err, /revoke that token, delete the gist, and push --new/);
     assert.deepEqual(calls, []);
 
-    mkdirSync(path.dirname(USER_MANIFEST), { recursive: true });
-    writeFileSync(USER_MANIFEST, JSON.stringify({ remotes: { https: 'https://x-access-token:abc@github.com/{owner}/{repo}.git' }, repos: [{ owner: 'o', name: 'r' }] }));
-    r = await capture(() => manifest.run({}, ['push']));
-    assert.match(r.err, /remotes\.https/);
+    // What JSON.parse would drop is still uploaded, so it is still read: a
+    // duplicate key, a field talea does not use, a remote template.
+    for (const raw of [
+      '{"repos":[{"owner":"o","name":"r","url":"https://ghp_abc@github.com/o/r.git","url":"git@github.com:o/r.git"}]}',
+      '{"repos":[{"owner":"o","name":"r"}],"notes":{"mirror":"https://glpat-abcdef@gitlab.com/o/r.git"}}',
+      '{"remotes":{"https":"https://x-access-token:abc@github.com/{owner}/{repo}.git"},"repos":[{"owner":"o","name":"r"}]}',
+      `{"repos":[{"owner":"o","name":"r","url":"https://${'a'.repeat(40)}@example.com/o/r.git"}]}`,
+    ]) {
+      writeFileSync(USER_MANIFEST, raw);
+      r = await capture(() => manifest.run({}, ['push']));
+      assert.equal(r.exit, 1, raw);
+      assert.match(r.err, /line 1: /);
+    }
+    assert.deepEqual(calls, []);
+  });
+
+  test('push --new with --gist is two answers, and is refused', async () => {
+    process.env.GITHUB_TOKEN = 't';
+    catalogue();
+    const calls = stubFetch({});
+    const r = await capture(() => manifest.run({ new: true, gist: 'g' }, ['push']));
+    assert.equal(r.exit, 1);
+    assert.match(r.err, /--new publishes to a new gist, and --gist names an existing one — pick one/);
     assert.deepEqual(calls, []);
   });
 

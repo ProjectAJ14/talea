@@ -12,7 +12,6 @@ import {
   MANIFEST_NAME,
   USER_MANIFEST,
   catalogueProblems,
-  repoLabel,
   folderClashes,
   findWorkspace,
   loadManifest,
@@ -43,7 +42,9 @@ link. push reads an existing gist's visibility first and refuses a public one
 before sending anything, and refuses a catalogue with a password or token in a URL.
 
 Pushed to a public gist once? Its repo names are public in every revision: delete
-that gist on gist.github.com (forks and copies survive), then ${c.dim('push --new')}.
+that gist on gist.github.com (forks and copies survive), then ${c.dim('push --new')}. A
+token pushed even to a secret gist stays in its revisions (the Revisions tab on
+the gist's page shows them): revoke the token, delete the gist, and push --new.
 
 The id is remembered in ${c.dim('~/.talea/state.json')}, so after the first ${c.dim('pull <id>')}
 every later ${c.dim('push')} and ${c.dim('pull')} needs no argument.
@@ -53,7 +54,8 @@ be below the workspace, and no two repos may share one. One that fails is
 refused with each problem named, and your current catalogue is left as it was.
 
 Options
-      --gist <id>       use this gist for one command without remembering it
+      --gist <id>       use this gist, and remember it for the next push and pull
+      --new             push to a new secret gist instead of the remembered one
 `;
 
 const GIST_FILE = MANIFEST_NAME;
@@ -75,21 +77,32 @@ function currentFile() {
   return { root, manifest, file: manifest.__source };
 }
 
+// A URL's user part: `scheme://<user>[:<password>]@host`.
+const USERINFO = /[a-z][a-z0-9+.-]*:\/\/([^/@\s"'\\]+)@/gi;
+// What a token looks like when it is the whole user part: GitHub's and
+// GitLab's prefixes, or a long run of token characters. `alice` in Bitbucket's
+// `https://alice@bitbucket.org/…` is a username, and is not one.
+const TOKEN = /^(gh[pousr]_|github_pat_|glpat-|x-access-token$|oauth2$)|^[A-Za-z0-9_-]{30,}$/;
+
 /**
- * Every URL in the catalogue with a secret in it, named by entry. `git@host:`
- * and `ssh://git@host` carry a user and no secret; a password (`user:pass@`)
- * on any scheme, or any user part on http(s) — which is how a token is
- * written there — is one. The rest of the catalogue is repo names, owners,
- * folders and branches: private repo names are why the gist is secret, and
- * nothing in it should need to be more than that.
+ * Every line of the catalogue file with a secret in a URL, the secret masked.
+ * Read off the raw text, because that is what push uploads: a duplicate key
+ * or a field talea does not read survives the upload but not JSON.parse
+ * (found in review). A password (`user:pass@`) on any scheme is a secret, and
+ * so is a user part that looks like a token; `git@host:` and `ssh://git@host`
+ * carry neither. The rest of a catalogue is repo names, owners, folders and
+ * branches — private repo names are why the gist is secret, and nothing in it
+ * should need to be more than that.
  */
-export function credentialsIn(manifest) {
-  const secret = (u) =>
-    typeof u === 'string' && (/^[a-z][a-z0-9+.-]*:\/\/[^/@\s]*:[^/@\s]*@/i.test(u) || /^https?:\/\/[^/@\s]+@/i.test(u));
-  return [
-    ...Object.entries(manifest.remotes ?? {}).filter(([, u]) => secret(u)).map(([k]) => `remotes.${k}`),
-    ...manifest.repos.flatMap((r, i) => (secret(r.url) ? [`repos[${i}] (${repoLabel(manifest, r)}): url`] : [])),
-  ];
+export function credentialsIn(content) {
+  const found = [];
+  content.split('\n').forEach((line, i) => {
+    for (const [url, user] of line.matchAll(USERINFO)) {
+      const [name] = user.split(':');
+      if (user.includes(':') || TOKEN.test(name)) found.push(`line ${i + 1}: ${url.replace(user, '***')}…`);
+    }
+  });
+  return found;
 }
 
 async function push(opts) {
@@ -102,13 +115,9 @@ async function push(opts) {
     process.exit(1);
   }
 
-  // Nothing in the catalogue should be a secret; a credential written into a
-  // URL would be, and push would carry it to a gist anyone with the link reads.
-  const leaks = credentialsIn(manifest);
-  if (leaks.length) {
-    fail('The catalogue holds a credential in a URL, so it was not uploaded:');
-    for (const where of leaks) console.error(`    - ${where}`);
-    console.error('\n  Take the password or token out of the URL — git reads it from your credential helper or SSH key.');
+  // --new is a gist of its own; naming another one too is two answers.
+  if (opts.new && opts.gist) {
+    fail('--new publishes to a new gist, and --gist names an existing one — pick one.');
     process.exit(1);
   }
 
@@ -121,6 +130,17 @@ async function push(opts) {
   // key order and anything a future version of the format adds that this
   // version does not know to keep.
   const content = readFileSync(file, 'utf8');
+
+  // Nothing in the catalogue should be a secret; a credential written into a
+  // URL would be, and push would carry it to a gist anyone with the link reads.
+  const leaks = credentialsIn(content);
+  if (leaks.length) {
+    fail(`${file} holds a credential in a URL, so it was not uploaded:`);
+    for (const where of leaks) console.error(`    - ${where}`);
+    console.error('\n  Take the password or token out of the URL — git reads it from your credential helper or SSH key.');
+    console.error('  If it was pushed before, it is in the gist\'s revisions: revoke that token, delete the gist, and push --new.');
+    process.exit(1);
+  }
 
   heading(id ? 'Updating the catalogue gist' : 'Publishing the catalogue');
   context([

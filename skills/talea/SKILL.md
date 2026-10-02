@@ -203,7 +203,9 @@ print it into a message going somewhere shared, and never call the gist
 "private" to the developer. `push` refuses a public gist and a catalogue with a
 credential in a URL; if it refuses, show the message — do not work around it.
 If a catalogue was already pushed to a public gist, tell the developer to delete
-that gist (forks and copies survive) and run `talea manifest push --new`.
+that gist (forks and copies survive) and run `talea manifest push --new`. If a
+token was ever pushed in a URL, it is in the gist's revisions even after it is
+removed: tell them to revoke it first.
 
 The split that matters: the **catalogue** travels, the **selection** does not.
 Pulling it onto a new laptop hands over the full list to choose from, never the
