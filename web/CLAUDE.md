@@ -83,6 +83,12 @@ Every `.mdx` under `src/content/docs/docs/` has a row here, in sidebar order.
 | `troubleshooting.mdx` | `src/commands/doctor.js`, `src/github.js` for the TLS case, and `normalizeUrl` in `src/config.js` for the double-clone case |
 | `faq.mdx` | wherever the answer lives. Nothing here may be the only place a fact is stated |
 
+`package.json` has an `overrides` entry for `sharp`: Astro 5 asks for
+`^0.34`, which carries libvips and libheif advisories fixed in 0.35.4, so every
+copy is forced to the direct dependency's version (`npm ls sharp` shows one).
+Drop it once Astro itself depends on a patched `sharp`. `docs/security.md` says
+which of the remaining `npm audit` entries can be reached, and why none can.
+
 Adding a page means adding its row here **and** an entry in `astro.config.mjs`'s
 sidebar — it is hand-ordered, so a new file that nobody links to is invisible.
 
