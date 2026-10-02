@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { repoDir, repoId, repoLabel, saveState } from '../config.js';
+import { repoDir, repoId, repoLabel, requireOwnFolders, saveState } from '../config.js';
 import { defaultJobs } from '../git.js';
 import { c, fail, heading, info, ok, plain, skip } from '../log.js';
 import { lookup, requireCatalogue, requireWorkspace, selectionIds, withPaths } from '../workspace.js';
@@ -111,6 +111,7 @@ export async function run(opts, positionals = []) {
     process.exit(1);
   }
 
+  requireOwnFolders(manifest, targets);
   heading('Adding to this machine');
   const added = [];
   for (const repo of targets) {

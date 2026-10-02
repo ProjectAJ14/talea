@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expandHome, loadState, repoId, repoLabel, saveState } from '../config.js';
+import { expandHome, loadState, repoId, repoLabel, requireOwnFolders, saveState } from '../config.js';
 import { c, fail, glyph, heading, icon, info, ok, plain, skip, summary, warn } from '../log.js';
 import { adoptable, requireCatalogue, requireWorkspace, selectRepos } from '../workspace.js';
 import {
@@ -48,7 +48,9 @@ Close editors, terminals and agents working in a checkout before ${c.dim('--appl
 nothing else may change it while it moves.
 
 A repo that cannot be moved safely (it is itself a linked worktree, an occupied
-destination, another filesystem) is left alone and the reason is printed.
+destination, another filesystem, a destination a symlink leads outside the
+workspace) is left alone and the reason is printed. Two repos the catalogue
+puts in one folder stop the run before anything moves.
 
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
@@ -380,6 +382,7 @@ export async function run(opts) {
   // worth moving into place whether or not this machine had signed up for it.
   // Minus anything marked `ignore` — see `adoptable`.
   const repos = selectRepos(manifest, opts, adoptable(manifest));
+  requireOwnFolders(manifest, repos);
 
   const extra = parseFromPaths(opts.from);
 

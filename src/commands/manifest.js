@@ -12,6 +12,7 @@ import {
   MANIFEST_NAME,
   USER_MANIFEST,
   catalogueProblems,
+  folderClashes,
   findWorkspace,
   loadManifest,
   readUserState,
@@ -162,6 +163,8 @@ async function pull(opts, positionals) {
 
   plain('');
   ok(`${parsed.repos.length} repos ${c.dim(`→ ${USER_MANIFEST}`)}`);
+  // Not a reason to refuse: sync names them again, and stops, before placing either.
+  for (const clash of folderClashes(parsed)) warn(clash);
 
   const { file } = currentFile();
   if (file !== USER_MANIFEST) {

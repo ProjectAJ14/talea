@@ -16,7 +16,7 @@ process.env.TALEA_NO_UPDATE_CHECK = '1';
 process.env.GIT_AUTHOR_NAME = process.env.GIT_COMMITTER_NAME = 'test';
 process.env.GIT_AUTHOR_EMAIL = process.env.GIT_COMMITTER_EMAIL = 'test@example.com';
 
-const { catalogueProblems, loadManifest } = await import('../src/config.js');
+const { catalogueProblems, folderClashes, loadManifest } = await import('../src/config.js');
 const { insideRoot } = await import('../src/adopt.js');
 const { dropDocs } = await import('../src/docs.js');
 const clone = await import('../src/commands/clone.js');
@@ -49,8 +49,8 @@ function makeOrigin(name) {
   return bare;
 }
 
-function workspace(catalogue, state = {}) {
-  const ws = path.join(tmp, `ws-${++n}`);
+function workspace(catalogue, state = {}, parent = tmp) {
+  const ws = path.join(parent, `ws-${++n}`);
   mkdirSync(ws, { recursive: true });
   writeFileSync(path.join(ws, 'talea.repos.json'), JSON.stringify(catalogue));
   writeFileSync(path.join(ws, '.talea.json'), JSON.stringify(state));
@@ -130,7 +130,7 @@ describe('catalogueProblems', () => {
       /^repos\[2\] \(\.\.\/a\): "owner" is "\.\."/,
       /^repos\[3\] \(me\/b\\c\): "name" holds a slash or backslash/,
       /^repos\[4\] \(d\): "group" is an absolute path/,
-      /^repos\[5\] \(me\/e\): "dir" is empty/,
+      /^repos\[5\] \(me\/e\): "dir" has a part that is empty/,
       /^repos\[6\] \(C:evil\/f\): "owner" starts with a drive letter/,
       /^repos\[7\] .*"name" holds a NUL byte/,
     ];
@@ -147,6 +147,22 @@ describe('catalogueProblems', () => {
   test('a group with no dir of its own is the folder it names, so it is checked as one', () => {
     assert.match(problems({ repos: [{ name: 'x', group: '../up' }] })[0], /"group" has a part that is "\.\."/);
     assert.match(problems({ repos: [{ name: 'x', owner: 'me', group: 5 }] })[0], /"group" is not a string/);
+  });
+
+  test('on Windows, a name ending in a dot or space, or one Windows reserves, is refused — elsewhere it is a name', () => {
+    const catalogue = { repos: [{ name: 'app.', owner: 'me' }, { name: 'aux', owner: 'me' }, { name: 'x', owner: 'me', dir: '.. ' }, { name: 'COM1.txt', owner: 'me' }] };
+    assert.deepEqual(problems(catalogue), []);
+    const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { ...desc, value: 'win32' });
+    try {
+      const found = problems(catalogue);
+      assert.match(found[0], /"name" ends in a dot or a space, which Windows drops/);
+      assert.match(found[1], /"name" is a name Windows reserves/);
+      assert.match(found[2], /"dir" has a part that ends in a dot or a space/);
+      assert.match(found[3], /"name" is a name Windows reserves/);
+    } finally {
+      Object.defineProperty(process, 'platform', desc);
+    }
   });
 
   test('fields of the wrong type are named', () => {
@@ -180,16 +196,28 @@ describe('catalogueProblems', () => {
     assert.match(problems({ workspace: '../elsewhere' })[0], /^the catalogue: "workspace" has a part that is "\.\."/);
   });
 
-  test('two repos talea places in one folder, or one inside another, are a conflict — case ignored', () => {
-    const found = problems({
+  test('two repos talea places in one folder, or one inside another, clash — case and Unicode form ignored', () => {
+    const catalogue = {
       repos: [
         { name: 'app', owner: 'alice', group: 'work' },
         { name: 'App', owner: 'bob', group: 'work' },
         { name: 'lib', owner: 'carol', group: 'work', dir: 'app/lib' },
         { name: 'app', owner: 'dave', group: 'work', ignore: true },
+        { name: 'caf\u00e9', owner: 'erin', group: 'x' },
+        { name: 'cafe\u0301', owner: 'finn', group: 'x' },
+        { name: 'solo', owner: 'gus' },
       ],
-    });
-    assert.deepEqual(found, [
+    };
+    // Shape and paths are fine, so the catalogue loads; the clash is a question for a run.
+    assert.deepEqual(problems(catalogue), []);
+    const found = folderClashes(catalogue);
+    assert.equal(found.length, 4);
+    // Each label keeps its own spelling; the folder is one.
+    assert.match(found[3], /^repos\[4\] \(erin\/caf.+\) and repos\[5\] \(finn\/caf.+\) both land in x\/caf/);
+    // Only the clashes a run's own repos are in.
+    assert.deepEqual(folderClashes(catalogue, [catalogue.repos[6]]), []);
+    assert.equal(folderClashes(catalogue, [catalogue.repos[2]]).length, 2);
+    assert.deepEqual(found.slice(0, 3), [
       'repos[0] (alice/app) and repos[1] (bob/App) both land in work/app — give one of them a "dir" (or "group") of its own',
       'repos[0] (alice/app) and repos[2] (carol/lib) nest one inside the other at work/app — give one of them a "dir" (or "group") of its own',
       'repos[1] (bob/App) and repos[2] (carol/lib) nest one inside the other at work/app — give one of them a "dir" (or "group") of its own',
@@ -212,18 +240,48 @@ describe('a catalogue that fails is refused before anything changes', () => {
 
   test('clone and adopt with a dir that climbs out move nothing and create nothing', async () => {
     const origin = makeOrigin('app');
-    const ws = workspace({ repos: [{ name: 'app', owner: 'me', url: origin, dir: '../../outside/app' }] }, { selected: ['me/app'] });
+    // In a box of its own: `../../outside` from <ws>/me lands in the box, and
+    // only this test writes there — the system temp folder is shared.
+    const box = path.join(tmp, `box-${++n}`);
+    mkdirSync(box);
+    const ws = workspace({ repos: [{ name: 'app', owner: 'me', url: origin, dir: '../../outside/app' }] }, { selected: ['me/app'] }, box);
     const stray = path.join(ws, 'stray', 'app');
     git(['clone', '-q', origin, stray]);
-    const before = readdirSync(path.dirname(path.dirname(ws))).sort();
+    // Work of its own, which a refused run must leave exactly where it is.
+    writeFileSync(path.join(stray, 'README.md'), 'edited\n');
+    writeFileSync(path.join(stray, 'stash.txt'), 's\n');
+    git(['add', 'stash.txt'], stray);
+    git(['stash', '-q'], stray);
+    writeFileSync(path.join(stray, 'README.md'), 'edited\n');
+    const before = readdirSync(box).sort();
 
     for (const run of [() => clone.run({ jobs: 1 }), () => adopt.run({ apply: true })]) {
       const res = await inWs(ws, run);
       assert.match(res.error?.message ?? '', /is not a usable catalogue/);
     }
     assert.equal(existsSync(path.join(stray, '.git')), true, 'the checkout moved');
-    assert.deepEqual(readdirSync(path.dirname(path.dirname(ws))).sort(), before, 'something was created outside');
+    assert.equal(readFileSync(path.join(stray, 'README.md'), 'utf8'), 'edited\n');
+    assert.match(git(['stash', 'list'], stray), /stash@\{0\}/);
+    assert.deepEqual(readdirSync(box).sort(), before, 'something was created outside');
     assert.deepEqual(JSON.parse(readFileSync(path.join(ws, '.talea.json'), 'utf8')), { selected: ['me/app'] });
+  });
+
+  test('a clash between repos this run does not place stops nothing; one it does stops it first', async () => {
+    const ws = workspace(
+      {
+        repos: [
+          { name: 'solo', owner: 'me', url: makeOrigin('solo') },
+          { name: 'app', owner: 'alice', group: 'work', url: makeOrigin('app') },
+          { name: 'app', owner: 'bob', group: 'work', url: makeOrigin('app') },
+        ],
+      },
+      { selected: ['me/solo'] },
+    );
+    let res = await inWs(ws, () => clone.run({ jobs: 1 }));
+    assert.equal(res.error, null, res.text);
+    assert.equal(existsSync(path.join(ws, 'me', 'solo', '.git')), true);
+    res = await inWs(ws, () => adopt.run({}));
+    assert.match(res.error.message, /both land in work\/app/);
   });
 
   test('two repos in one folder stop the run before any clone starts', async () => {
@@ -306,6 +364,21 @@ describe('a symlink inside the workspace cannot carry anything out of it', () =>
     mkdirSync(templates);
     writeFileSync(path.join(templates, 'work.CLAUDE.md'), '# work\n');
     assert.throws(() => dropDocs({ groups: {} }, root, ['work'], templates), /leads outside the workspace once symlinks are followed/);
+    assert.deepEqual(readdirSync(outside), []);
+  });
+
+  test('a CLAUDE.md that is a symlink — even to nothing yet — is kept, never written through', { skip: process.platform === 'win32' && 'file symlinks need privileges' }, () => {
+    const root = path.join(tmp, `docs-${++n}`);
+    const outside = path.join(tmp, `outside-${++n}`);
+    mkdirSync(root);
+    mkdirSync(outside);
+    symlinkSync(path.join(outside, 'CLAUDE.md'), path.join(root, 'CLAUDE.md'));
+    const templates = path.join(tmp, `templates-${++n}`);
+    mkdirSync(templates);
+    writeFileSync(path.join(templates, 'root.CLAUDE.md'), '# root\n');
+    const res = dropDocs({ groups: {} }, root, [], templates);
+    assert.deepEqual(res.written, []);
+    assert.deepEqual(res.kept, [path.join(root, 'CLAUDE.md')]);
     assert.deepEqual(readdirSync(outside), []);
   });
 });

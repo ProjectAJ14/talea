@@ -101,14 +101,23 @@ chose nothing". A test pins that.
 a team repo — and every path field in it becomes a folder that is created,
 renamed into and written to. So `loadManifest()` refuses one that fails
 `catalogueProblems()` before any command reads a path out of it, and `manifest
-pull` checks before it writes: names and owners are single folder names, groups
-and dirs are relative paths with no `..`, both platforms' rules applied at once
-(a catalogue written on one is read on the other), fields have the types read,
-and no two repos talea places share a folder or nest. A `dir` of
+pull` and `discover --apply` check before they write: names and owners are
+single folder names, groups and dirs are relative paths with no `..`, `.` or
+empty part, with slashes, backslashes and drive letters refused everywhere (a
+catalogue written on one platform is read on another) and trailing dots,
+spaces and reserved names refused on Windows only — a repo called `aux` is
+fine on a Mac, and refusing it there would lock that Mac out. A `dir` of
 `../../outside/app` used to resolve outside the workspace (found in review).
+Two repos in one folder (`folderClashes()`) is not a reason to refuse the
+file — it makes no path unsafe to read — so it stops only a run that would
+place one of them, before it starts (`requireOwnFolders()`), and `list` or a
+sync of other repos still works.
 The spelling check is not enough on its own, so `insideRoot()` resolves every
 symlink above a destination right before a move, a park, a clone or a group
-doc. A symlinked workspace is fine; a symlink inside it to elsewhere is refused.
+doc, and a `CLAUDE.md` that is itself a symlink is never written through. A
+symlinked workspace is fine; a group folder inside it linking elsewhere is
+refused — a deliberate cost, decided with the developer, since a link to
+another disk and a link out of the workspace look the same from here.
 The trust boundary that is left: a catalogue chooses which URLs are cloned and
 where in the workspace they land. git's clone defaults run nothing from the
 repo, and the docs tell a developer to read a catalogue they did not write.

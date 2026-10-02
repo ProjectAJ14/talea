@@ -48,7 +48,7 @@ The remote URL is the identity. A folder that merely shares a name is listed and
 
 ### It will not put anything outside the workspace
 
-A catalogue can come from somebody else, so every folder it names is checked before anything is created, moved or written: no absolute paths, no `..`, no two repos in one folder. Right before each move, clone or doc, the destination is resolved through every symlink above it as well, so a link inside the workspace cannot lead anywhere outside it. A catalogue that fails is refused whole, with every problem named, and `manifest pull` refuses one before it replaces yours.
+A catalogue can come from somebody else, so every folder it names is checked before anything is created, moved or written: no absolute paths, no `..`. A catalogue that fails is refused whole, with every problem named, and `manifest pull` and `discover` refuse one before it replaces yours. Two repos in one folder stop any run that would place either, before it starts. Right before each move, clone or doc, the destination is resolved through every symlink above it as well, so a link inside the workspace cannot lead anywhere outside it.
 
 ### It will not quietly do nothing
 

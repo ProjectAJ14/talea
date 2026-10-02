@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, repoUrl, saveState } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, repoUrl, requireOwnFolders, saveState } from '../config.js';
 import { dropDocs } from '../docs.js';
 import { clone, defaultJobs, isMissingRemote, pooled } from '../git.js';
 import { board } from '../live.js';
@@ -37,6 +37,10 @@ folders you name are remembered.
 Already-cloned repos are left completely alone, so re-running is safe. A repo
 the server will not hand over — renamed, deleted, or never granted to your
 account — is reported and skipped, not failed.
+
+Nothing is placed outside the workspace. A run stops before it starts when two
+of its repos would share a folder, and a repo whose folder leads outside the
+workspace through a symlink is refused — link the whole workspace, not a group.
 
 ${c.dim('talea sync')} does this and then fast-forwards. This command is the half you want
 when you are on a slow connection and do not care about merging yet.
@@ -234,6 +238,8 @@ export async function run(opts) {
 
   const { repos: chosen } = await chooseRepos({ manifest, root, state, opts });
   const repos = selectRepos(manifest, opts, chosen);
+  // Before any pooled clone or fetch: two of them in one folder (see folderClashes).
+  requireOwnFolders(manifest, repos);
 
   const adoption =
     opts.adopt === false

@@ -415,6 +415,23 @@ describe('talea discover', () => {
     assert.equal(again.repos.find((r) => r.name === 'r0').missing, true);
   });
 
+  test('--apply checks what it writes: a bad name is refused, a folder clash is named', async () => {
+    mkdirSync(path.dirname(USER_MANIFEST), { recursive: true });
+    const mine = JSON.stringify({ repos: [{ owner: 'org', name: 'web', group: 'me' }] });
+    writeFileSync(USER_MANIFEST, mine);
+
+    // Nothing GitHub hands back can be a name like this, but it is input all the same.
+    stubFetch({ '/users/me/repos': () => json([api(1, { name: '..' })]) });
+    await assert.rejects(capture(() => discover.run({ user: 'me', apply: true })), /What GitHub returned for .* is not a usable catalogue/);
+    assert.equal(readFileSync(USER_MANIFEST, 'utf8'), mine);
+
+    // A new me/web lands where org/web was put by hand: written, and said.
+    stubFetch({ '/users/me/repos': () => json([api(1, { name: 'web' }), api(2, { name: 'web', owner: { login: 'org' } })]) });
+    const r = await capture(() => discover.run({ user: 'me', apply: true }));
+    assert.match(r.out + r.err, /\((me|org)\/web\) and repos\[\d\] \((me|org)\/web\) both land in me\/web/);
+    assert.match(r.out, /catalogue written/);
+  });
+
   test('--user with a token skips whoami and lists the public repos', async () => {
     process.env.GITHUB_TOKEN = 't';
     const calls = stubFetch({ '/users/other/repos': () => json([]) });
@@ -528,6 +545,13 @@ describe('talea manifest', () => {
     assert.match(r.err, /That gist is not a usable catalogue, so .* was left as it was/);
     assert.match(r.err, /repos\[1\] \(me\/app\): "dir" has a part that is "\.\."/);
     assert.equal(readFileSync(USER_MANIFEST, 'utf8'), before);
+
+    // Two repos in one folder is not a reason to refuse the pull: sync stops on it.
+    content = '{"repos":[{"name":"app","owner":"a","group":"w"},{"name":"app","owner":"b","group":"w"}]}';
+    r = await capture(() => manifest.run({}, ['pull', 'g']));
+    assert.equal(r.exit, null);
+    assert.match(r.out + r.err, /both land in w\/app/);
+    writeFileSync(USER_MANIFEST, before);
 
     // Past ten problems, the rest are counted rather than listed.
     content = JSON.stringify({ repos: Array.from({ length: 12 }, (_, i) => ({ name: `r${i}`, owner: '..' })) });

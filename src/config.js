@@ -80,6 +80,9 @@ export function manifestCandidates(workspaceRoot) {
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
+// Names Windows will not create, with or without an extension.
+const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
 /** Why the string `seg` cannot be one folder name, or null when it can. */
 function badSegment(seg) {
   if (seg === '') return 'is empty';
@@ -87,13 +90,21 @@ function badSegment(seg) {
   if (/[\\/]/.test(seg)) return 'holds a slash or backslash';
   if (/^[A-Za-z]:/.test(seg)) return 'starts with a drive letter';
   if (seg.includes('\0')) return 'holds a NUL byte';
+  // Only where they bite: a repo called `aux` is fine on macOS, and refusing
+  // it there would lock a Mac out of its own catalogue. On Windows `app.` is
+  // `app`, and `.. ` is the parent folder.
+  if (process.platform === 'win32' && /[. ]$/.test(seg)) return 'ends in a dot or a space, which Windows drops';
+  if (process.platform === 'win32' && RESERVED.test(seg)) return 'is a name Windows reserves';
   return null;
 }
 
-/** Why `p` cannot be a relative path below the workspace (`work/api`), or null. */
+/**
+ * Why `p` cannot be a relative path below the workspace (`work/api`), or null.
+ * `./work/api` and `work/` are refused too, as docs.js always refused them: a
+ * `.` part once handed the workspace root a group's CLAUDE.md for good.
+ */
 function badRelative(p) {
   if (typeof p !== 'string') return 'is not a string';
-  if (p === '') return 'is empty';
   if (path.posix.isAbsolute(p) || path.win32.isAbsolute(p)) return 'is an absolute path';
   for (const seg of p.split('/')) {
     const why = badSegment(seg);
@@ -108,10 +119,9 @@ function badRelative(p) {
  *
  * Shape: the fields talea reads have the types it reads them as. Paths: a
  * repo's `name`, `owner` and `dir`, its `group`, and a group's `dir` are all
- * relative and climb nowhere. Collisions: two repos talea manages may not land
- * in one folder, or one inside the other — clone would skip the second as
- * "already there" and sync would report the first's checkout under both. An
- * ignored repo is not placed by talea, so it collides with nothing.
+ * relative and climb nowhere. These make a catalogue unsafe to read at all.
+ * Two repos in one folder do not — see `folderClashes`, asked by the commands
+ * that place checkouts, about the repos they place.
  */
 export function catalogueProblems(manifest) {
   if (!isObject(manifest)) return ['the file is not a JSON object'];
@@ -141,7 +151,6 @@ export function catalogueProblems(manifest) {
     }
   }
 
-  const placed = [];
   (manifest.repos ?? []).forEach((repo, i) => {
     if (!isObject(repo)) {
       problems.push(`repos[${i}]: is not an object — each repo is { "name", "owner", … }`);
@@ -171,24 +180,47 @@ export function catalogueProblems(manifest) {
     for (const field of ['default', 'ignore', 'archived', 'fork', 'missing']) {
       if (repo[field] !== undefined && typeof repo[field] !== 'boolean') add(where, field, 'is not true or false', `write ${field}: true or leave it out`);
     }
-    // `group` and `owner` were checked above, so the folder they name is too.
-    const group = repoGroup(repo);
-    if (problems.length === before && !repo.ignore) {
-      placed.push({ where, rel: [groupDir(manifest, group), repo.dir ?? repo.name].join('/').toLowerCase() });
-    }
   });
+  return problems;
+}
 
-  // Case-folded: macOS and Windows treat `App` and `app` as one folder.
+/**
+ * Pairs of repos talea would place in one folder, or one inside the other, where
+ * at least one is in `repos` — a run's own repos, so a clash between two that
+ * this run never touches does not stop it. clone would skip the second as
+ * "already there" and sync would report the first's checkout under both, so a
+ * command that places checkouts asks this before it starts. An ignored repo is
+ * placed by nobody, so it clashes with nothing. Compared case-folded and in one
+ * Unicode form: macOS and Windows treat `App` and `app`, and the two spellings
+ * of `café`, as one folder.
+ */
+export function folderClashes(manifest, repos = manifest.repos) {
+  const mine = new Set(repos);
+  const placed = manifest.repos
+    .map((repo, i) => {
+      const owner = repo.owner ? `${repo.owner}/` : '';
+      const rel = [groupDir(manifest, repoGroup(repo)), repo.dir ?? repo.name].join('/');
+      return { repo, where: `repos[${i}] (${owner}${repo.name})`, rel: rel.normalize('NFC').toLowerCase() };
+    })
+    .filter(({ repo }) => !repo.ignore);
+  const clashes = [];
   for (let a = 0; a < placed.length; a++) {
     for (let b = a + 1; b < placed.length; b++) {
       const [x, y] = [placed[a], placed[b]];
+      if (!mine.has(x.repo) && !mine.has(y.repo)) continue;
       const inside = x.rel === y.rel ? 'both land in' : y.rel.startsWith(`${x.rel}/`) || x.rel.startsWith(`${y.rel}/`) ? 'nest one inside the other at' : null;
       if (inside) {
-        problems.push(`${x.where} and ${y.where} ${inside} ${x.rel.length <= y.rel.length ? x.rel : y.rel} — give one of them a "dir" (or "group") of its own`);
+        clashes.push(`${x.where} and ${y.where} ${inside} ${x.rel.length <= y.rel.length ? x.rel : y.rel} — give one of them a "dir" (or "group") of its own`);
       }
     }
   }
-  return problems;
+  return clashes;
+}
+
+/** Stop before a run that places `repos` when any of them shares a folder (see folderClashes). */
+export function requireOwnFolders(manifest, repos) {
+  const clashes = folderClashes(manifest, repos);
+  if (clashes.length) throw catalogueError(manifest.__source ?? 'The catalogue', clashes);
 }
 
 /** A catalogue that failed `catalogueProblems`, as an error a person can act on. */
