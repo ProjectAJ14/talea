@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoLabel } from '../config.js';
 import { aheadBehind, currentBranch, defaultJobs, isDirty, pooled } from '../git.js';
 import { c, context, glyph, group, heading, plain, table } from '../log.js';
 import { machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
@@ -37,8 +37,8 @@ export async function run(opts) {
   let read = 0;
   const rows = await task(`Reading ${entries.length} repos`, (update) =>
     pooled(entries, defaultJobs(), async (entry) => {
-      const row = await readRow(entry);
-      update(`${++read}/${entries.length}  ${entry.repo.name}`);
+      const row = await readRow(entry, manifest);
+      update(`${++read}/${entries.length}  ${repoLabel(manifest, entry.repo)}`);
       return row;
     }),
   );
@@ -86,13 +86,13 @@ export async function run(opts) {
   if (missing) plain(c.dim('Run `talea sync` to get the missing repos.'));
 }
 
-async function readRow({ repo, dir, cloned }) {
+async function readRow({ repo, dir, cloned }, manifest) {
   const home = defaultBranch(repo);
   if (!cloned) {
     return {
       repo,
       missing: true,
-      cells: [c.dim(repo.name), c.dim(glyph.rule), c.dim(home ?? glyph.rule), c.yellow('not cloned')],
+      cells: [c.dim(repoLabel(manifest, repo)), c.dim(glyph.rule), c.dim(home ?? glyph.rule), c.yellow('not cloned')],
     };
   }
 
@@ -115,7 +115,7 @@ async function readRow({ repo, dir, cloned }) {
     drift,
     missing: false,
     cells: [
-      c.bold(repo.name),
+      c.bold(repoLabel(manifest, repo)),
       drift ? c.cyan(branch ?? '?') : (branch ?? '?'),
       drift ? c.dim(home) : c.dim(''),
       bits.join(' '),

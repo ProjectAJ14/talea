@@ -239,6 +239,8 @@ Treat the id like a bookmark you would not paste into a public channel.
 Every one of them takes `-g <group>` and `-r <repo>` to narrow the run, and
 `--help` for its own examples. For `sync`, `clone`, `status`, `list`, `tree` and
 `prune` a bare name means the same as `-r`, so `talea sync eklavya` syncs that one repo.
+When two owners each have a repo of that name the run stops and lists both;
+name the one you mean, `talea sync alice/app`.
 A command that takes no names refuses a stray word instead of ignoring it.
 
 ---

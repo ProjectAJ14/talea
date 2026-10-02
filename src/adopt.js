@@ -176,15 +176,21 @@ export function matchRepo(manifest, repos, originUrl) {
   // exactly another catalogue repo — another owner's same-named one, one marked
   // `ignore: true` — is that repo. Searched only within `repos`, it fell through
   // to a name match and was moved or parked as this one (found in review).
-  const exact = [...repos, ...(manifest.repos ?? [])].find((repo) =>
-    catalogueUrls(manifest, repo).some((u) => normalizeUrl(u) === norm),
-  );
-  if (exact) return repos.includes(exact) ? { repo: exact, confidence: 'exact' } : null;
+  // A `missing` entry is the exception: GitHub no longer has it, and a repo
+  // that moved owners leaves exactly that behind (rule 11) while its old URL
+  // still redirects — so that checkout falls through to the name match below,
+  // or sync would clone a second copy beside it.
+  const all = [...repos, ...(manifest.repos ?? [])];
+  const exact = all.find((repo) => catalogueUrls(manifest, repo).some((u) => normalizeUrl(u) === norm));
+  if (exact && repos.includes(exact)) return { repo: exact, confidence: 'exact' };
+  if (exact && !exact.missing) return null;
 
-  // Two owners' `app` from a mirror: the name cannot say which, so neither.
+  // Counted across the whole catalogue, not only `repos`: a mirror of bob/app
+  // is not alice/app because `-r alice/app` narrowed the list, nor because
+  // bob/app is ignored. Two live repos with the name: neither.
   const name = urlRepoName(originUrl);
-  const named = repos.filter((repo) => name && repo.name.toLowerCase() === name);
-  return named.length === 1 ? { repo: named[0], confidence: 'name' } : null;
+  const named = [...new Set(all)].filter((repo) => name && !repo.missing && repo.name.toLowerCase() === name);
+  return named.length === 1 && repos.includes(named[0]) ? { repo: named[0], confidence: 'name' } : null;
 }
 
 /**

@@ -203,6 +203,36 @@ describe('a selection written as bare names', () => {
     assert.match(errors[0], /"app" in this machine's list could be alice\/app or bob\/app, so neither is kept — `talea add alice\/app` to choose/);
   });
 
+  test('a bare name an ignored or missing entry shares still means the one live repo', () => {
+    const m = {
+      repos: [
+        { name: 'app', owner: 'alice' },
+        { name: 'app', owner: 'bob', ignore: true },
+        { name: 'lib', owner: 'old', missing: true },
+        { name: 'lib', owner: 'neworg' },
+      ],
+    };
+    assert.deepEqual(ws_.machineRepos(m, { selected: ['app', 'lib'] }).map(repoId), ['alice/app', 'neworg/lib']);
+    assert.deepEqual(ws_.lookup(m, 'bob/app').map(repoId), ['bob/app']);
+  });
+
+  test('rm of a bare entry two owners share drops it as written', async () => {
+    const ws = workspace(
+      [
+        { name: 'app', owner: 'alice', url: path.join(tmp, 'a.git') },
+        { name: 'app', owner: 'bob', url: path.join(tmp, 'b.git') },
+      ],
+      { selected: ['app', 'bob/app'] },
+    );
+    const res = await inWs(ws, () => add.run({ removing: true }, ['app']));
+    assert.equal(res.error, null, res.text);
+    assert.match(res.text, /app off the list — it named no one repo/);
+    assert.deepEqual(readState(ws).selected, ['bob/app']);
+    // Not on the list as written, it is still ambiguous.
+    const again = await inWs(ws, () => add.run({ removing: true }, ['app']));
+    assert.match(again.text, /"app" is ambiguous/);
+  });
+
   test('add and rm rewrite what they can pin down, and keep the rest as written', async () => {
     assert.deepEqual(ws_.selectionIds(manifest, { selected: ['lib', 'app', 'gone', 'me/lib'] }), ['me/lib', 'app', 'gone']);
     // Never asked: the defaults, as ids.
@@ -246,9 +276,21 @@ describe('ignore: true, at every way in', () => {
     const pool = [manifest.repos[0]];
     assert.equal(matchRepo(manifest, pool, theirs), null);
     assert.deepEqual(matchRepo(manifest, pool, mine), { repo: pool[0], confidence: 'exact' });
-    // From a mirror: one candidate is a name match, two are no match.
-    assert.equal(matchRepo(manifest, pool, 'https://mirror/x/app.git').confidence, 'name');
-    assert.equal(matchRepo(manifest, manifest.repos.slice(0, 2), 'https://mirror/x/app.git'), null);
+    // From a mirror, the name is counted across the whole catalogue: bob/app
+    // is a live repo of that name even though ignored or narrowed away, so
+    // a mirror's `app` is nobody's. With alice's the only one, it is hers.
+    const mirror = 'https://mirror/x/app.git';
+    assert.equal(matchRepo(manifest, pool, mirror), null);
+    assert.equal(matchRepo(manifest, manifest.repos.slice(0, 2), mirror), null);
+    const alone = { repos: [manifest.repos[0]] };
+    assert.equal(matchRepo(alone, alone.repos, mirror).confidence, 'name');
+  });
+
+  test('matchRepo: a checkout of a repo that moved owners still matches the new one by name', () => {
+    // discover keeps the old entry, marked missing (rule 11); its URL redirects.
+    const moved = { repos: [{ name: 'lib', owner: 'old', url: 'https://h/old/lib.git', missing: true }, { name: 'lib', owner: 'new', url: 'https://h/new/lib.git' }] };
+    const kept = [moved.repos[1]];
+    assert.deepEqual(matchRepo(moved, kept, 'https://h/old/lib.git'), { repo: kept[0], confidence: 'name' });
   });
 
   test('clone, sync and adopt --loose never move or park the other tool\'s checkout', async () => {

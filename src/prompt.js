@@ -238,7 +238,7 @@ export function pickRepos(rows, { title = 'Select what to clone' } = {}) {
       if (cursor < top) top = cursor;
       if (cursor >= top + height) top = cursor - height + 1;
 
-      const total = rows.filter((r) => r.kind === 'repo').length;
+      const total = rows.filter((r) => r.kind === 'repo' && !r.ignored).length;
       const lines = [
         c.bold(title),
         c.dim(`${selectedRepos(rows).length} of ${total} selected`),
@@ -341,7 +341,7 @@ export async function pickByLine(rows) {
   const groups = [...new Set(rows.map((r) => r.group))];
   console.log(`\n${c.bold('Groups')}`);
   for (const g of groups) {
-    const members = rows.filter((r) => r.kind === 'repo' && r.group === g);
+    const members = rows.filter((r) => r.kind === 'repo' && r.group === g && !r.ignored);
     console.log(`  ${c.cyan(g.padEnd(10))} ${c.dim(`${members.length} repos`)}`);
   }
   console.log(c.dim('\nEnter group and/or repo names, comma separated. Empty = everything.'));

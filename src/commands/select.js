@@ -27,7 +27,9 @@ ${c.bold('talea select')} — change what this machine keeps
 The checklist opens with the current selection ticked. Space toggles, Enter
 saves, Esc cancels and changes nothing. Everything in the catalogue is listed,
 including the archived and the forks — this machine is allowed to keep
-something the default set does not have.
+something the default set does not have. A repo marked ${c.dim('ignore: true')} is listed
+greyed out and nothing ticks it; two repos of one name in one group read
+${c.dim('owner/name')}.
 
 It writes ${c.dim('.talea.json')}, which never leaves this machine, so no other machine's
 selection changes. Unticking a repo takes it off the list and leaves the

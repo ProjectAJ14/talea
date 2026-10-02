@@ -120,10 +120,17 @@ export async function requireWorkspace() {
   return { root, manifest, state };
 }
 
-/** Every catalogue entry `name` or `owner/name` could mean, ignoring case. */
+/**
+ * Every catalogue entry `name` or `owner/name` could mean, ignoring case. A
+ * bare name that an ignored or `missing` entry shares still means the one live
+ * repo: neither of those can be kept, and counting them made an old `["lib"]`
+ * drop the repo that moved to a new owner.
+ */
 export function lookup(manifest, name) {
   const wanted = String(name).toLowerCase();
-  return manifest.repos.filter((r) => r.name.toLowerCase() === wanted || repoId(r) === wanted);
+  const found = manifest.repos.filter((r) => r.name.toLowerCase() === wanted || repoId(r) === wanted);
+  const live = found.filter((r) => !r.ignore && !r.missing);
+  return found.length > 1 && live.length === 1 ? live : found;
 }
 
 // A legacy entry is named once per run, however many commands read the list.

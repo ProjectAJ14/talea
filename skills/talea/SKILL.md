@@ -55,7 +55,8 @@ exits non-zero — pass `owner/name` rather than picking one. The same goes for
 `-r` and a bare repo name after `sync`, `clone`, `status` and the rest: a name
 two owners share stops the run. If a run warns that a name in this machine's
 list could be two repos, ask the developer which one and run
-`talea add <owner>/<name>` — never add both to make the warning go away.
+`talea add <owner>/<name>`, or `talea rm <name>` if they want neither — never
+add both to make the warning go away.
 
 ## Read before you write
 

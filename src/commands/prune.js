@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { canonical, worktreeRecords, lines } from '../adopt.js';
-import { defaultBranch, groupDir, repoGroup } from '../config.js';
+import { defaultBranch, groupDir, repoGroup, repoLabel } from '../config.js';
 import { defaultJobs, fetch, git, pooled } from '../git.js';
 import { task } from '../live.js';
 import { c, context, fail, group, heading, plain, skip, summary, table, warn } from '../log.js';
@@ -596,7 +596,7 @@ export async function run(opts) {
       pooled(entries, opts.jobs ?? defaultJobs(), async (entry) => {
         const plan = await planRepo(entry, { withIgnored: opts['with-ignored'] });
         if (opts.apply && plan.worktrees) await applyRepo(entry.dir, plan);
-        update(`${++checked}/${entries.length}  ${entry.repo.name}`);
+        update(`${++checked}/${entries.length}  ${repoLabel(manifest, entry.repo)}`);
         return { ...entry, plan };
       }),
   );
@@ -613,10 +613,10 @@ export async function run(opts) {
   for (const { repo, plan } of plans) {
     if (plan.skip) {
       skipped++;
-      skip(`${repo.name} — ${plan.skip}`);
+      skip(`${repoLabel(manifest, repo)} — ${plan.skip}`);
     } else if (plan.fail) {
       failed++;
-      fail(`${repo.name} — ${plan.fail}`);
+      fail(`${repoLabel(manifest, repo)} — ${plan.fail}`);
     }
   }
   if (skipped || failed) plain('');
@@ -641,7 +641,7 @@ export async function run(opts) {
     // what you paste, but as a column it pushed every other one off the screen.
     table(
       groupRows.map(({ repo, wt }) => [
-        '  ' + c.bold(repo.name),
+        '  ' + c.bold(repoLabel(manifest, repo)),
         path.basename(wt.path),
         wt.branch ?? c.dim('(detached)'),
         PAINT[wt.verdict](wt.verdict) + verdictNote(wt),
@@ -651,7 +651,7 @@ export async function run(opts) {
       { below: groupRows.map(({ wt }) => tilde(wt.path) + (wt.lockReason ? `  — locked: ${wt.lockReason}` : '')) },
     );
     for (const { repo, wt } of groupRows) {
-      const name = `${repo.name}/${path.basename(wt.path)}`;
+      const name = `${repoLabel(manifest, repo)}/${path.basename(wt.path)}`;
       if (wt.error) fail(`${name} — ${wt.error}`);
       if (wt.verdict === 'nested') {
         const repos = wt.held.map((h) => `${h.path} (${h.why})`);

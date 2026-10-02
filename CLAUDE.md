@@ -86,8 +86,12 @@ buckets, the clone skip list, board rows — is keyed on the repo or its id.
 Keyed by name, keeping alice/app also synced bob/app, and a stray bob/app was
 parked as alice's second copy. A bare name in an older `selected` still counts
 while one catalogue repo has it; once two do, neither is kept and the run says
-so on stderr, because guessing would sync a repo nobody chose. A `-r` or a typed
-name two owners share stops the run, as `add` and `where` already did.
+so on stderr, because guessing would sync a repo nobody chose; `talea add
+<owner>/<name>` or `talea rm <name>` settles it. Ignored and `missing` entries
+do not count as a second owner — neither can be kept. A `-r`, or a name typed
+into `add`, `rm`, `where` or the checklist, that two owners share stops the
+run; `talea pick` opens the checklist instead, as it does for any name that
+does not pin down one repo.
 
 `state.selected` being **absent** and being **empty** mean different things.
 Absent is "never asked" and falls back to the catalogue defaults; empty is "I

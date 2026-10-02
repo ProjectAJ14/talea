@@ -65,7 +65,13 @@ export async function run(opts, positionals = []) {
     process.exit(1);
   }
 
-  const targets = positionals.map((n) => resolve(manifest, n));
+  // `rm app` where two owners share it: the bare entry an older list holds
+  // cannot be resolved, but it can be dropped as written — the one way to
+  // answer "neither" to the warning it prints.
+  const legacy = (n) =>
+    opts.removing && lookup(manifest, n).length > 1 && (state.selected ?? []).some((e) => e.toLowerCase() === n.toLowerCase());
+  const dropped = positionals.filter(legacy);
+  const targets = positionals.filter((n) => !legacy(n)).map((n) => resolve(manifest, n));
   const label = (repo) => repoLabel(manifest, repo);
 
   // The current list as ids, made explicit. Until now this machine may have
@@ -77,6 +83,10 @@ export async function run(opts, positionals = []) {
 
   if (opts.removing) {
     heading('Removing from this machine');
+    for (const n of dropped) {
+      list = list.filter((e) => e.toLowerCase() !== n.toLowerCase());
+      ok(`${c.bold(n)} ${c.dim('off the list — it named no one repo')}`);
+    }
     for (const repo of targets) {
       if (!list.includes(repoId(repo))) {
         skip(`${c.bold(label(repo))} was not on this machine's list`);

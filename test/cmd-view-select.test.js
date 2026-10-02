@@ -188,6 +188,20 @@ describe('chooseRepos', () => {
     assert.deepEqual(readState().selected, ['me/beta']);
   });
 
+  test('select-all in the checklist never takes an ignored repo into the run', async () => {
+    const stdin = terminal();
+    const manifest = loadManifest(root);
+    manifest.repos.push({ name: 'theirs', owner: 'x', ignore: true });
+    const r = await capture(() => chooseRepos({ manifest, root, state: {}, opts: { pick: true } }), {
+      stdin,
+      steps: [[PICKER, 'a\r']],
+    });
+    assert.equal(r.left, 0);
+    assert.match(r.out, /2 of 4 selected/); // the ignored row is not counted
+    assert.deepEqual(names(r.value.repos), ['alpha', 'beta', 'delta', 'gamma']); // tree order
+    assert.equal(readState().selected.includes('x/theirs'), false);
+  });
+
   test('cancelling the checklist changes nothing and exits 0', async () => {
     writeState({ selected: ['alpha'] });
     const stdin = terminal();

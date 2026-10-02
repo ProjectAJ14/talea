@@ -90,11 +90,10 @@ export async function chooseRepos({ manifest, root, state, opts = {} }) {
     process.exit(0);
   }
 
-  // The tree never ticks an ignored repo; filtered again because this list
-  // goes straight into the run (rule 4).
-  const kept = picked.filter((r) => !r.ignore);
-  saveState(root, { ...state, selected: kept.map(repoId) });
-  return { repos: kept, asked: true };
+  // The tree never ticks an ignored repo (rule 4), so this list can go
+  // straight into the run.
+  saveState(root, { ...state, selected: picked.map(repoId) });
+  return { repos: picked, asked: true };
 }
 
 export { selectedRepos };
