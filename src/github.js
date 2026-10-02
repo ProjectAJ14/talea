@@ -172,9 +172,13 @@ export function toEntry(api, { activeSince } = {}) {
 }
 
 // ── gists ────────────────────────────────────────────────────────
-// The whole cross-machine story. A private gist is a file with a URL and an
+// The whole cross-machine story. A secret gist is a file with a URL and an
 // edit history, reachable with the token the machine already has — no server to
 // run, no repo to create, nothing to remember to commit.
+//
+// Secret is not private: GitHub lists it nowhere and search does not find it,
+// but anyone holding its URL can read it without signing in. So the catalogue
+// only ever goes to a secret one, and the docs call it unlisted, never private.
 
 export async function createGist({ token: tok, filename, content, description }) {
   const { json } = await call('/gists', {
@@ -186,6 +190,14 @@ export async function createGist({ token: tok, filename, content, description })
 }
 
 export async function updateGist({ token: tok, id, filename, content }) {
+  // Read before writing: an id passed in or remembered can name a public gist,
+  // and a PATCH would publish every private repo name in the catalogue to the
+  // world (found in review). Anything but an explicit `public: false` — an
+  // answer without the field included — is refused, before content is sent.
+  const { json: meta } = await call(`/gists/${id}`, { token: tok });
+  if (meta.public !== false) {
+    throw Object.assign(new Error(`Gist ${id} is public — anyone can find and read it — so nothing was uploaded.`), { code: 'PUBLIC_GIST' });
+  }
   const { json } = await call(`/gists/${id}`, {
     token: tok,
     method: 'PATCH',

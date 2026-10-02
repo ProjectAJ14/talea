@@ -154,7 +154,8 @@ Everything after `--` is the command. One repo at a time, so the output stays at
 ### talea manifest
 
 ```bash
-talea manifest push             # publish to a private gist
+talea manifest push             # publish to a secret (unlisted) gist
+talea manifest push --new       # a new secret gist, not the remembered one
 talea manifest pull             # fetch the one this machine is linked to
 talea manifest pull <gist-id>   # link this machine to a gist and fetch it
 talea manifest where            # which file is in use, and which gist

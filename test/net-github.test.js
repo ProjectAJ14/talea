@@ -223,13 +223,26 @@ describe('through fetch', () => {
     await assert.rejects(gh.whoami('t'), { message: 'GitHub 500 on /user' });
   });
 
-  test('gists: create, update, and a body with its content type', async () => {
-    const calls = stubFetch({ '/gists': (url, init) => json({ id: init.method === 'POST' ? 'new' : 'old' }) });
+  test('gists: create secret, update only a secret one, and a body with its content type', async () => {
+    let visibility = false;
+    const calls = stubFetch({
+      '/gists': (url, init) => json({ id: init.method === 'POST' ? 'new' : 'old', public: visibility }),
+    });
     assert.equal(await gh.createGist({ token: 't', filename: 'f', content: 'c', description: 'd' }), 'new');
+    assert.equal(JSON.parse(calls[0].init.body).public, false);
     assert.equal(await gh.updateGist({ token: 't', id: 'old', filename: 'f', content: 'c2' }), 'old');
     assert.equal(calls[0].init.headers['content-type'], 'application/json');
-    assert.equal(calls[1].url, 'https://api.github.com/gists/old');
-    assert.deepEqual(JSON.parse(calls[1].init.body), { files: { f: { content: 'c2' } } });
+    // The visibility is read first, then the content goes.
+    assert.equal(calls[1].init.method, 'GET');
+    assert.equal(calls[2].url, 'https://api.github.com/gists/old');
+    assert.deepEqual(JSON.parse(calls[2].init.body), { files: { f: { content: 'c2' } } });
+
+    // Public, or an answer that does not say: refused, and nothing is sent.
+    for (visibility of [true, undefined]) {
+      const before = calls.length;
+      await assert.rejects(gh.updateGist({ token: 't', id: 'old', filename: 'f', content: 'secret' }), { code: 'PUBLIC_GIST', message: /Gist old is public/ });
+      assert.deepEqual(calls.slice(before).map((c) => c.init.method), ['GET']);
+    }
   });
 
   test('readGist: the named file, else the first, else an error', async () => {
@@ -476,7 +489,7 @@ describe('talea manifest', () => {
   test('push creates a gist once, then updates the remembered one byte for byte', async () => {
     process.env.GITHUB_TOKEN = 't';
     catalogue();
-    const calls = stubFetch({ '/gists': (url, init) => json({ id: init.method === 'POST' ? 'g1' : url.split('/').pop() }) });
+    const calls = stubFetch({ '/gists': (url, init) => json({ id: init.method === 'POST' ? 'g1' : url.split('/').pop(), public: false }) });
 
     const first = await capture(() => manifest.run({}, ['push']));
     assert.match(first.out, /Publishing the catalogue/);
@@ -486,11 +499,63 @@ describe('talea manifest', () => {
 
     const second = await capture(() => manifest.run({}, ['push']));
     assert.match(second.out, /Updating the catalogue gist/);
-    assert.equal(calls[1].init.method, 'PATCH');
-    assert.match(calls[1].url, /\/gists\/g1$/);
+    assert.equal(calls[2].init.method, 'PATCH');
+    assert.match(calls[2].url, /\/gists\/g1$/);
 
     await capture(() => manifest.run({ gist: 'other' }, ['push']));
-    assert.match(calls[2].url, /\/gists\/other$/);
+    assert.match(calls[4].url, /\/gists\/other$/);
+
+    // --new: a fresh secret gist, whatever is remembered.
+    await capture(() => manifest.run({ new: true }, ['push']));
+    assert.equal(calls[5].init.method, 'POST');
+    assert.equal(readUserState().gist, 'g1');
+  });
+
+  test('push to a public gist is refused before any content is sent', async () => {
+    process.env.GITHUB_TOKEN = 't';
+    catalogue();
+    writeFileSync(USER_STATE, JSON.stringify({ gist: 'pub' }));
+    const calls = stubFetch({ '/gists/pub': (url, init) => (init.method === 'PATCH' ? json({ id: 'pub' }) : json({ id: 'pub', public: true })) });
+    const r = await capture(() => manifest.run({}, ['push']));
+    assert.equal(r.exit, 1);
+    assert.match(r.err, /Gist pub is public/);
+    assert.match(r.err, /talea manifest push --new/);
+    assert.match(r.err, /delete it at https:\/\/gist\.github\.com\/pub/);
+    assert.equal(calls.some((c) => c.init.method === 'PATCH'), false, 'content was sent to a public gist');
+    assert.equal(readUserState().gist, 'pub');
+  });
+
+  test('push refuses a catalogue with a credential in a URL, and sends nothing', async () => {
+    process.env.GITHUB_TOKEN = 't';
+    catalogue([
+      { owner: 'o', name: 'ssh', url: 'git@github.com:o/ssh.git' },
+      { owner: 'o', name: 'sshurl', url: 'ssh://git@github.com/o/sshurl.git' },
+      { owner: 'o', name: 'plain', url: 'https://github.com/o/plain.git' },
+      { owner: 'o', name: 'tok', url: 'https://ghp_secret@github.com/o/tok.git' },
+      { owner: 'o', name: 'pass', url: 'ssh://me:hunter2@host/o/pass.git' },
+    ]);
+    const calls = stubFetch({});
+    let r = await capture(() => manifest.run({}, ['push']));
+    assert.equal(r.exit, 1);
+    assert.match(r.err, /holds a credential in a URL, so it was not uploaded/);
+    assert.match(r.err, /repos\[3\] \(tok\): url/);
+    assert.match(r.err, /repos\[4\] \(pass\): url/);
+    assert.doesNotMatch(r.err, /repos\[[0-2]\]/);
+    assert.deepEqual(calls, []);
+
+    mkdirSync(path.dirname(USER_MANIFEST), { recursive: true });
+    writeFileSync(USER_MANIFEST, JSON.stringify({ remotes: { https: 'https://x-access-token:abc@github.com/{owner}/{repo}.git' }, repos: [{ owner: 'o', name: 'r' }] }));
+    r = await capture(() => manifest.run({}, ['push']));
+    assert.match(r.err, /remotes\.https/);
+    assert.deepEqual(calls, []);
+  });
+
+  test('a push GitHub refuses for another reason is not dressed up as a public gist', async () => {
+    process.env.GITHUB_TOKEN = 't';
+    catalogue();
+    writeFileSync(USER_STATE, JSON.stringify({ gist: 'gone' }));
+    stubFetch({ '/gists/gone': () => json({ message: 'Not Found' }, { status: 404 }) });
+    await assert.rejects(capture(() => manifest.run({}, ['push'])), /GitHub 404 on \/gists\/gone/);
   });
 
   test('pull with nothing to pull from says how to link one', async () => {
