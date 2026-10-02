@@ -19,8 +19,8 @@ process.chdir(HOME);
 
 const update = await import('../src/update.js');
 const upgrade = await import('../src/commands/upgrade.js');
-const { readUserState, writeUserState, USER_STATE, updateUserState } = await import('../src/config.js');
-const { existsSync, readdirSync, utimesSync, writeFileSync: write, mkdirSync: mkdir, chmodSync } = await import('node:fs');
+const { readUserState, writeUserState, USER_STATE, updateUserState, renameInto } = await import('../src/config.js');
+const { existsSync, readdirSync, readFileSync, writeFileSync: write, mkdirSync: mkdir, chmodSync } = await import('node:fs');
 
 const { version, name } = update.pkgJson();
 const realFetch = globalThis.fetch;
@@ -438,30 +438,123 @@ describe('runs that overlap', () => {
     assert.equal(existsSync(update.UPGRADE_LOCK), false);
   });
 
-  test('a lock left by a run that died is taken over; a vanished one is simply taken', async () => {
+  test('a lock whose process is gone, or that is too old, is taken over; a live one is not', async () => {
     mkdir(path.dirname(update.UPGRADE_LOCK), { recursive: true });
-    write(update.UPGRADE_LOCK, '');
-    const old = (Date.now() - DAY) / 1000;
-    utimesSync(update.UPGRADE_LOCK, old, old);
-    const release = update.takeUpgradeLock();
+    const now = Date.now();
+    const lockedBy = (content) => write(update.UPGRADE_LOCK, content);
+    const alive = (pid) => pid === 4242;
+    lockedBy(`4242 ${now}`);
+    assert.equal(update.takeUpgradeLock(now, { alive }), null, 'a live install was taken over');
+    // Ctrl-C mid-install: the process is gone, the file is not.
+    lockedBy(`999999 ${now}`);
+    let release = update.takeUpgradeLock(now, { alive });
     assert.equal(typeof release, 'function');
+    assert.equal(readFileSync(update.UPGRADE_LOCK, 'utf8'), `${process.pid} ${now}`);
     release();
-    // Present when opened, gone when its age is read: as old as can be.
-    write(update.UPGRADE_LOCK, '');
+    assert.equal(existsSync(update.UPGRADE_LOCK), false);
+    // Alive but older than any install: a reused pid.
+    lockedBy(`4242 ${now - DAY}`);
+    assert.equal(typeof update.takeUpgradeLock(now, { alive })(), 'undefined');
+    // Not a lock talea wrote.
+    lockedBy('garbage');
+    assert.equal(typeof update.takeUpgradeLock(now, { alive })(), 'undefined');
+    // The real liveness check: this process is alive, an exited one is not.
+    lockedBy(`${process.pid} ${now}`);
+    assert.equal(update.takeUpgradeLock(now), null);
+    const { spawnSync } = await import('node:child_process');
+    lockedBy(`${spawnSync(process.execPath, ['-e', '']).pid} ${now}`);
+    assert.equal(typeof update.takeUpgradeLock(now), 'function');
+  });
+
+  test('release frees only this run\'s lock, not one another run took over meanwhile', () => {
+    const release = update.takeUpgradeLock();
+    write(update.UPGRADE_LOCK, `4242 ${Date.now()}`); // taken over by another run
+    release();
+    assert.equal(readFileSync(update.UPGRADE_LOCK, 'utf8').startsWith('4242 '), true);
+    rmSync(update.UPGRADE_LOCK);
+    release(); // already gone: no throw
+  });
+
+  test('a lock released between two looks, or claimed by another run first, is asked about again', async () => {
     const fs = await import('node:fs');
     const { syncBuiltinESMExports } = await import('node:module');
-    const real = fs.default.statSync;
-    fs.default.statSync = () => undefined;
-    syncBuiltinESMExports();
+    const stub = (name, make) => {
+      const real = fs.default[name];
+      fs.default[name] = make(real);
+      syncBuiltinESMExports();
+      return () => {
+        fs.default[name] = real;
+        syncBuiltinESMExports();
+      };
+    };
+    mkdir(path.dirname(update.UPGRADE_LOCK), { recursive: true });
+    // Present when created, gone when read: the next try takes it.
+    write(update.UPGRADE_LOCK, `4242 ${Date.now()}`);
+    let first = true;
+    let restore = stub('readFileSync', (real) => (f, ...rest) => {
+      if (f === update.UPGRADE_LOCK && first) {
+        first = false;
+        rmSync(update.UPGRADE_LOCK);
+        throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+      }
+      return real(f, ...rest);
+    });
     try {
       assert.equal(typeof update.takeUpgradeLock(), 'function');
     } finally {
-      fs.default.statSync = real;
-      syncBuiltinESMExports();
+      restore();
     }
-    // Still fresh after the takeover attempt: held.
-    write(update.UPGRADE_LOCK, '');
-    assert.equal(update.takeUpgradeLock(Date.now()), null);
+    // Abandoned, but every claim loses to another run: it gives up rather than spin.
+    write(update.UPGRADE_LOCK, `999999 ${Date.now()}`);
+    restore = stub('renameSync', () => () => {
+      throw Object.assign(new Error('claimed'), { code: 'ENOENT' });
+    });
+    try {
+      assert.equal(update.takeUpgradeLock(Date.now(), { alive: () => false }), null);
+    } finally {
+      restore();
+    }
+  });
+
+  test('a typed upgrade the lock stops exits non-zero; the background one stays quiet', async () => {
+    asNpmInstall();
+    registry(newer);
+    stubSpawn('close', 0);
+    mkdir(path.dirname(update.UPGRADE_LOCK), { recursive: true });
+    write(update.UPGRADE_LOCK, `${process.pid} ${Date.now()}`);
+    await capture(() => upgrade.run({}));
+    assert.equal(process.exitCode, 1);
+    process.exitCode = undefined;
+    process.env.TALEA_BACKGROUND_UPGRADE = '1';
+    await capture(() => upgrade.run({}));
+    assert.equal(process.exitCode, undefined);
+  });
+
+  test('a state write whose home is not a directory is dropped, never thrown', () => {
+    rmSync(path.join(HOME, '.talea'), { recursive: true, force: true });
+    write(path.join(HOME, '.talea'), 'a file, not a folder');
+    try {
+      writeUserState({ gist: 'x' });
+    } finally {
+      rmSync(path.join(HOME, '.talea'), { force: true });
+    }
+  });
+
+  test('on Windows a rename that something holds open is retried briefly, elsewhere it is not', () => {
+    const busy = (times) => {
+      let n = 0;
+      return () => {
+        if (n++ < times) throw Object.assign(new Error('busy'), { code: 'EPERM' });
+        return 'renamed';
+      };
+    };
+    assert.equal(renameInto('a', 'b', { rename: busy(3), platform: 'win32' }), 'renamed');
+    assert.throws(() => renameInto('a', 'b', { rename: busy(3), platform: 'linux' }), /busy/);
+    assert.throws(() => renameInto('a', 'b', { rename: busy(20), platform: 'win32' }), /busy/);
+    assert.throws(
+      () => renameInto('a', 'b', { rename: () => { throw Object.assign(new Error('nope'), { code: 'ENOENT' }); }, platform: 'win32' }),
+      /nope/,
+    );
   });
 
   test('a home where no lock can be made still upgrades, without the guard', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {

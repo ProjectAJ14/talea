@@ -33,6 +33,24 @@ export const USER_STATE = path.join(USER_DIR, 'state.json');
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 
+/**
+ * `renameSync`, retried briefly on Windows: there a rename over a file that
+ * anything holds open — an antivirus scan of the file just written, the search
+ * indexer, another talea reading it — fails with EPERM or EBUSY for a few
+ * milliseconds, and giving up at once would lose the write.
+ */
+export function renameInto(from, to, { rename = renameSync, platform = process.platform } = {}) {
+  for (let tries = 1; tries < 10; tries++) {
+    try {
+      return rename(from, to);
+    } catch (e) {
+      if (platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code)) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  return rename(from, to); // the last try: its error is the one reported
+}
+
 /** Machine-wide state: the update-check stamp, the gist id, the workspace list. Not per workspace. */
 export function readUserState() {
   try {
@@ -54,9 +72,13 @@ export function writeUserState(state) {
   try {
     mkdirSync(USER_DIR, { recursive: true });
     writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
-    renameSync(tmp, USER_STATE);
+    renameInto(tmp, USER_STATE);
   } catch {
-    rmSync(tmp, { force: true });
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // ~/.talea is not a directory at all: there is no temp file to remove.
+    }
     // A read-only home directory must not break the actual command. The only
     // things kept here are a cache stamp, a gist id and the workspace list,
     // and a lost list re-fills itself the next time a command runs inside one.

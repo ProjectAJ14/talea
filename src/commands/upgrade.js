@@ -84,7 +84,11 @@ export async function run(opts) {
   // other, and the background run and a hand-typed upgrade can easily meet.
   const release = takeUpgradeLock();
   if (!release) {
-    skip('another talea upgrade is installing right now — this one stops; run it again in a minute');
+    skip('another talea upgrade is installing right now — this one stops; run it again when it is done');
+    // Not a success: a script that asked for an upgrade got none. The
+    // background run that loses the race is quiet about it — the winner is
+    // the one that records the outcome.
+    if (process.env.TALEA_BACKGROUND_UPGRADE !== '1') process.exitCode = 1;
     return;
   }
   info(c.dim(`npm install -g ${name}@latest`));

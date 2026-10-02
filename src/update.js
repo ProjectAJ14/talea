@@ -7,7 +7,7 @@
 // and the next run says which version it is now. `talea upgrade --off` stops it.
 
 import { spawn } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -93,24 +93,63 @@ export const UPGRADE_LOCK = path.join(USER_DIR, 'upgrade.lock');
 // Longer than any npm install; a lock older than this was left by a run that died.
 const LOCK_STALE_MS = 30 * 60 * 1000;
 
+/** Is there a process with this pid? EPERM means yes, owned by somebody else. */
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
+
 /**
  * Hold the one-install-at-a-time lock: a release function, or null when
  * another install holds it. Created with O_EXCL, so two runs asking at the same
- * instant cannot both get it. A home directory where no lock can be made at
- * all does not stop the upgrade — it only loses the guard.
+ * instant cannot both get it, and holding `<pid> <time>`: a lock whose process
+ * has gone — a Ctrl-C mid-install kills it before any `finally` runs — or that
+ * is older than any install is abandoned, and taken over (found in review).
+ * Release removes the lock only while it is still this run's, so a run that
+ * took over a slow one is not freed by the slow one finishing. A home
+ * directory where no lock can be made at all does not stop the upgrade — it
+ * only loses the guard.
  */
-export function takeUpgradeLock(now = Date.now()) {
-  const release = () => rmSync(UPGRADE_LOCK, { force: true });
-  for (let tries = 0; tries < 2; tries++) {
+export function takeUpgradeLock(now = Date.now(), { alive = pidAlive } = {}) {
+  const mine = `${process.pid} ${now}`;
+  const release = () => {
+    try {
+      if (readFileSync(UPGRADE_LOCK, 'utf8') === mine) rmSync(UPGRADE_LOCK, { force: true });
+    } catch {
+      // gone already: nothing to release
+    }
+  };
+  for (let tries = 0; tries < 3; tries++) {
     try {
       mkdirSync(USER_DIR, { recursive: true });
-      closeSync(openSync(UPGRADE_LOCK, 'wx'));
+      writeFileSync(UPGRADE_LOCK, mine, { flag: 'wx' });
       return release;
     } catch (e) {
       if (e.code !== 'EEXIST') return () => {};
-      const age = now - (statSync(UPGRADE_LOCK, { throwIfNoEntry: false })?.mtimeMs ?? 0);
-      if (age < LOCK_STALE_MS) return null;
-      release(); // stale: taken over, once
+    }
+    let held;
+    try {
+      held = readFileSync(UPGRADE_LOCK, 'utf8');
+    } catch {
+      continue; // released between the two calls: ask again
+    }
+    const [pid, at] = held.split(' ').map(Number);
+    if (now - at < LOCK_STALE_MS && alive(pid)) return null;
+    // Abandoned. Claimed by renaming it away, which only one run can do; a run
+    // that loses that race asks again and finds the winner's fresh lock.
+    // ponytail: a run that read the old lock just before another replaced it
+    // can still rename the new one away; that needs two runs to meet an
+    // abandoned lock within microseconds, and costs one overlapping install.
+    try {
+      const claimed = `${UPGRADE_LOCK}.${process.pid}.stale`;
+      renameSync(UPGRADE_LOCK, claimed);
+      rmSync(claimed, { force: true });
+    } catch {
+      // another run claimed it first
     }
   }
   return null;
