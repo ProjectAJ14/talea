@@ -171,6 +171,11 @@ Then check by hand, every time:
    `document.documentElement.scrollWidth === document.documentElement.clientWidth`.
 3. **No console errors**, the hero terminal boots, the picker takes arrows and
    space, and the board fills. The docs sidebar marks the current page.
+4. **The picker without a keyboard, and to a screen reader.** At 375px, tap
+   rows, then `n none`, `a all`, `⏎ ok`; run again and tap `q cancel`. Each
+   row's `aria-pressed` matches its box after every press, focus never lands on
+   `<body>`, and after the picker closes its rows are `aria-disabled` and out
+   of the Tab order.
 
 Site-only work is a `docs:` commit — that is what keeps it from cutting a
 release. The release workflow runs on every push to `main`; it is the commit
