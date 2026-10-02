@@ -36,6 +36,23 @@
     var groupRows = [].slice.call(screen.querySelectorAll('.ask__grp'));
     var board = $('[data-board]'), countsEl = $('[data-counts]'), afterEl = $('[data-after]');
     var statusEl = term.querySelector('[data-status]');
+    var announceEl = $('[data-announce]');
+    function announce(text) { announceEl.textContent = text; }
+    // Somewhere for focus to wait while a run plays out: the hint button that
+    // had it is hidden by accept() and cancel(), and the prompt is disabled.
+    logEl.tabIndex = -1;
+
+    /* The rows are live controls only while the question is open. Afterwards
+       they stay on screen as transcript, so a screen reader must not hear
+       "toggle button" on a row that ignores every press. */
+    function live(on) {
+      optWrap.classList.toggle('is-live', on);
+      opts.forEach(function (o) {
+        o.tabIndex = on ? 0 : -1;
+        if (on) o.removeAttribute('aria-disabled');
+        else o.setAttribute('aria-disabled', 'true');
+      });
+    }
 
     var CMD = 'talea init ~/Workspace';
 
@@ -165,7 +182,7 @@
       at(220, function () { show(lines.ctx); });
       at(620, function () {
         show(lines.pick);
-        optWrap.classList.add('is-live');
+        live(true);
         keysEl.hidden = false;
         at(200, function () { setCur(0); });
         nudgeAfter('pick', pickNudge, 4500);
@@ -182,6 +199,8 @@
     }
     function setPicked(el, on) {
       el.classList.toggle('is-picked', on);
+      // The box is aria-hidden, so the state a screen reader hears is this.
+      el.setAttribute('aria-pressed', String(on));
       el.querySelector('.ask__box').textContent = on ? BOX.on : BOX.off;
     }
     function toggle(el) {
@@ -218,12 +237,14 @@
     function cancel() {
       if (state !== 'picking') return;
       calm();
-      optWrap.classList.remove('is-live');
+      live(false);
       keysEl.hidden = true;
-      opts.forEach(function (o) { o.classList.remove('is-cur'); o.blur(); });
+      opts.forEach(function (o) { o.classList.remove('is-cur'); });
+      logEl.focus({ preventScroll: true });
       afterEl.textContent = 'cancelled — .talea.json not written, nothing changed';
+      announce('Cancelled. Nothing changed.');
       show(lines.after);
-      at(500, function () { state = 'done'; arm(true); toBottom(); });
+      at(500, function () { state = 'done'; arm(true); input.focus({ preventScroll: true }); toBottom(); });
     }
 
     /* ---------- the live block ---------- */
@@ -231,11 +252,13 @@
       if (state !== 'picking') return;
       state = 'running';
       calm();
-      optWrap.classList.remove('is-live');
+      live(false);
       keysEl.hidden = true;
-      opts.forEach(function (o) { o.classList.remove('is-cur'); o.blur(); });
+      opts.forEach(function (o) { o.classList.remove('is-cur'); });
+      logEl.focus({ preventScroll: true });
 
       var chosen = picked().map(function (o) { return o.dataset.repo; });
+      announce(chosen.length ? 'Running for ' + chosen.length + ' repo' + (chosen.length === 1 ? '' : 's') + '.' : 'Nothing selected.');
       if (!chosen.length) {
         // An empty selection is a real answer — "I chose nothing" — and talea
         // says so rather than drawing an empty box.
@@ -312,6 +335,7 @@
         .map(function (l) { return '<b>' + by[l] + '</b> ' + l; });
 
       countsEl.innerHTML = parts.length ? parts.join(' · ') : 'nothing to do';
+      announce('Done: ' + countsEl.textContent + '. Press Enter on the prompt to run it again.');
       show(lines.done);
 
       at(600, function () {
@@ -338,7 +362,8 @@
       board.innerHTML = '';
       countsEl.textContent = '';
       afterEl.textContent = '';
-      optWrap.classList.remove('is-live');
+      announce('');
+      live(false);
       keysEl.hidden = false;
       calm();
     }
@@ -361,9 +386,27 @@
       input.focus({ preventScroll: true });
     });
 
+    /* The key hints, as buttons: the same four actions, for a pointer or a
+       finger. Space and the arrows stay on the rows themselves. */
+    keysEl.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!b) return;
+      calm();
+      var act = b.dataset.act;
+      if (act === 'ok') accept();
+      else if (act === 'cancel') cancel();
+      else setAll(act === 'all'); // focus stays on the button that was pressed
+    });
+
     optWrap.addEventListener('click', function (e) {
       var el = e.target.closest ? e.target.closest('.ask__opt') : null;
       if (el) { calm(); toggle(el); setCur(opts.indexOf(el)); }
+    });
+    /* Tab moves focus without the arrows; the cursor follows it, so space
+       toggles the row the keyboard is on, not the one ❯ was left on. */
+    optWrap.addEventListener('focusin', function (e) {
+      var i = opts.indexOf(e.target);
+      if (state === 'picking' && i > -1 && i !== cur) setCur(i);
     });
     optWrap.addEventListener('mousemove', function (e) {
       if (state !== 'picking') return;
@@ -373,9 +416,11 @@
       if (i > -1 && i !== cur) setCur(i);
     });
     /* Arrows walk the list, space toggles, enter accepts — the three keys the
-       real raw-mode picker in src/prompt.js binds. */
-    optWrap.addEventListener('keydown', function (e) {
+       real raw-mode picker in src/prompt.js binds. The same keys work with
+       focus on a hint button, except Space and Enter, which press it. */
+    function pickerKeys(e) {
       if (state !== 'picking') return;
+      if (keysEl.contains(e.target) && (e.key === ' ' || e.key === 'Enter')) return;
       calm();
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -393,8 +438,11 @@
         e.preventDefault();
         accept();
       }
-    });
+    }
+    optWrap.addEventListener('keydown', pickerKeys);
+    keysEl.addEventListener('keydown', pickerKeys);
 
+    live(false); // until the question is asked
     tally();
     screen.setAttribute('data-ready', '');
     /* Don't run the boot into an empty room: a visitor who lands on #commands

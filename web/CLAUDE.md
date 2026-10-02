@@ -99,6 +99,16 @@ colour, row format and count in it comes from the CLI:
 | the row: glyph, name, note | `statusLine()` in `src/log.js` |
 | the results box and its counts | `summary()` in `src/log.js` |
 
+The picker is drawn as glyphs, and the glyphs are `aria-hidden`, so its state
+lives in the attributes too: every repo row is a button with `aria-pressed`,
+kept in step by `setPicked()` for space, `a`, `n` and a tap alike; the count is
+a `role="status"`, and one always-present `[data-announce]` status line says
+when a run starts, ends or is cancelled — a line that appears with its text
+already in it is not announced. The `a all · n none · ⏎ ok · q cancel` hints
+are buttons as well, at least 24px tall, so a phone can finish or cancel the
+run without a keyboard; the rows' own cursor follows Tab focus, so space
+toggles the row the keyboard is on.
+
 `RUN` in `app.js` holds the four outcomes a row can settle into. If the CLI gains
 a fifth, it belongs there too — a terminal on the landing page that prints
 something the tool does not is worse than no terminal.
@@ -161,6 +171,11 @@ Then check by hand, every time:
    `document.documentElement.scrollWidth === document.documentElement.clientWidth`.
 3. **No console errors**, the hero terminal boots, the picker takes arrows and
    space, and the board fills. The docs sidebar marks the current page.
+4. **The picker without a keyboard, and to a screen reader.** At 375px, tap
+   rows, then `n none`, `a all`, `⏎ ok`; run again and tap `q cancel`. Each
+   row's `aria-pressed` matches its box after every press, focus never lands on
+   `<body>`, and after the picker closes its rows are `aria-disabled` and out
+   of the Tab order.
 
 Site-only work is a `docs:` commit — that is what keeps it from cutting a
 release. The release workflow runs on every push to `main`; it is the commit
