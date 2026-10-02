@@ -4,6 +4,16 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2026-10-02
+
+### Fixed
+- check folder clashes per run, guard docs, apply Windows name rules
+- validate the catalogue and keep every destination inside the workspace
+
+### Chores
+- **catalogue**: fake the platform for the not-Windows half too
+- **adopt**: pin the silent-git branch of worktree repair
+
 ## [0.9.8] - 2026-10-02
 
 ### Fixed
