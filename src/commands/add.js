@@ -139,6 +139,8 @@ export async function run(opts, positionals = []) {
     opts,
   });
 
+  // A worktree the move left unlinked is reported with its fix; it fails the run.
+  if (adoption.broken) process.exitCode = 1;
   writeDocs(manifest, root, added);
 
   const todo = withPaths(manifest, root, added).filter(

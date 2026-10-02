@@ -75,7 +75,7 @@ export async function run(opts) {
   // into place, not cloned a second time beside the work in it.
   const adoption =
     opts.adopt === false || opts.clone === false
-      ? { skip: new Map() }
+      ? { skip: new Map(), broken: 0 }
       : await adoptInPlace({ manifest, root, state, repos, opts });
 
   // Before the network work, not after: the group doc explains what is about to
@@ -95,7 +95,7 @@ export async function run(opts) {
     ['jobs', `${jobs}`],
   ]);
 
-  const counts = { ok: 0, skipped: adoption.skip.size, failed: 0, okLabel: 'synced' };
+  const counts = { ok: 0, skipped: adoption.skip.size, failed: adoption.broken, okLabel: 'synced' };
 
   if (missing.length && opts.clone !== false) {
     plain('');

@@ -38,7 +38,13 @@ and uncommitted change exactly as it is.
 ${c.bold('Worktrees come too.')} The sibling ${c.dim('<repo>-worktrees/')} folder moves alongside the
 repo, and every worktree — there, nested inside the repo, or anywhere else on
 disk — is re-linked afterwards. A worktree that does not move is repaired where
-it sits.
+it sits. Each one is checked to resolve to the moved repo; one that does not is
+named with git's reason and the ${c.dim('git worktree repair')} command to run once that is
+fixed, and the run fails.
+A repo whose worktrees git cannot list is not moved.
+
+Close editors, terminals and agents working in a checkout before ${c.dim('--apply')}:
+nothing else may change it while it moves.
 
 A repo that cannot be moved safely (it is itself a linked worktree, an occupied
 destination, another filesystem) is left alone and the reason is printed.
@@ -94,6 +100,39 @@ export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
  * revert the repair — and by then the repo is in place, so a plain re-run would
  * find nothing to do.
  */
+/**
+ * Say what happened to a moved repo's worktrees; false when one is `broken`.
+ *
+ * The repo has moved and stays moved — putting it back could fail the same way —
+ * so a broken worktree is reported with the command that finishes the job,
+ * and the run fails. Nothing in it is touched: its files are all there, only
+ * its link to the repo is stale.
+ */
+function reportWorktrees(root, wt) {
+  if (wt.siblings) {
+    plain(
+      `    ${c.dim(glyph.pending)} worktrees ${c.dim(shorten(wt.siblings.from))} ${icon.arrow} ${c.dim(path.relative(root, wt.siblings.to))}`,
+    );
+  }
+  if (wt.repaired.length) {
+    plain(
+      `    ${c.dim(glyph.pending)} ${wt.repaired.length} worktree${wt.repaired.length > 1 ? 's' : ''} re-linked` +
+        (wt.stale ? c.yellow(` (${wt.stale} unreachable, left registered)`) : ''),
+    );
+  }
+  if (!wt.broken.length) return true;
+  fail(`    ${wt.broken.length} worktree${wt.broken.length > 1 ? 's' : ''} could not be re-linked — the files are untouched:`);
+  for (const { path: p, why } of wt.broken) {
+    plain(`      ${p}`);
+    plain(`        ${c.dim(`git: ${why}`)}`);
+    plain(`        ${c.dim('once that is fixed:')} git -C "${wt.to}" worktree repair "${p}"`);
+  }
+  // The fix this run needed was GIT_DIR cleared; a shell that exported it
+  // aims the printed command at the wrong repo too.
+  plain(c.dim('      Run it in a shell with no GIT_DIR or GIT_WORK_TREE set.'));
+  return false;
+}
+
 export async function applyMoves(root, moves, parks = [], manifest) {
   const results = [];
   const warnedAboutClaude = moves.length > 0 && claudeMaybeRunning();
@@ -112,21 +151,12 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     // Said out loud, always. A worktree folder moving is a second directory
     // relocating on the developer's disk, and the one thing worse than not
     // moving it is moving it without saying so.
-    const wt = res.worktrees;
-    if (wt?.siblings) {
-      plain(
-        `    ${c.dim(glyph.pending)} worktrees ${c.dim(shorten(wt.siblings.from))} ${icon.arrow} ${c.dim(path.relative(root, wt.siblings.to))}`,
-      );
-    }
-    if (wt?.repaired?.length) {
-      plain(
-        `    ${c.dim(glyph.pending)} ${wt.repaired.length} worktree${wt.repaired.length > 1 ? 's' : ''} re-linked` +
-          (wt.stale ? c.yellow(` (${wt.stale} unreachable, left registered)`) : ''),
-      );
-    }
+    const linked = reportWorktrees(root, { ...res.worktrees, to: plan.to });
 
     const repairs = repairPaths(root, plan);
-    results.push({ plan, ok: true, repairs });
+    // In place, so its duplicates may park and the move is logged — but a
+    // worktree left unlinked fails the run.
+    results.push({ plan, ok: true, partial: !linked, repairs });
   }
 
   // Second copies move only once the winner is actually in place. Ordering
@@ -161,6 +191,7 @@ export async function applyMoves(root, moves, parks = [], manifest) {
     ok(
       `${c.bold(repoLabel(manifest, plan.repo))} ${c.dim(shorten(plan.from))} ${icon.arrow} ${c.dim(path.relative(root, landed.to))}`,
     );
+    landed.partial = !reportWorktrees(root, { ...res.worktrees, to: res.to });
     plain(
       `    ${c.dim(glyph.pending)} second copy — ${c.bold(where(root, plan.keeping))} is the one in use`,
     );
@@ -479,11 +510,12 @@ export async function run(opts) {
 
   plain('');
   const applied = await applyMoves(root, willMove, willPark, manifest);
-  const okCount = applied.results.filter((r) => r.ok).length;
+  // A move that left a worktree unlinked is one failure, not also a success.
+  const okCount = applied.results.filter((r) => r.ok && !r.partial).length;
   summary({
-    ok: okCount + applied.parked.length,
+    ok: okCount + applied.parked.filter((p) => !p.partial).length,
     skipped: inPlace.length,
-    failed: applied.results.length - okCount + (willPark.length - applied.parked.length),
+    failed: applied.results.length - okCount + (willPark.length - applied.parked.length) + applied.parked.filter((p) => p.partial).length,
     okLabel: 'relocated',
   });
 

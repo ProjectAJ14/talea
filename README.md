@@ -156,8 +156,18 @@ one.
 
 **Worktrees come too.** The sibling `<repo>-worktrees/` folder moves alongside
 the repo, and every worktree is re-linked afterwards — the ones that moved and
-the ones that did not. A worktree is never mistaken for a second copy of the
-repo, even though git reports the same `origin` for both.
+the ones that did not. "Re-linked" is checked, not assumed: each worktree must
+resolve to the moved repo, and one that does not is named with git's reason
+and the `git worktree repair` command to run once that is fixed, and the run
+exits non-zero. A
+repo whose worktrees git cannot list is not moved at all. A worktree is never
+mistaken for a second copy of the repo, even though git reports the same
+`origin` for both.
+
+Close editors, terminals and agents working in a checkout before `--apply`.
+Nothing else may change a repo or its worktrees while it moves: on Windows the
+move is refused while anything holds a file open in it, and elsewhere a process
+still inside it keeps writing to paths that no longer lead there.
 
 ```sh
 talea adopt                      # show what would move, change nothing

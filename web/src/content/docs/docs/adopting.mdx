@@ -43,6 +43,14 @@ A worktree's link to its repo is an **absolute path**, so renaming the repo brea
 
 talea reads the worktree list *before* the rename — afterwards every worktree that moved is reported `prunable`, indistinguishable from a dead one — then moves the sibling `<repo>-worktrees/` folder alongside the repo and runs `git worktree repair` with the new paths. Worktrees that did not move are repaired where they sit.
 
+A repair is checked, not assumed: afterwards each worktree must resolve to the moved repo. One that does not is reported with git's own reason and the `git worktree repair` command to run once that reason is dealt with, and the run exits non-zero — `adopt`, `clone`, `sync` and `add` alike, and the summary counts it as a failure. git rewrites every worktree's link on any repair, so one worktree it cannot write — read-only, on a drive that is not mounted — fails them all, and the reason names that one. Run the printed command in a shell with no `GIT_DIR` set. If git says it cannot locate the repository, the worktree's record is gone: its files are all there, so keep what you need and make it again with `git worktree add`. The repo stays where it moved — moving it back could fail the same way — and the worktree's files are untouched; only its link is stale. If git cannot even list a repo's worktrees, the repo is not moved, because "no worktrees" is the answer that would strand them all.
+
+Every git call here runs with git's repository-scoping variables cleared (`GIT_DIR`, `GIT_WORK_TREE` and the rest). A talea run started from a git hook inherits them, and they would otherwise point every call at the hook's repository.
+
+### While a move runs
+
+Nothing else may change a repo or its worktrees while talea moves it. Close editors, terminals, agents and long-running builds that sit in the checkout first. On Windows the move is refused while any process holds a file open in it; elsewhere it succeeds, and a process still inside keeps writing to paths that no longer lead to the repo. A worktree created by another process during the move is not in the list read before it, and is not re-linked.
+
 A linked worktree is never treated as a second copy of the repo, even though git reports the same `origin` for both. Renaming one would unroot its commits.
 
 ### Duplicates are parked, not deleted

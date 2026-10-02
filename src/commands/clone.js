@@ -87,6 +87,7 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
   // Keyed by identity: by name, one owner's refused `app` kept the other's
   // from being cloned, and the two reasons overwrote each other.
   const skip = new Map();
+  let broken = 0;
   const leave = (repo, reason) => skip.set(repoId(repo), { label: repoLabel(manifest, repo), reason });
   for (const m of unsure) leave(m.repo, 'its remote host is not one the catalogue lists');
   for (const r of refused) leave(r.repo, r.reason);
@@ -99,6 +100,9 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
 
     const applied = await applyMoves(root, certain, parking, manifest);
     for (const r of applied.results.filter((x) => !x.ok)) leave(r.plan.repo, 'its move failed');
+    // Moved, but a worktree left unlinked: reported above with its fix, and
+    // counted as a failure by the caller's summary, so it never reads ALL CLEAR.
+    broken = [...applied.results, ...applied.parked].filter((r) => r.partial).length;
   }
 
   if (skip.size) {
@@ -111,7 +115,7 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
     warn(`a second copy of ${c.bold(repoLabel(manifest, p.repo))} at ${p.from} left alone — its remote host is not one the catalogue lists. Run \`talea adopt\` to see it.`);
   }
 
-  return { skip };
+  return { skip, broken };
 }
 
 /**
@@ -225,7 +229,7 @@ export async function run(opts) {
 
   const adoption =
     opts.adopt === false
-      ? { skip: new Map() }
+      ? { skip: new Map(), broken: 0 }
       : await adoptInPlace({ manifest, root, state, repos, opts });
 
   writeDocs(manifest, root, repos);
@@ -237,7 +241,7 @@ export async function run(opts) {
   heading(`Cloning into ${root}`);
   // A repo left alone counts against the run: without this, a clone that
   // quietly skipped a stranded repo would still exit 0.
-  const counts = { ok: 0, skipped: already, failed: adoption.skip.size, okLabel: 'cloned' };
+  const counts = { ok: 0, skipped: already, failed: adoption.skip.size + adoption.broken, okLabel: 'cloned' };
 
   if (!todo.length) {
     summary(counts);

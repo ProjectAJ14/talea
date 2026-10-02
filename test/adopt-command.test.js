@@ -17,6 +17,9 @@ const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'talea-adoptcmd-hom
 process.env.HOME = process.env.USERPROFILE = home;
 const { run, applyMoves, refixPaths, parseFromPaths } = await import('../src/commands/adopt.js');
 const { claudeSlug, DUPLICATES_DIR } = await import('../src/adopt.js');
+const cloneCmd = await import('../src/commands/clone.js');
+const syncCmd = await import('../src/commands/sync.js');
+const addCmd = await import('../src/commands/add.js');
 
 const git = (args, cwd) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -324,10 +327,10 @@ describe('applyMoves, when things go wrong', () => {
       assert.equal(res.parked.length, 1);
     });
     assert.equal(exitCode, 0);
-    assert.match(text, /r\n\s+ENOENT/);
+    assert.match(text, /r\n\s+\S*no-such-checkout is no longer there — nothing was moved/);
     assert.match(text, /second copy left where it is — failed-target is not in place/);
     assert.match(text, /never-there is not in place/);
-    assert.match(text, /r second copy\n\s+ENOENT/);
+    assert.match(text, /r second copy\n\s+\S*no-such-checkout is no longer there/);
     assert.match(text, new RegExp(`second copy — ${root.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')} is the one in use`));
   });
 
@@ -346,6 +349,74 @@ describe('applyMoves, when things go wrong', () => {
     );
     assert.match(text, /Claude history not moved: EPERM/);
     assert.match(text, /~\/\.claude\.json not updated: could not parse/);
+  });
+});
+
+describe('a worktree git will not re-link', () => {
+  /** `git worktree repair` exits 1 and changes nothing, for the length of `fn`. */
+  const repairFails = (fn) =>
+    stubbed(cp, 'spawnSync', (orig) => (cmd, args, opts) =>
+      cmd === 'git' && args[0] === 'worktree' && args[1] === 'repair' ? { status: 1, stdout: '', stderr: '' } : orig(cmd, args, opts),
+      fn,
+    );
+  /** A stray checkout of `wt` with a worktree outside it. */
+  const strayWithWorktree = (at, ...fars) => {
+    const dir = clone('wt', at);
+    for (const far of fars) git(['worktree', 'add', '-q', '-b', path.basename(far), far], dir);
+    return dir;
+  };
+
+  test('adopt moves and parks, names each unlinked worktree with its fix, and fails the run', async () => {
+    const ws = workspace('ws-unlinked', [{ name: 'wt', owner: 'me', url: origin('wt') }]);
+    const farA = path.join(tmp, 'far-a');
+    const farB = path.join(tmp, 'far-b');
+    strayWithWorktree(path.join(ws, 'a', 'wt'), farA, `${farA}-2`);
+    strayWithWorktree(path.join(ws, 'b', 'wt'), farB);
+
+    const { text, exitCode } = await repairFails(() => capture(ws, () => claude(false, () => run({ apply: true }))));
+    assert.equal(exitCode, 1);
+    const target = path.join(ws, 'me', 'wt');
+    assert.equal(existsSync(path.join(target, '.git')), true, 'the move itself was undone');
+    assert.match(text, /2 worktrees could not be re-linked — the files are untouched:/);
+    assert.match(text, /1 worktree could not be re-linked/);
+    assert.match(text, /git: git exited 1/);
+    // Paths as git prints them: the long, forward-slash form on Windows.
+    assert.match(text, /once that is fixed: git -C "[^"]+" worktree repair "[^"]*far-a"/);
+    assert.match(text, /worktree repair "[^"]*far-a-2"/);
+    assert.match(text, /no GIT_DIR or GIT_WORK_TREE set/);
+    // One repo moved, one parked, both with a worktree left unlinked: two failures, no successes.
+    assert.match(text, /2 failed/);
+    assert.doesNotMatch(text, /relocated/);
+    assert.match(text, /worktree repair "[^"]*far-b"/, 'the parked copy\'s worktree was not named');
+    // The command it names works.
+    git(['worktree', 'repair', farA], target);
+    assert.equal(git(['rev-parse', '--is-inside-work-tree'], farA), 'true');
+  });
+
+  test('clone and sync fail the run too, after moving the checkout into place', async () => {
+    const ws = workspace('ws-unlinked-clone', [{ name: 'wt', owner: 'me', url: origin('wt') }], { selected: ['me/wt'] });
+    strayWithWorktree(path.join(ws, 'a', 'wt'), path.join(tmp, 'far-c'));
+    const { text, exitCode } = await repairFails(() => capture(ws, () => claude(false, () => cloneCmd.run({ jobs: 1 }))));
+    assert.equal(exitCode, 1);
+    assert.match(text, /could not be re-linked/);
+    assert.match(text, /1 failed/);
+    assert.equal(existsSync(path.join(ws, 'me', 'wt', '.git')), true);
+
+    // sync, on a fresh stray: never ALL CLEAR over a broken worktree.
+    rmSync(path.join(ws, 'me'), { recursive: true, force: true });
+    strayWithWorktree(path.join(ws, 'b', 'wt'), path.join(tmp, 'far-d'));
+    const synced = await repairFails(() => capture(ws, () => claude(false, () => syncCmd.run({ jobs: 1 }))));
+    assert.equal(synced.exitCode, 1);
+    assert.match(synced.text, /1 failed/);
+    assert.doesNotMatch(synced.text, /ALL CLEAR/);
+
+    // add, which adopts the checkout it was asked for.
+    rmSync(path.join(ws, 'me'), { recursive: true, force: true });
+    writeFileSync(path.join(ws, '.talea.json'), JSON.stringify({ selected: [] }));
+    strayWithWorktree(path.join(ws, 'c', 'wt'), path.join(tmp, 'far-e'));
+    const added = await repairFails(() => capture(ws, () => claude(false, () => addCmd.run({ jobs: 1 }, ['wt']))));
+    assert.equal(added.exitCode, 1);
+    assert.match(added.text, /could not be re-linked/);
   });
 });
 

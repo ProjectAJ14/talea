@@ -127,6 +127,19 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    never stored, so leaving it behind does not error; it silently splits the
    workflow in two. A linked worktree is never treated as a second copy of the
    repo, though it reports the same `origin` — renaming one unroots its commits.
+   Every git call in that path runs with `cleanGitEnv()`, as the async wrapper
+   does: a GIT_DIR inherited from a hook read another repo's worktree list,
+   moved this one, and reported success with its worktree stranded (found in
+   review). A list git cannot give refuses the move — failure read as "no
+   worktrees" is how they all get stranded — and a repair counts only once the
+   worktree's `--git-common-dir` is the moved repo's. One that is not is
+   `broken`: the move stands, git's reason and the fix command are printed,
+   and the run fails — counted in the summary, so sync never says ALL CLEAR
+   over it. Each worktree is repaired in its own call for its own reason, but
+   git rewrites every worktree's link on any repair, so one it cannot write
+   fails them all; no ordering avoids that, and the reason names the culprit.
+   Concurrent changes to a checkout during a move are not supported; the docs
+   say to close what is working in it.
 
 3. **A name-only match is never moved unattended.** `matchRepo` returns `exact`
    when the remote URL matches and `name` when only the repo name does. `clone`
