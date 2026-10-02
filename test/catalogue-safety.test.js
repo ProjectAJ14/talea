@@ -151,8 +151,13 @@ describe('catalogueProblems', () => {
 
   test('on Windows, a name ending in a dot or space, or one Windows reserves, is refused — elsewhere it is a name', () => {
     const catalogue = { repos: [{ name: 'app.', owner: 'me' }, { name: 'aux', owner: 'me' }, { name: 'x', owner: 'me', dir: '.. ' }, { name: 'COM1.txt', owner: 'me' }] };
-    assert.deepEqual(problems(catalogue), []);
     const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { ...desc, value: 'linux' });
+    try {
+      assert.deepEqual(problems(catalogue), []);
+    } finally {
+      Object.defineProperty(process, 'platform', desc);
+    }
     Object.defineProperty(process, 'platform', { ...desc, value: 'win32' });
     try {
       const found = problems(catalogue);
