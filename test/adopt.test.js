@@ -474,9 +474,10 @@ describe('executeMove', () => {
       else process.env.GIT_DIR = saved;
     }
     assert.equal(res.ok, true, res.message);
-    assert.deepEqual(res.worktrees.repaired, [far]);
+    // git's spelling, so canonical(): Windows prints the long name, Node has 8.3.
+    assert.deepEqual(res.worktrees.repaired.map(A.canonical), [A.canonical(far)]);
     assert.equal(git(['rev-parse', '--is-inside-work-tree'], far), 'true');
-    assert.equal(realpathSync(git(['rev-parse', '--git-common-dir'], far)), realpathSync(path.join(to, '.git')));
+    assert.equal(A.canonical(git(['rev-parse', '--git-common-dir'], far)).toLowerCase(), A.canonical(path.join(to, '.git')).toLowerCase());
   });
 
   test('a worktree list git cannot give refuses the move; nothing is renamed', async () => {
@@ -508,7 +509,7 @@ describe('executeMove', () => {
     assert.equal(res.ok, true);
     assert.equal(existsSync(path.join(to, '.git')), true);
     assert.deepEqual(res.worktrees.repaired, []);
-    assert.deepEqual(res.worktrees.broken, [{ path: far, why: 'nope' }]);
+    assert.deepEqual(res.worktrees.broken.map((b) => ({ ...b, path: A.canonical(b.path) })), [{ path: A.canonical(far), why: 'nope' }]);
     // And the command it names really does fix it.
     git(['worktree', 'repair', far], to);
     assert.equal(git(['rev-parse', '--is-inside-work-tree'], far), 'true');
@@ -533,7 +534,7 @@ describe('executeMove', () => {
     }
     assert.equal(res.ok, true, res.message);
     assert.deepEqual(res.worktrees.repaired, []);
-    assert.deepEqual(res.worktrees.broken.map((b) => b.path), [stuck, fine]);
+    assert.deepEqual(res.worktrees.broken.map((b) => A.canonical(b.path)), [stuck, fine].map(A.canonical));
     for (const b of res.worktrees.broken) assert.ok(b.why.includes(stuck), `the reason does not name the cause: ${b.why}`);
     // Writable again, the command talea prints finishes it.
     for (const b of res.worktrees.broken) git(['worktree', 'repair', b.path], to);

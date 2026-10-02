@@ -380,13 +380,14 @@ describe('a worktree git will not re-link', () => {
     assert.match(text, /2 worktrees could not be re-linked — the files are untouched:/);
     assert.match(text, /1 worktree could not be re-linked/);
     assert.match(text, /git: git exited 1/);
-    assert.ok(text.includes(`once that is fixed: git -C "${target}" worktree repair "${farA}"`), text);
-    assert.ok(text.includes(`worktree repair "${farA}-2"`), text);
+    // Paths as git prints them: the long, forward-slash form on Windows.
+    assert.match(text, /once that is fixed: git -C "[^"]+" worktree repair "[^"]*far-a"/);
+    assert.match(text, /worktree repair "[^"]*far-a-2"/);
     assert.match(text, /no GIT_DIR or GIT_WORK_TREE set/);
     // One repo moved, one parked, both with a worktree left unlinked: two failures, no successes.
     assert.match(text, /2 failed/);
     assert.doesNotMatch(text, /relocated/);
-    assert.ok(text.includes(`worktree repair "${farB}"`), 'the parked copy\'s worktree was not named');
+    assert.match(text, /worktree repair "[^"]*far-b"/, 'the parked copy\'s worktree was not named');
     // The command it names works.
     git(['worktree', 'repair', farA], target);
     assert.equal(git(['rev-parse', '--is-inside-work-tree'], farA), 'true');
