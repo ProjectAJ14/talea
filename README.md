@@ -84,11 +84,18 @@ talea prune --apply          # remove the merged and unused ones
 ```
 
 A worktree is `merged` when every commit on it is on `origin/<default branch>`
-— directly, or as an identical change after a rebase merge. `dirty`, `locked`
+— directly, or as an identical change after a rebase merge. A merge commit on
+the branch counts only when it is the merge git would make by itself; one that
+adds a change of its own reads as `unmerged`. `dirty`, `locked`
 and `unmerged` ones are kept, and so is a `nested` one — merged, but with a repo inside its folder that
 holds work of its own (a linked worktree, uncommitted changes, a stash, or a
 commit no remote has), which removing it would delete. A clean clone a build
-tool left there, such as SwiftPM's `checkouts/`, does not count; `missing` ones (folder already gone) have their
+tool left there, such as SwiftPM's `checkouts/`, does not count, though its own
+ignored files are judged wherever it sits — a `.env` in a clone under `build/`
+keeps the worktree. Anything talea cannot read — a folder it may not open, a git
+call that fails — keeps it as `unreadable`, and `--apply` judges each worktree
+again just before removing it, so a file that appeared since the plan keeps it
+too; `missing` ones (folder already gone) have their
 record cleared. A branch with no commits yet looks merged: cut in the last day
 it is `fresh` and kept, a task just started; older, it is `unused` and removed,
 and the verdict shows its age. A lock is kept, unless it is one Claude Code left

@@ -201,7 +201,11 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `build` and `.dart_tool`, for branches merged long ago. It stays inside rule
    5 because it leans on git's own guards and adds the one git lacks. A linked worktree is
    removed only when every commit on it is on `origin/<defaultBranch>` — an
-   ancestor, or patch-identical per `git cherry` (a rebase merge) — only with
+   ancestor, or patch-identical per `git cherry` (a rebase merge), with every
+   merge commit in the range one whose tree is what `git merge-tree
+   --write-tree` makes of its two parents — `cherry` never looks at a merge, so
+   one carrying a resolution or a file of its own read as merged (found in
+   review); an octopus or a git older than 2.38 reads as unmerged — only with
    `--apply`, and only by `git worktree remove` **without `--force`**, which
    refuses a tree with modified or untracked files by itself — once `isDirty()`
    passes `-unormal`, because `status.showUntrackedFiles=no` blinds both it and
@@ -262,6 +266,21 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    a file byte-identical to the main checkout's copy at the same path survives
    the removal. Found on a real machine: a `.claude/` holding only the seeded
    settings file, and a generated `tokens.css`, kept three merged worktrees.
+
+   **Unknown is never permission.** A git call that fails, a folder the walk
+   cannot open, or a path that vanished mid-walk keeps a merged worktree as
+   `unreadable`; an empty answer from a failed `ls-files` used to read as
+   "nothing to lose". Every clean repo inside a worktree has its own ignored
+   files judged on its own, not only the ones the outer listing happened to
+   open — a clone under `build/` sat in a folder that is build output by the
+   list, so its `.env` went (found in review). And `--apply` judges each
+   worktree again just before `git worktree remove`: it plans the whole repo
+   first, and an ignored file written since then would go unasked; with
+   `--with-ignored` only the files the plan named may. The milliseconds between
+   that second look and the removal are git's, and nothing here closes them.
+   The walk reads 64 entries of one folder at a time and compares files 64 KB
+   at a time, so a 100,000-file `node_modules` or two 1 GB files cost a
+   bounded amount of memory, times the repo pool.
 
 14. **Nothing slow is silent.** Anything that can take longer than a blink — a
    network call, a filesystem walk, a git call per repo — has three states: a

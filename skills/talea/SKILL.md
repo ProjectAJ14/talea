@@ -130,15 +130,18 @@ with the folder. If a named file is one a build writes, the lasting fix is a
 developer — never added to cover one file that is really theirs. A `nested`
 verdict names the repo inside and why (`dirty`, `stash`, `unpushed`,
 `worktree`); that is work in another repo, so report it — never move it or
-delete it to free the worktree.
+delete it to free the worktree. An `unreadable` verdict names the folder or git
+call talea could not read; report it, and never change permissions to get the
+worktree removed.
 
 Only `merged` worktrees are removed (every commit already on origin's default
 branch) and `unused` ones (no commits of their own, cut over a day ago), plus
-the records of `missing` ones. `dirty`, `ignored`, `nested`, `fresh` (no
+the records of `missing` ones. `dirty`, `ignored`, `nested`, `unreadable`, `fresh` (no
 commits yet, cut within the day), `locked` and `unmerged` are kept. A verdict
 marked `· stale lock` was locked by a Claude Code agent that has exited; prune
 unlocks it itself. Never run `git worktree unlock` on a `locked` one to get it
-removed — a lock prune keeps is somebody's. A squash-merged branch reads as `unmerged`; say so rather than
+removed — a lock prune keeps is somebody's. A branch whose merge commit adds a
+change of its own reads as `unmerged`. A squash-merged branch reads as `unmerged`; say so rather than
 removing it by hand. Report a removal as **worktree removed, branch kept** — the
 branch is still there and `git worktree add` brings the checkout back. Never
 reach for `git worktree remove --force` to finish what prune refused.

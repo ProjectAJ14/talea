@@ -15,7 +15,7 @@ import path from 'node:path';
 const home = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'talea-home-')));
 process.env.HOME = process.env.USERPROFILE = home;
 process.env.TALEA_NO_UPDATE_CHECK = '1';
-const { applyRepo, formatBytes, measure, planRepo, run, userIgnored } = await import('../src/commands/prune.js');
+const { applyRepo, formatBytes, measure, planRepo, run, sameFile, userIgnored } = await import('../src/commands/prune.js');
 const { canonical } = await import('../src/adopt.js');
 
 const tmp = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'talea-prune-misc-')));
@@ -88,7 +88,8 @@ describe('helpers', () => {
   });
 
   test('measure: a path that is gone is empty, and an unreadable folder counts only itself', async () => {
-    assert.deepEqual(await measure(path.join(tmp, 'gone')), { size: 0, nested: [] });
+    const gone = path.join(tmp, 'gone');
+    assert.deepEqual(await measure(gone), { size: 0, nested: [], unreadable: [gone] });
 
     const root = path.join(tmp, 'measured');
     const locked = path.join(root, 'locked');
@@ -96,9 +97,11 @@ describe('helpers', () => {
     writeFileSync(path.join(locked, 'f.txt'), 'x'.repeat(10_000));
     chmodSync(locked, 0o000); // no effect on Windows, nor for root — still a valid run
     try {
-      const { size, nested } = await measure(root);
+      const { size, nested, unreadable } = await measure(root);
       assert.ok(size > 0);
       assert.deepEqual(nested, []);
+      // It might hold a repo with work in it, so it is named, never skipped.
+      if (posix && process.getuid() !== 0) assert.deepEqual(unreadable, [locked]);
     } finally {
       chmodSync(locked, 0o755);
     }
@@ -109,7 +112,27 @@ describe('helpers', () => {
   test('measure: a file with no blocks is measured by its size', async () => {
     const empty = path.join(tmp, 'empty.txt');
     writeFileSync(empty, '');
-    assert.deepEqual(await measure(empty), { size: 0, nested: [] });
+    assert.deepEqual(await measure(empty), { size: 0, nested: [], unreadable: [] });
+  });
+
+  test('measure: a folder wider than one batch is walked whole, repos past the first batch included', async () => {
+    const root = path.join(tmp, 'wide');
+    mkdirSync(root);
+    for (let i = 0; i < 150; i++) writeFileSync(path.join(root, `f${String(i).padStart(3, '0')}`), '');
+    mkdirSync(path.join(root, 'zz', '.git'), { recursive: true });
+    const { nested, unreadable } = await measure(root);
+    assert.deepEqual(nested, [path.join(root, 'zz')]);
+    assert.deepEqual(unreadable, []);
+  });
+
+  test('sameFile compares in chunks, to the last byte', async () => {
+    const big = 'x'.repeat(200 * 1024);
+    const [a, b, c] = ['a', 'b', 'c'].map((n) => path.join(tmp, `big-${n}.bin`));
+    writeFileSync(a, big);
+    writeFileSync(b, big);
+    writeFileSync(c, `${big.slice(0, -1)}y`);
+    assert.equal(await sameFile(a, b), true);
+    assert.equal(await sameFile(a, c), false, 'a difference in the last chunk was missed');
   });
 
   test('userIgnored: a folder past 200 files is named whole, and a bad base still reads the worktree', async () => {
@@ -153,7 +176,8 @@ describe('planRepo and applyRepo when git says no', () => {
     };
     await applyRepo(dir, plan);
     assert.deepEqual(plan.worktrees.map((w) => w.verdict), ['failed', 'failed', 'unmerged']);
-    assert.match(plan.worktrees[0].error, /not a git repository/);
+    // Judged again before removal, and no longer a worktree it can find.
+    assert.match(plan.worktrees[0].error, /no longer a worktree/);
     assert.match(plan.worktrees[1].error, /not a git repository/);
   });
 
@@ -164,10 +188,34 @@ describe('planRepo and applyRepo when git says no', () => {
     git(['push', '-q', 'origin', 'feat:main'], dir);
     rmSync(gone, { recursive: true, force: true });
 
+    // A status or an ignored-file listing that fails is not an empty one.
+    for (const fails of ['status', 'ls-files']) {
+      await withFakeGit(fails, async () => {
+        const unread = find(await planRepo(entry(dir)), merged);
+        assert.equal(unread.verdict, 'unreadable', fails);
+        assert.deepEqual(unread.unread, ['.']);
+      });
+    }
+    // Nor is a list of merge commits git could not give: a rebase-merged
+    // worktree is only merged once its merges are checked.
+    git(['merge', '-q', '--ff-only', 'origin/main'], dir);
+    const rebased = addWorktree(dir, 'rebased');
+    commit(dir, 'moved-on.txt'); // so the pick gets a sha of its own
+    git(['cherry-pick', 'rebased'], dir);
+    git(['push', '-q', 'origin', 'HEAD:main'], dir);
+    await withFakeGit('rev-list --merges', async () => {
+      assert.equal(find(await planRepo(entry(dir)), rebased).verdict, 'unmerged');
+    });
+    assert.equal(find(await planRepo(entry(dir)), rebased).verdict, 'merged');
+
     const plan = await planRepo(entry(dir));
-    await withFakeGit('worktree', () => applyRepo(dir, plan));
+    await withFakeGit('worktree remove', () => applyRepo(dir, plan));
     assert.equal(find(plan, merged).error, 'git refused');
-    assert.equal(find(plan, gone).error, 'git worktree prune failed');
+
+    rmSync(addWorktree(dir, 'gone2'), { recursive: true, force: true });
+    const again = await planRepo(entry(dir));
+    await withFakeGit('worktree prune', () => applyRepo(dir, again));
+    assert.equal(again.worktrees.find((w) => w.verdict === 'failed').error, 'git worktree prune failed');
 
     await withFakeGit('fetch', async () => {
       assert.equal((await planRepo(entry(dir))).fail, 'fetch failed: unknown error');
@@ -306,6 +354,25 @@ describe('talea prune, the report', () => {
     assert.match(t, /nested.* · 4 dirty/);
     assert.match(t, /app\/one is merged, kept for a repo inside it: vendor\/a \(dirty\)/);
     assert.match(t, /app\/many is merged, kept for repos inside it: vendor\/a \(dirty\), vendor\/b \(dirty\), vendor\/c \(dirty\).* and 1 more/);
+  });
+
+  test('a worktree kept as unreadable names where', { skip: (!posix || process.getuid() === 0) && 'needs a folder its owner cannot open' }, async () => {
+    const ws = workspace('ws-sealed', [{ name: 'app', owner: 'me', defaultBranch: 'main' }]);
+    const dir = makeRepo(path.join(ws, 'me', 'app'), 'build/\n');
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    const sealed = path.join(wt, 'build', 'sealed');
+    mkdirSync(sealed, { recursive: true });
+    chmodSync(sealed, 0o000);
+    process.chdir(ws);
+    try {
+      await run({ apply: true });
+    } finally {
+      chmodSync(sealed, 0o755);
+    }
+    assert.match(text(), /unreadable/);
+    assert.match(text(), /app\/feat is kept: talea could not read build\/sealed/);
+    assert.equal(existsSync(wt), true);
   });
 
   test('a removal git refuses is named, and its ignored files are not called lost', { skip: !posix && 'needs a shell-script git' }, async () => {

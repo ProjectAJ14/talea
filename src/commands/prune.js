@@ -10,14 +10,14 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { lstat, readdir, readFile } from 'node:fs/promises';
+import { lstat, open, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { worktreeRecords, lines } from '../adopt.js';
+import { canonical, worktreeRecords, lines } from '../adopt.js';
 import { defaultBranch, groupDir, repoGroup } from '../config.js';
-import { defaultJobs, fetch, git, isDirty, pooled } from '../git.js';
+import { defaultJobs, fetch, git, pooled } from '../git.js';
 import { task } from '../live.js';
 import { c, context, fail, group, heading, plain, skip, summary, table, warn } from '../log.js';
 import { clonedOnly, machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
@@ -38,14 +38,17 @@ outside the workspace count too — they belong to the repo.
   dirty      modified or untracked files                  ${c.dim('→ kept')}
   ignored    merged, but holds ignored files you made     ${c.dim('→ kept')}
   nested     merged, but a repo inside has its own work   ${c.dim('→ kept')}
+  unreadable git or the disk could not say what it holds  ${c.dim('→ kept')}
   unused     no commits of its own, untouched for a day   ${c.dim('→ removed')}
   fresh      the same, but cut less than a day ago        ${c.dim('→ kept')}
   locked     \`git worktree lock\`ed                        ${c.dim('→ kept')}
   unmerged   anything else                                ${c.dim('→ kept')}
 
 "Merged" means the commit is on the default branch, or an identical change is
-(a rebase merge). A ${c.bold('squash merge')} is neither, so it reads as unmerged
-and is kept — delete that worktree yourself.
+(a rebase merge). A merge commit on the branch counts only when it is the merge
+git would make by itself; one that adds a change of its own is unmerged. A
+${c.bold('squash merge')} is neither, so it reads as unmerged and is kept — delete
+that worktree yourself.
 
 The removal is \`git worktree remove\`, never forced: git itself refuses a tree
 with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, and
@@ -69,7 +72,13 @@ A repo inside a worktree — a build tool's clone, a nested worktree — goes wi
 it, so it is judged too: a linked worktree, uncommitted changes, a stash, or a
 commit no remote has keeps the worktree as ${c.bold('nested')}, and the verdict says
 why (\`nested · 1 dirty\`). A clean one whose commits are all on a remote does
-not; its own ignored files are judged like the worktree's.
+not; its own ignored files are judged like the worktree's, wherever it sits —
+a .env in a clone under build/ still keeps the worktree.
+
+Anything talea cannot read — a folder it may not open, a git that fails — keeps
+the worktree as ${c.bold('unreadable')}, and the plan names where. --apply judges each
+worktree again just before removing it, so a file or a change that appeared
+since the plan keeps it too.
 
 The table shows each worktree's folder name; its full path is the dim line
 under the row.
@@ -153,37 +162,66 @@ async function unmarked(wtPath, base, paths) {
  * checkout to compare against.
  */
 export async function userIgnored(wtPath, mainDir, base, cleared = new Set()) {
-  const listed = await git([...IGNORED, '--directory'], { cwd: wtPath });
+  // An empty answer from a git that failed would read as "nothing to lose".
+  const ignored = async (args) => {
+    const res = await git([...IGNORED, ...args], { cwd: wtPath });
+    if (res.code !== 0) throw Object.assign(new Error(res.stderr), { at: wtPath });
+    return lines(res.stdout);
+  };
   const lost = [];
-  for (const entry of await unmarked(wtPath, base, lines(listed.stdout))) {
+  for (const entry of await unmarked(wtPath, base, await ignored(['--directory']))) {
     const folder = entry.endsWith('/');
-    const files = folder
-      ? await unmarked(wtPath, base, lines((await git([...IGNORED, '--', entry], { cwd: wtPath })).stdout))
-      : [entry];
+    const files = folder ? await unmarked(wtPath, base, await ignored(['--', entry])) : [entry];
     if (!files.length) continue;
     if (folder && files.length > EXPAND_MAX) {
       lost.push(entry);
       continue;
     }
     for (const f of files) {
-      if (cleared.has(f)) {
-        for (const g of await userIgnored(path.join(wtPath, f), null, 'HEAD')) lost.push(f + g);
-      } else if (f.endsWith('/') || !(mainDir && (await sameFile(path.join(wtPath, f), path.join(mainDir, f))))) {
+      if (cleared.has(f)) continue; // judged on its own, below
+      if (f.endsWith('/') || !(mainDir && (await sameFile(path.join(wtPath, f), path.join(mainDir, f))))) {
         lost.push(f);
       }
     }
   }
+  // Every repo inside is judged by itself, not only the ones the listing above
+  // happened to open: a clone under `build/` sits in a folder that is build
+  // output by the list, so the walk never reached it and its .env went with
+  // the worktree (found in review). A repo inside one of these is its business.
+  const all = [...cleared];
+  for (const n of all.filter((n) => !all.some((o) => o !== n && n.startsWith(o)))) {
+    const inner = new Set(all.filter((o) => o !== n && o.startsWith(n)).map((o) => o.slice(n.length)));
+    for (const g of await userIgnored(path.join(wtPath, n), null, 'HEAD', inner)) lost.push(n + g);
+  }
   return lost;
 }
 
+// Files are compared this much at a time, so two 1 GB files cost 128 KB, not 2 GB.
+const CHUNK = 64 * 1024;
+
 /** Two regular files with the same bytes. A symlink or anything unreadable is not "same". */
-async function sameFile(a, b) {
+export async function sameFile(a, b) {
   try {
     const [sa, sb] = await Promise.all([lstat(a), lstat(b)]);
     // Sizes first: a multi-gigabyte ignored file that differs is never read.
     if (!sa.isFile() || !sb.isFile() || sa.size !== sb.size) return false;
-    const [x, y] = await Promise.all([readFile(a), readFile(b)]);
-    return x.equals(y);
+    const fa = await open(a);
+    try {
+      const fb = await open(b);
+      try {
+        const x = Buffer.alloc(CHUNK);
+        const y = Buffer.alloc(CHUNK);
+        for (let at = 0; at < sa.size; at += CHUNK) {
+          const [ra, rb] = await Promise.all([fa.read(x, 0, CHUNK, at), fb.read(y, 0, CHUNK, at)]);
+          if (!x.subarray(0, ra.bytesRead).equals(y.subarray(0, rb.bytesRead))) return false;
+        }
+        return true;
+      } finally {
+        await fb.close();
+      }
+    } finally {
+      await fa.close();
+    }
   } catch {
     return false;
   }
@@ -217,43 +255,56 @@ export async function nestedLoss(dir) {
   return unpushed.code !== 0 || unpushed.stdout ? 'unpushed' : null;
 }
 
+// How many entries of one folder are read at once. The walk goes one folder at
+// a time, so a node_modules of 100,000 entries is never 100,000 pending reads.
+const WIDTH = 64;
+
 /**
- * Bytes on disk under `root`, symlinks not followed, and every folder below
- * the root that has a `.git` of its own — another worktree or checkout.
+ * Bytes on disk under `root`, symlinks not followed, every folder below the
+ * root that has a `.git` of its own — another worktree or checkout — and
+ * every path the walk could not read.
  *
- * The second half is a safety check, not a statistic. git reads a worktree as
+ * The last two are a safety check, not a statistic. git reads a worktree as
  * clean when the only thing in it is a nested worktree under an ignored path
  * (`.claude/worktrees/x`), and `git worktree remove` then deletes the nested
  * one with its uncommitted work. So every repo inside it is found, and
- * `nestedLoss()` says whether it holds anything.
+ * `nestedLoss()` says whether it holds anything — and a folder the walk could
+ * not open might hold one, so it keeps the worktree as well.
  */
 // ponytail: hardlinks (a pnpm store) count once per link, so the figure can
 // overstate what is freed; dedupe by inode if that ever misleads anybody.
 export async function measure(root) {
   const nested = [];
-  const walk = async (dir) => {
-    let st;
-    try {
-      st = await lstat(dir);
-    } catch {
-      return 0;
-    }
+  const unreadable = [];
+  // Gone since the folder was listed is unreadable too: it cannot be judged.
+  const stat = (p) =>
+    lstat(p).catch(() => {
+      unreadable.push(p);
+      return null;
+    });
+  const walk = async (dir, st) => {
     // Windows reports `blocks: 0` for every file, not undefined, so a null
     // check measured every worktree there as empty.
-    const own = st.blocks ? st.blocks * 512 : st.size;
-    if (!st.isDirectory()) return own;
+    let total = st.blocks ? st.blocks * 512 : st.size;
+    if (!st.isDirectory()) return total;
     let names;
     try {
       names = await readdir(dir);
     } catch {
-      return own;
+      unreadable.push(dir);
+      return total;
     }
     if (dir !== root && names.includes('.git')) nested.push(dir);
-    const sizes = await Promise.all(names.map((n) => walk(path.join(dir, n))));
-    return sizes.reduce((a, b) => a + b, own);
+    for (let i = 0; i < names.length; i += WIDTH) {
+      const batch = names.slice(i, i + WIDTH).map((n) => path.join(dir, n));
+      const stats = await Promise.all(batch.map(stat));
+      for (let j = 0; j < batch.length; j++) if (stats[j]) total += await walk(batch[j], stats[j]);
+    }
+    return total;
   };
-  const size = await walk(root);
-  return { size, nested };
+  const st = await stat(root);
+  const size = st ? await walk(root, st) : 0;
+  return { size, nested, unreadable };
 }
 
 export function formatBytes(n) {
@@ -277,7 +328,10 @@ const FRESH_FOR = 24 * 3600;
  */
 async function judge(repoDir, wt, base, now) {
   if (wt.prunable || !existsSync(wt.path)) return { verdict: 'missing' };
-  if (await isDirty(wt.path)) return { verdict: 'dirty' };
+  // Not isDirty(): it reads a status git could not produce as clean.
+  const status = await git(['status', '--porcelain', '-unormal'], { cwd: wt.path });
+  if (status.code !== 0) return { verdict: 'unreadable', unread: ['.'] };
+  if (status.stdout) return { verdict: 'dirty' };
   if (!(await isMerged(repoDir, wt.head, base))) return { verdict: 'unmerged' };
   // A branch with no commits of its own is trivially "merged". Cut a minute
   // ago it is a task just started; cut days ago and never touched, with the
@@ -339,7 +393,21 @@ async function isMerged(repoDir, head, base) {
   // A rebase merge rewrote every commit, so none is an ancestor — but each one
   // has a patch-identical twin on the base, and `cherry` marks those with `-`.
   const cherry = await git(['cherry', base, head], { cwd: repoDir });
-  return cherry.code === 0 && !lines(cherry.stdout).some((l) => l.startsWith('+'));
+  if (cherry.code !== 0 || lines(cherry.stdout).some((l) => l.startsWith('+'))) return false;
+  // `cherry` never looks at a merge commit, so one carrying a change of its own
+  // — a conflict resolution, a file added mid-merge — read as merged (found in
+  // review). A merge passes only when its tree is the one git makes from its
+  // two parents unaided; the parents themselves are in the range checked above.
+  // `merge-tree --write-tree` needs git 2.38; an older one keeps the worktree.
+  const merges = await git(['rev-list', '--merges', '--parents', head, '--not', base], { cwd: repoDir });
+  if (merges.code !== 0) return false;
+  for (const [merge, ...parents] of lines(merges.stdout).map((l) => l.split(' '))) {
+    if (parents.length !== 2) return false;
+    const made = await git(['merge-tree', '--write-tree', ...parents], { cwd: repoDir });
+    const tree = await git(['rev-parse', `${merge}^{tree}`], { cwd: repoDir });
+    if (made.code !== 0 || lines(made.stdout)[0] !== tree.stdout.trim()) return false;
+  }
+  return true;
 }
 
 /**
@@ -371,34 +439,68 @@ export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.
   if (known.code !== 0) return { skip: `${base} does not exist` };
 
   const worktrees = [];
-  for (const wt of linked) {
-    // A lock is never second-guessed except a leftover one (see staleLock).
-    const stale = wt.locked && (await staleLock(wt.lockReason));
-    let { verdict, age } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
-    const { size, nested } = verdict === 'missing' ? { size: 0, nested: [] } : await measure(wt.path);
-    const held = [];
-    const cleared = new Set();
-    if (REMOVABLE.has(verdict)) {
-      // The walk is parallel, so its order is not; the report should be.
-      for (const n of nested.sort()) {
-        // git's spelling, so it matches what `ls-files` lists on any platform.
-        const rel = path.relative(wt.path, n).split(path.sep).join('/');
-        const why = await nestedLoss(n);
-        if (why) held.push({ path: rel, why });
-        else cleared.add(`${rel}/`);
-      }
-      if (held.length) verdict = 'nested';
-    }
-    let lossy = [];
-    if (REMOVABLE.has(verdict)) {
-      lossy = await userIgnored(wt.path, dir, base, cleared);
-      // git deletes ignored files without asking, and `--apply` plans and
-      // removes in one run — so a warning here would arrive after the loss.
-      if (lossy.length && !withIgnored) verdict = 'ignored';
-    }
-    worktrees.push({ path: wt.path, branch: wt.branch, verdict, age, stale, lockReason: wt.lockReason, size, lossy, held });
+  for (const wt of linked) worktrees.push(await judgeWorktree(dir, wt, base, { withIgnored, now }));
+  return { base, now, worktrees };
+}
+
+/** One linked worktree's entry in the plan, from its `git worktree list` record. */
+async function judgeWorktree(dir, wt, base, { withIgnored, now }) {
+  // A lock is never second-guessed except a leftover one (see staleLock).
+  const stale = wt.locked && (await staleLock(wt.lockReason));
+  let { verdict, age, unread = [] } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
+  const measured = verdict === 'missing' ? { size: 0, nested: [], unreadable: [] } : await measure(wt.path);
+  // git's spelling, so it matches what `ls-files` lists on any platform.
+  const rel = (p) => path.relative(wt.path, p).split(path.sep).join('/') || '.';
+  const held = [];
+  const cleared = new Set();
+  let lossy = [];
+  if (REMOVABLE.has(verdict) && measured.unreadable.length) {
+    verdict = 'unreadable';
+    unread = measured.unreadable.map(rel).sort();
   }
-  return { base, worktrees };
+  if (REMOVABLE.has(verdict)) {
+    // The walk is parallel, so its order is not; the report should be.
+    for (const n of measured.nested.sort()) {
+      const why = await nestedLoss(n);
+      if (why) held.push({ path: rel(n), why });
+      else cleared.add(`${rel(n)}/`);
+    }
+    if (held.length) verdict = 'nested';
+  }
+  if (REMOVABLE.has(verdict)) {
+    try {
+      lossy = await userIgnored(wt.path, dir, base, cleared);
+    } catch (e) {
+      verdict = 'unreadable';
+      unread = [rel(e.at)];
+    }
+    // git deletes ignored files without asking, and `--apply` plans and
+    // removes in one run — so a warning here would arrive after the loss.
+    if (lossy.length && !withIgnored) verdict = 'ignored';
+  }
+  return { path: wt.path, branch: wt.branch, verdict, age, stale, lockReason: wt.lockReason, size: measured.size, lossy, held, unread };
+}
+
+/**
+ * The worktree judged again, just before it goes: `--apply` plans every
+ * worktree of a repo before removing any, and `git worktree remove` checks
+ * only for tracked and untracked changes. An ignored file written or a nested
+ * repo touched since the plan would go with it unasked. Returns null when it
+ * may still go, or what it is now. Removal follows within milliseconds; that
+ * window is git's own and no check here can close it.
+ */
+async function rejudge(dir, plan, wt) {
+  const listed = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
+  const record = listed.code === 0 && worktreeRecords(listed.stdout).find((r) => canonical(r.path) === canonical(wt.path));
+  if (!record) return { verdict: 'failed', error: 'no longer a worktree of this repo' };
+  // --with-ignored, so the files are listed rather than folded into a verdict:
+  // the ones the plan named may go, and only those.
+  const now = await judgeWorktree(dir, record, plan.base, { withIgnored: true, now: plan.now });
+  const named = new Set(wt.lossy);
+  const extra = now.lossy.filter((f) => !named.has(f));
+  if (!REMOVABLE.has(now.verdict)) return now;
+  if (extra.length) return { ...now, verdict: 'ignored' };
+  return null;
 }
 
 /**
@@ -415,7 +517,13 @@ export async function applyRepo(dir, plan) {
     return res.code === 0;
   };
   for (const wt of plan.worktrees) {
-    if (!REMOVABLE.has(wt.verdict) || !(await unlock(wt))) continue;
+    if (!REMOVABLE.has(wt.verdict)) continue;
+    const changed = await rejudge(dir, plan, wt);
+    if (changed) {
+      Object.assign(wt, changed);
+      continue;
+    }
+    if (!(await unlock(wt))) continue;
     // Never --force: git refusing is the last guard on uncommitted work.
     const res = await git(['worktree', 'remove', wt.path], { cwd: dir });
     if (res.code === 0) wt.verdict = 'removed';
@@ -442,15 +550,15 @@ const PAINT = {
   dirty: c.yellow,
   ignored: c.yellow,
   nested: c.yellow,
+  unreadable: c.yellow,
   fresh: c.cyan,
   locked: c.cyan,
   unmerged: c.dim,
   failed: c.red,
 };
 
-const listFiles = (files) =>
-  `${files.length === 1 ? 'file' : 'files'}: ${files.slice(0, 3).join(', ')}` +
-  (files.length > 3 ? c.dim(` and ${files.length - 3} more`) : '');
+const few = (items) => items.slice(0, 3).join(', ') + (items.length > 3 ? c.dim(` and ${items.length - 3} more`) : '');
+const listFiles = (files) => `${files.length === 1 ? 'file' : 'files'}: ${few(files)}`;
 
 /** The facts beside a verdict: a no-commit branch's age, a lock left by an exited agent, what a nested repo holds. */
 function verdictNote(wt) {
@@ -546,8 +654,9 @@ export async function run(opts) {
       if (wt.error) fail(`${name} — ${wt.error}`);
       if (wt.verdict === 'nested') {
         const repos = wt.held.map((h) => `${h.path} (${h.why})`);
-        warn(`${name} is merged, kept for ${repos.length === 1 ? 'a repo' : 'repos'} inside it: ${repos.slice(0, 3).join(', ')}` +
-          (repos.length > 3 ? c.dim(` and ${repos.length - 3} more`) : ''));
+        warn(`${name} is merged, kept for ${repos.length === 1 ? 'a repo' : 'repos'} inside it: ${few(repos)}`);
+      } else if (wt.verdict === 'unreadable') {
+        warn(`${name} is kept: talea could not read ${few(wt.unread)}`);
       } else if (wt.verdict === 'ignored') {
         warn(`${name} is merged, kept for ignored ${listFiles(wt.lossy)} — move ${wt.lossy.length === 1 ? 'it' : 'them'}, or --with-ignored`);
       } else if (wt.lossy.length && wt.verdict !== 'failed') {
@@ -558,7 +667,7 @@ export async function run(opts) {
   }
 
   const count = (v) => rows.filter((r) => r.wt.verdict === v).length;
-  const tally = ['merged', 'unused', 'removed', 'missing', 'cleared', 'dirty', 'ignored', 'nested', 'fresh', 'locked', 'unmerged', 'failed']
+  const tally = ['merged', 'unused', 'removed', 'missing', 'cleared', 'dirty', 'ignored', 'nested', 'unreadable', 'fresh', 'locked', 'unmerged', 'failed']
     .map((v) => [v, count(v)])
     .filter(([, n]) => n)
     .map(([v, n]) => `${n} ${v}`);
