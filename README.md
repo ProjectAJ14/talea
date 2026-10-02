@@ -86,7 +86,7 @@ talea prune --apply          # remove the merged and unused ones
 A worktree is `merged` when every commit on it is on `origin/<default branch>`
 — directly, or as an identical change after a rebase merge. A merge commit on
 the branch counts only when it is the merge git would make by itself; one that
-adds a change of its own reads as `unmerged`. `dirty`, `locked`
+adds a change of its own reads as `unmerged` (checking one needs git 2.38+). `dirty`, `locked`
 and `unmerged` ones are kept, and so is a `nested` one — merged, but with a repo inside its folder that
 holds work of its own (a linked worktree, uncommitted changes, a stash, or a
 commit no remote has), which removing it would delete. A clean clone a build

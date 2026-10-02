@@ -129,9 +129,9 @@ with the folder. If a named file is one a build writes, the lasting fix is a
 `talea-regenerable` line in that repo's `.gitattributes`, proposed to the
 developer — never added to cover one file that is really theirs. A `nested`
 verdict names the repo inside and why (`dirty`, `stash`, `unpushed`,
-`worktree`); that is work in another repo, so report it — never move it or
-delete it to free the worktree. An `unreadable` verdict names the folder or git
-call talea could not read; report it, and never change permissions to get the
+`worktree`, `unreadable`); that is work in another repo, so report it — never move it or
+delete it to free the worktree. An `unreadable` verdict names the path talea
+could not read; report it, and never change permissions to get the
 worktree removed.
 
 Only `merged` worktrees are removed (every commit already on origin's default

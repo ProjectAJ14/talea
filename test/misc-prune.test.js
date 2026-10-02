@@ -375,6 +375,36 @@ describe('talea prune, the report', () => {
     assert.equal(existsSync(wt), true);
   });
 
+  test('an ignored file that appears after the plan is named as late, under --with-ignored too', { skip: !posix && 'needs a shell-script git' }, async () => {
+    const ws = workspace('ws-late', [{ name: 'app', owner: 'me', defaultBranch: 'main' }]);
+    const dir = makeRepo(path.join(ws, 'me', 'app'), '*.env\n');
+    const wt = addWorktree(dir, 'feat');
+    git(['push', '-q', 'origin', 'feat:main'], dir);
+    writeFileSync(path.join(wt, 'a.env'), '1\n');
+    process.chdir(ws);
+    // Written between the plan and the removal: the second `worktree list` is
+    // the re-check's, so a fake git makes the file then.
+    const bin = path.join(tmp, 'late-bin');
+    mkdirSync(bin, { recursive: true });
+    const real = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    const count = path.join(bin, 'count');
+    writeFileSync(
+      path.join(bin, 'git'),
+      `#!/bin/sh\nif [ "$1 $2" = "worktree list" ]; then echo x >> "${count}"; ` +
+        `[ "$(wc -l < "${count}")" -eq 2 ] && touch "${path.join(wt, 'b.env')}"; fi\nexec "${real}" "$@"\n`,
+    );
+    chmodSync(path.join(bin, 'git'), 0o755);
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${saved}`;
+    try {
+      await run({ apply: true, 'with-ignored': true });
+    } finally {
+      process.env.PATH = saved;
+    }
+    assert.match(text(), /app\/feat is kept: ignored file: b\.env appeared after the plan — run prune again to see it/);
+    assert.equal(existsSync(path.join(wt, 'b.env')), true);
+  });
+
   test('a removal git refuses is named, and its ignored files are not called lost', { skip: !posix && 'needs a shell-script git' }, async () => {
     const ws = workspace('ws-refused', [{ name: 'app', owner: 'me', defaultBranch: 'main' }]);
     const dir = makeRepo(path.join(ws, 'me', 'app'), '.env\n');

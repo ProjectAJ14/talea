@@ -46,7 +46,8 @@ outside the workspace count too — they belong to the repo.
 
 "Merged" means the commit is on the default branch, or an identical change is
 (a rebase merge). A merge commit on the branch counts only when it is the merge
-git would make by itself; one that adds a change of its own is unmerged. A
+git would make by itself; one that adds a change of its own is unmerged, and
+so is every merge on a git older than 2.38, which cannot check one. A
 ${c.bold('squash merge')} is neither, so it reads as unmerged and is kept — delete
 that worktree yourself.
 
@@ -499,7 +500,7 @@ async function rejudge(dir, plan, wt) {
   const named = new Set(wt.lossy);
   const extra = now.lossy.filter((f) => !named.has(f));
   if (!REMOVABLE.has(now.verdict)) return now;
-  if (extra.length) return { ...now, verdict: 'ignored' };
+  if (extra.length) return { ...now, verdict: 'ignored', lossy: extra, late: true };
   return null;
 }
 
@@ -657,6 +658,8 @@ export async function run(opts) {
         warn(`${name} is merged, kept for ${repos.length === 1 ? 'a repo' : 'repos'} inside it: ${few(repos)}`);
       } else if (wt.verdict === 'unreadable') {
         warn(`${name} is kept: talea could not read ${few(wt.unread)}`);
+      } else if (wt.late) {
+        warn(`${name} is kept: ignored ${listFiles(wt.lossy)} appeared after the plan — run prune again to see ${wt.lossy.length === 1 ? 'it' : 'them'}`);
       } else if (wt.verdict === 'ignored') {
         warn(`${name} is merged, kept for ignored ${listFiles(wt.lossy)} — move ${wt.lossy.length === 1 ? 'it' : 'them'}, or --with-ignored`);
       } else if (wt.lossy.length && wt.verdict !== 'failed') {
