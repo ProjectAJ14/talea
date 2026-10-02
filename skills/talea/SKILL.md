@@ -38,13 +38,14 @@ This is the command to reach for most, and the reason the tool exists.
 
 ```bash
 talea where eklavya          # the absolute path, one line, nothing else
-cd "$(talea where eklavya)"  # what it is actually for
+dest=$(talea where eklavya) && cd -- "$dest"   # what it is actually for
 talea where                  # the workspace root
 ```
 
-It exits **non-zero** on an unknown name and writes every diagnostic to stderr,
-so `cd "$(talea where typo)"` fails instead of landing in the home directory.
-Never `cd` to a path it did not print.
+It exits **non-zero** on an unknown name, prints nothing on stdout, and writes
+every diagnostic to stderr. That does not stop a bare `cd $(talea where typo)`:
+the shell still runs `cd` with no argument, which goes home. Always use the
+checked, quoted form above, and never `cd` to a path it did not print.
 
 Outside a workspace it falls back to the ones this machine has. With several
 and no terminal — which is how you run it — it lists them and exits non-zero.
@@ -182,12 +183,15 @@ reads like data loss.
 
 ```bash
 talea exec -- git status --short
-talea exec -g NonStop -- npm test
+talea exec -g NonStop --shell -- 'npm test'   # npm is a .cmd on Windows
 ```
 
-Everything after `--` runs in each repo. Treat it as you would any command run
-in N repositories at once: read-only commands freely, anything that writes only
-when the developer asked for it by name.
+Everything after `--` runs in each repo, each argument exactly as given — no
+second shell reads it, so `-m "two words"` stays one argument. For pipes or
+`&&`, pass `--shell` and one quoted line: `talea exec --shell -- 'a && b'`; on
+Windows, `npm` and other `.cmd` scripts need `--shell` too. Treat it as you
+would any command run in N repositories at once: read-only commands freely,
+anything that writes only when the developer asked for it by name.
 
 ## Moving the catalogue between machines
 

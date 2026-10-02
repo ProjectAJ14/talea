@@ -8,15 +8,18 @@ export const help = `
 ${c.bold('talea where')} — print a repo's path
 
   ${c.dim('talea where eklavya')}             the absolute path, one line, nothing else
-  ${c.dim('cd $(talea where eklavya)')}       what it is actually for
+  ${c.dim('dest=$(talea where eklavya) && cd -- "$dest"')}
+                                  what it is actually for
   ${c.dim('talea where')}                     the workspace root
 
 The whole point of a fixed structure is never having to remember it. This is
 the command that keeps that promise — the path goes to stdout on its own so it
 composes with ${c.dim('cd')}, ${c.dim('code')}, ${c.dim('open')} and anything else that takes a directory.
 
-Exits non-zero if the repo is not in the catalogue, so ${c.dim('cd $(talea where typo)')}
-fails loudly instead of landing you in your home directory.
+Exits non-zero, with nothing on stdout, if the repo is not in the catalogue. A
+bare ${c.dim('cd $(talea where typo)')} still runs ${c.dim('cd')} with no argument after that, which
+goes home — so check it with ${c.dim('&&')} as above, and quote the path for folders with
+spaces in them.
 
 Works from outside a workspace too: with one on this machine it uses that, with
 several it asks — on stderr, so the answer never ends up in the path.

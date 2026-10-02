@@ -22,7 +22,7 @@ match it.
     json-viewer/
 ```
 
-Same paths on every machine. `cd $(talea where eklavya)` works everywhere.
+Same paths on every machine, so `talea where eklavya` prints the same place everywhere.
 
 ---
 
@@ -70,7 +70,17 @@ talea prune                  # which finished worktrees can go, and what they ho
 talea add some-repo          # keep one more on this machine, and clone it now
 talea select                 # reopen the checklist and change the whole list
 talea pick some-repo          # keep that one — an unknown name opens the checklist
-cd $(talea where eklavya)
+dest=$(talea where eklavya) && cd -- "$dest"
+```
+
+`where` prints the path and nothing else, and exits non-zero with nothing on
+stdout for a name it does not know. A plain `cd $(talea where typo)` still runs
+`cd` with no argument after that — which most shells read as "go home" — so
+check it with `&&`, and quote the path for folders with spaces in them. A shell
+function saves the typing:
+
+```sh
+tcd() { local dest; dest=$(talea where "$@") && cd -- "$dest"; }
 ```
 
 ## Cleaning up worktrees
@@ -272,10 +282,10 @@ at any repo — read one you did not write before you sync it.
 | `talea prune` | remove worktrees whose work is merged (`--apply` to do it) |
 | `talea select` | reopen the checklist — `talea pick <repo>` for one |
 | `talea add` / `talea rm` | change that one repo at a time |
-| `talea where <repo>` | print a repo's path, for `cd $( )` |
+| `talea where <repo>` | print a repo's path — `dest=$(talea where x) && cd -- "$dest"` |
 | `talea list` | the catalogue |
 | `talea tree` | the folder tree on disk |
-| `talea exec -- <cmd>` | run one command in every repo |
+| `talea exec -- <cmd>` | run one command in every repo, arguments as typed; `--shell` for pipes |
 | `talea manifest push/pull` | move the catalogue between machines |
 | `talea skill` | install the skill that lets your coding agent drive talea |
 | `talea doctor` | check this machine can do the work |

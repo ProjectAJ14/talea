@@ -26,7 +26,7 @@ It checks Node, git, SSH to GitHub, the API token and the workspace, and exits n
 | An adopt says a repo cannot be moved | It is itself a linked worktree, the destination is occupied, or the move crosses a filesystem | The printed reason says which. A cross-device move is refused rather than turned into a copy and a delete |
 | A repo is never touched by anything | `ignore: true` in the catalogue | Remove it if another tool no longer owns that checkout |
 | `talea select` prints a summary and exits | No TTY — a pipe, a CI job, a non-interactive session | Use `talea add` and `talea rm` instead |
-| `cd $(talea where thing)` puts you in your home directory | It should not, and does not: `where` exits non-zero and writes to stderr | If it happens, you are not running talea's `where` — check `command -v talea` |
+| `cd $(talea where thing)` puts you in your home directory | `where` failed and printed nothing, and `cd` with no argument goes home — the shell runs it anyway | Check it: `dest=$(talea where thing) && cd -- "$dest"`. The error on stderr says why the lookup failed |
 | A `sync` looks fine but a script treats it as failed | One repo failed. Bulk commands exit non-zero when any repo did | Read the per-repo errors above the summary box |
 | No colour in the output | Not a TTY, or `NO_COLOR` is set | `FORCE_COLOR=1 talea status \| less -R` |
 | Boxes and glyphs render as squares | The terminal font has no glyph for them | They are all BMP characters; a font with reasonable coverage fixes it. `NO_COLOR` does not help — the glyphs are content |

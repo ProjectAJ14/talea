@@ -43,7 +43,7 @@ talea **updates itself automatically**, at most once a day. After a command fini
 
 If the background install fails (a global npm folder that needs `sudo`, a proxy that blocks the registry), the next command says so and points at the log. It retries the next day; `talea upgrade` retries now and shows the error.
 
-`talea upgrade --off` turns automatic updates and the check off, `--on` turns them back on, and `TALEA_NO_UPDATE_CHECK=1` disables both for a single shell. Every update message goes to stderr, so `cd $(talea where)` is never affected.
+`talea upgrade --off` turns automatic updates and the check off, `--on` turns them back on, and `TALEA_NO_UPDATE_CHECK=1` disables both for a single shell. Every update message goes to stderr, so `$(talea where)` reads a path and nothing else.
 
 :::caution
 A copy of talea that is a git checkout refuses to self-upgrade. Replacing somebody's working branch with a release is data loss with a friendly name.

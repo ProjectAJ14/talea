@@ -484,7 +484,7 @@
         <div class="cmd-row"><code>talea adopt</code><span>Move checkouts you already have into place</span></div>
         <div class="cmd-row"><code>talea status</code><span>Branch, clean or dirty, ahead or behind, in one table</span></div>
         <div class="cmd-row"><code>talea select</code><span>Reopen the checklist &mdash; what this machine keeps</span></div>
-        <div class="cmd-row"><code>talea where &lt;repo&gt;</code><span>Print a repo's path, for <code>cd $( )</code></span></div>
+        <div class="cmd-row"><code>talea where &lt;repo&gt;</code><span>Print a repo's path, and nothing else</span></div>
         <div class="cmd-row"><code>talea exec -- &lt;cmd&gt;</code><span>Run one command in every repo</span></div>
         <div class="cmd-row"><code>talea manifest push/pull</code><span>Move the catalogue between machines</span></div>
         <div class="cmd-row"><code>talea skill</code><span>Install the skill that lets your coding agent drive talea</span></div>
@@ -627,7 +627,7 @@
       </a>
     </div>
     <p class="cta__note" data-reveal data-delay="400">Node 20+ · macOS, Linux and Windows · the package is scoped, the command is just <code class="code-inline">talea</code></p>
-    <p class="cta__note" data-reveal data-delay="450">Then <code class="code-inline">cd $(talea where eklavya)</code> works everywhere.</p>
+    <p class="cta__note" data-reveal data-delay="450">Then <code class="code-inline">talea where eklavya</code> prints the same path everywhere.</p>
   </div>
 </section>
 

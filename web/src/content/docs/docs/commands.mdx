@@ -115,7 +115,7 @@ The list is written as `owner/name`, so removing one owner's repo never touches 
 
 ```bash
 talea where eklavya             # the absolute path, one line, nothing else
-cd $(talea where eklavya)
+dest=$(talea where eklavya) && cd -- "$dest"
 talea where                     # the workspace root
 ```
 
@@ -145,11 +145,13 @@ Every folder from the workspace root down to each repo, with a marker saying whe
 
 ```bash
 talea exec -- git log --oneline -1
-talea exec -g nonstopio -- npm install
+talea exec -g nonstopio --shell -- 'npm install'
 talea exec --all -- git branch --show-current
+talea exec -- git commit -m "two words"           # each argument arrives as typed
+talea exec --shell -- 'yarn build && yarn test'   # a pipeline: the system shell reads it
 ```
 
-Everything after `--` is the command. One repo at a time, so the output stays attributable. `--all` reaches every repo in the catalogue except one marked `ignore: true`.
+Everything after `--` is the command, with every argument passed as typed — no second shell reads it. `--shell` runs the line through the system shell instead, for pipes and `&&`; on Windows, `.cmd` scripts such as `npm` need it. One repo at a time, so the output stays attributable. `--all` reaches every repo in the catalogue except one marked `ignore: true`.
 
 ### talea manifest
 

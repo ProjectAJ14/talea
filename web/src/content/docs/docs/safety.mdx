@@ -52,7 +52,7 @@ A catalogue can come from somebody else, so every folder it names is checked bef
 
 ### It will not quietly do nothing
 
-An unknown group or repo name exits non-zero. `talea where` is the sharp case: it exits non-zero and writes every diagnostic to stderr, because `cd $(talea where typo)` must fail rather than land you in your home directory.
+An unknown group or repo name exits non-zero. `talea where` is the sharp case: it exits non-zero and prints nothing on stdout, with every diagnostic on stderr. A bare `cd $(talea where typo)` would still run `cd` with nothing and go home — the shell does not stop at a failed `$( )` — so use `dest=$(talea where typo) && cd -- "$dest"`, which stops.
 
 ### It never updates itself mid-run, or without saying so
 

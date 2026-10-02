@@ -383,7 +383,7 @@ a { color: inherit; text-decoration: none; }
   content: "2 cloned \00b7 1 adopted \00b7 1 skipped";
 }
 .term__screen:not([data-ready]) [data-after]::after {
-  content: "cd $(talea where eklavya)  \2192  ~/Workspace/ProjectAJ14/eklavya";
+  content: "talea where eklavya  \2192  ~/Workspace/ProjectAJ14/eklavya";
 }
 
 .dim { color: var(--neutral-600); }
