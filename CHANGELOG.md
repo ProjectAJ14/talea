@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-02
+
+### Breaking
+- pass arguments as typed, and stop showing an unchecked cd
+
+### Fixed
+- **exec**: catch spawn refusals, drop the re-splitting hint, rename tcd
+
 ## [0.9.10] - 2026-10-02
 
 ### Fixed
