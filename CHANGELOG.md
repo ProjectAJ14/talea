@@ -4,6 +4,15 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-10-02
+
+### Fixed
+- **prune**: name late ignored files, document merge and git-version limits
+- **prune**: keep worktrees whose safety cannot be shown
+
+### Documentation
+- add illustrated Talea README banner
+
 ## [0.9.5] - 2026-10-01
 
 ### Fixed
