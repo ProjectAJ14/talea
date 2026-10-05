@@ -1,8 +1,8 @@
 name: ci
 
-# Tests only. Publishing lives in publish.yml and runs off a GitHub release —
-# a green run here is not a release, and a tag on its own no longer ships
-# anything.
+# Tests only. Publishing lives in release.yml, which runs on the same push to
+# main but does not wait for this — it runs the coverage gate itself before it
+# publishes.
 on:
   push:
     branches: [main]

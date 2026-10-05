@@ -19,7 +19,10 @@ and unquoted it needs a globbing shell that cmd.exe is not.
 `npm run coverage` is the same run with Node's own coverage and thresholds, so
 it stays inside the no-dependencies rule; the `coverage` job in `ci.yml` runs
 it on Linux and Node 24, because the threshold flags need Node 22.8 and Node 20
-has no way to fail on a number. A tool whose job is moving other people's
+has no way to fail on a number. `release.yml` runs the same gate, on the same
+Node, before it publishes: nothing makes a release wait for `ci.yml`, and `main`
+is not protected (see `docs/security.md` for why that is not one click), so a
+direct push that dropped below 100% would otherwise ship. A tool whose job is moving other people's
 checkouts has no line that is safe to leave unrun. A platform branch is covered
 by a test that redefines `process.platform`, not by the runner that has it. A
 `/* node:coverage ignore */` needs a comment saying why no test can reach that
