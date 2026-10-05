@@ -4,6 +4,12 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-10-05
+
+### Chores
+- **release**: push the bump with a deploy key, so main can be protected
+- **release**: run the coverage gate before publishing
+
 ## [0.10.1] - 2026-10-02
 
 ### Fixed
