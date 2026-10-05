@@ -20,9 +20,9 @@ and unquoted it needs a globbing shell that cmd.exe is not.
 it stays inside the no-dependencies rule; the `coverage` job in `ci.yml` runs
 it on Linux and Node 24, because the threshold flags need Node 22.8 and Node 20
 has no way to fail on a number. `release.yml` runs the same gate, on the same
-Node, before it publishes: nothing makes a release wait for `ci.yml`, and `main`
-is not protected (see `docs/security.md` for why that is not one click), so a
-direct push that dropped below 100% would otherwise ship. A tool whose job is moving other people's
+Node, before it publishes: nothing makes a release wait for `ci.yml`, and the
+release's own push to `main` bypasses the ruleset that makes everyone else's
+change wait for green checks. A tool whose job is moving other people's
 checkouts has no line that is safe to leave unrun. A platform branch is covered
 by a test that redefines `process.platform`, not by the runner that has it. A
 `/* node:coverage ignore */` needs a comment saying why no test can reach that
@@ -494,6 +494,15 @@ refuses, so that a workflow cannot loop itself. An `on: release` job would sit
 there and never run. The bump commit carries `[skip ci]` for the same family of
 reasons: the matrix already ran on the commits that earned the release, and
 without it the push starts the whole thing again.
+
+`main` is protected by a ruleset — pull request and green CI required, no
+force-push — and that push is the one change allowed past it. It goes out with
+a **deploy key** (`RELEASE_DEPLOY_KEY`, checked out by `actions/checkout`'s
+`ssh-key`), because the ruleset's bypass list takes a deploy key and the
+workflow's `GITHUB_TOKEN` is not on it: pushed with the token, every release
+would publish to npm and then be refused at the tag. A deploy-key push, unlike
+the token's, does start workflows, which makes the skip marker load-bearing
+twice over. Admins are deliberately not on the bypass list.
 
 Which is a trap worth knowing about: GitHub reads that marker anywhere in the
 commit message, **body included**. A commit whose body merely mentions it — a

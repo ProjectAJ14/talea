@@ -44,6 +44,13 @@ jobs:
           # The whole history: the bump is decided from the commits since the
           # last tag, and a shallow clone has neither.
           fetch-depth: 0
+          # main is protected: only a pull request with green checks lands on
+          # it. The bump commit is the one exception, so the push below goes
+          # out with this deploy key, the only thing on the ruleset's bypass
+          # list. Without it the release publishes and then fails to push. Unlike GITHUB_TOKEN, a deploy-key
+          # push does start workflows — the skip marker on the bump commit is
+          # what stops it starting this one again.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - uses: actions/setup-node@v4
         with:
