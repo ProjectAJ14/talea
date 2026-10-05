@@ -47,15 +47,20 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # The coverage job's Node, so the gate below measures what CI measured.
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing needs npm >= 11.5.1, newer than the npm bundled with
-      # any Node 22. Pinned to the 11 major: npm@latest is 12.x and wants a Node
-      # this runner may not have.
+      # Trusted publishing needs npm >= 11.5.1, newer than the npm some Node
+      # releases bundle. Pinned to the 11 major: npm@latest is 12.x and wants a
+      # Node this runner may not have.
       - run: npm install -g npm@11
 
-      - run: npm test
+      # Coverage, not just the tests: this job publishes whether or not ci.yml
+      # passed — nothing makes it wait — so a push to main that drops below
+      # 100% would otherwise ship. Failing here is before the publish, so it
+      # leaves nothing behind.
+      - run: npm run coverage
 
       - id: plan
         run: node scripts/release.mjs "${{ inputs.bump || 'auto' }}"
