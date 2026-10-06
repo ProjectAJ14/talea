@@ -54,19 +54,21 @@ export async function run(opts, positionals = []) {
 
   // Not one exact name: search the repos cloned on this machine, so `talea cd
   // ek` finds eklavya. Only cloned ones — a pick that cannot be cd'd into is a
-  // dead end. Prefix matches first, because that is usually what was meant.
+  // dead end. The folder name counts too: a repo with its own `dir` is known by
+  // the name on disk. Prefix matches first, because that is usually what was meant.
   const hay = (r) => (wanted.includes('/') ? `${r.owner}/${r.name}` : r.name).toLowerCase();
+  const matches = (r) => hay(r).includes(wanted) || (!wanted.includes('/') && !!r.dir?.toLowerCase().includes(wanted));
   const hits = exact.length
     ? exact
     : manifest.repos
-        .filter((r) => hay(r).includes(wanted) && existsSync(repoDir(manifest, root, r)))
+        .filter((r) => matches(r) && existsSync(repoDir(manifest, root, r)))
         .sort((a, b) => hay(b).startsWith(wanted) - hay(a).startsWith(wanted) || a.name.localeCompare(b.name));
 
   if (!hits.length) {
     // Everything diagnostic goes to stderr, so a failed lookup never puts a
     // stray word on stdout where a shell would try to cd into it.
     fail(`No repo matching "${name}" on this machine.`);
-    const near = manifest.repos.filter((r) => hay(r).includes(wanted)).slice(0, 5);
+    const near = manifest.repos.filter(matches).slice(0, 5);
     if (near.length) {
       console.error(`\n  In the catalogue but not cloned: ${near.map((r) => c.bold(repoLabel(manifest, r))).join(', ')}`);
     }

@@ -298,6 +298,19 @@ describe('where', () => {
     assert.equal((await capture(() => where.run({}, ['me/alp']))).out, `${path.join(root, 'work', 'mine', 'alpha')}\n`);
   });
 
+  test('a repo is found by the folder its dir gives it, too', async () => {
+    const file = path.join(root, 'talea.repos.json');
+    const dir = path.join(root, 'work', 'mine', 'zfolder');
+    writeFileSync(file, JSON.stringify({ ...CATALOGUE, repos: [...CATALOGUE.repos, { name: 'zeta', owner: 'me', dir: 'zfolder' }] }));
+    mkdirSync(dir, { recursive: true });
+    try {
+      assert.equal((await capture(() => where.run({}, ['zfol']))).out, `${dir}\n`);
+    } finally {
+      writeFileSync(file, JSON.stringify(CATALOGUE));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('several matches with no terminal stop and list them, prefix first', async () => {
     const { out, err, code } = await capture(() => where.run({}, ['l']));
     assert.equal(out, '');

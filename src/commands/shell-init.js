@@ -16,12 +16,21 @@ A program cannot change the folder of the shell that started it, so this prints
 a small shell function that runs ${c.dim('talea where')} and does the ${c.dim('cd')} itself — the
 same trick nvm and zoxide use. Every other ${c.dim('talea')} command passes through to
 the real one unchanged. The shell is read from ${c.dim('$SHELL')} unless named: zsh, bash
-or fish.
+or fish. PowerShell is not covered yet; on Windows use ${c.dim('talea where')} as the manual shows.
 `;
 
-// `--help` passes through: captured by $( ) it would be cd'd into.
-const POSIX = `talea() {
-  if [ "$1" = cd ] && [ "$2" != -h ] && [ "$2" != --help ]; then
+// `function name {` and the unalias, not `name() {`: zsh expands an alias
+// while parsing `name()`, so an existing `alias tcd=…` made the whole eval a
+// parse error and took `talea` down with it. zsh parses the whole eval before
+// the unalias runs, so a `talea` alias would still expand inside `tcd`'s body:
+// hence `\talea`, which skips aliases and still finds the function. `--help`
+// passes through: captured by $( ) it would be cd'd into.
+const POSIX = `unalias talea tcd 2>/dev/null || true
+function talea {
+  case " $* " in
+    *" -h "* | *" --help "*) command talea "$@"; return ;;
+  esac
+  if [ "$1" = cd ]; then
     shift
     local dest
     dest="$(command talea where "$@")" && cd -- "$dest"
@@ -29,7 +38,7 @@ const POSIX = `talea() {
     command talea "$@"
   fi
 }
-tcd() { talea cd "$@"; }
+function tcd { \\talea cd "$@"; }
 `;
 
 const FISH = `function talea
@@ -48,7 +57,11 @@ export async function run(opts, positionals = []) {
   const shell = positionals[0] ?? path.basename(process.env.SHELL ?? '');
   const script = SCRIPTS[shell];
   if (!script) {
-    fail(`No shell-init for "${shell}" — talea knows zsh, bash and fish.`);
+    fail(
+      shell
+        ? `No shell-init for "${shell}" — talea knows zsh, bash and fish.`
+        : 'Could not tell your shell from $SHELL — name it: talea shell-init zsh, bash or fish.',
+    );
     process.exit(1);
   }
   process.stdout.write(script);

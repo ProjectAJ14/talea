@@ -259,8 +259,10 @@ export async function main(argv) {
 
   await command.run(opts, key === 'exec' ? tail : routed.words);
 
-  // After the real work, never before it, and never able to fail it.
-  if (key !== 'upgrade') {
+  // After the real work, never before it, and never able to fail it. Not after
+  // `shell-init`: it runs in every new shell's rc file, where a registry call
+  // would hold up the prompt and an update notice would greet the terminal.
+  if (key !== 'upgrade' && key !== 'shell-init') {
     try {
       await autoUpdateAsync();
     } catch {

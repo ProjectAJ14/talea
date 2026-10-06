@@ -74,7 +74,7 @@ dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
 `where` prints the path and nothing else. A word that is not a repo name is a
-search over the repos cloned on this machine: one match is the answer, several
+search over the repos cloned on this machine, by name or folder: one match is the answer, several
 open a list to pick from with the arrow keys and Enter, drawn on stderr so it
 works inside `$( )`. With no terminal to pick on, several matches list
 themselves and exit non-zero. No match exits non-zero with nothing on stdout.
@@ -92,7 +92,8 @@ eval "$(talea shell-init)"
 Then `talea cd ek` or `tcd ek` moves your shell to eklavya, or lets you pick
 when several repos match. No program can change the folder of the shell that
 started it, so this is a small function that runs `talea where` and does the
-`cd` itself; every other `talea` command passes through unchanged.
+`cd` itself; every other `talea` command passes through unchanged. PowerShell
+is not covered yet.
 
 ## Cleaning up worktrees
 

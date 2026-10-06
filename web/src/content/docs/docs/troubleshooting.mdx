@@ -27,6 +27,8 @@ It checks Node, git, SSH to GitHub, the API token and the workspace, and exits n
 | A repo is never touched by anything | `ignore: true` in the catalogue | Remove it if another tool no longer owns that checkout |
 | `talea select` prints a summary and exits | No TTY — a pipe, a CI job, a non-interactive session | Use `talea add` and `talea rm` instead |
 | `cd $(talea where thing)` puts you in your home directory | `where` failed and printed nothing, and `cd` with no argument goes home — the shell runs it anyway | Check it: `dest=$(talea where thing) && cd -- "$dest"`. The error on stderr says why the lookup failed |
+| `talea cd thing` prints a path but you stay where you were | No program can change the folder of the shell that started it; `talea cd` needs the shell function | Add `eval "$(talea shell-init)"` to `~/.zshrc` or `~/.bashrc` and open a new terminal. PowerShell is not covered yet — use `talea where` |
+| `tcd: command not found` after adding the line | The rc file has not been re-read, or the installed talea predates `shell-init` | Open a new terminal; `talea --version` should be 0.11.0 or later |
 | A `sync` looks fine but a script treats it as failed | One repo failed. Bulk commands exit non-zero when any repo did | Read the per-repo errors above the summary box |
 | No colour in the output | Not a TTY, or `NO_COLOR` is set | `FORCE_COLOR=1 talea status \| less -R` |
 | Boxes and glyphs render as squares | The terminal font has no glyph for them | They are all BMP characters; a font with reasonable coverage fixes it. `NO_COLOR` does not help — the glyphs are content |
