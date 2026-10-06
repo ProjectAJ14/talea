@@ -47,6 +47,12 @@ every diagnostic to stderr. That does not stop a bare `cd $(talea where typo)`:
 the shell still runs `cd` with no argument, which goes home. Always use the
 checked, quoted form above, and never `cd` to a path it did not print.
 
+A word that is not an exact name is a search over the cloned repos. With no
+terminal — which is how an agent runs it — several matches exit non-zero and
+list them on stderr: run it again with the exact `owner/name` from that list,
+never the first one. `talea cd` and `tcd` are the user's shell function from
+`talea shell-init`, for a person at a terminal; use `talea where` instead.
+
 Outside a workspace it falls back to the ones this machine has. With several
 and no terminal — which is how you run it — it lists them and exits non-zero.
 `cd` into the workspace the user means rather than guessing from the list.

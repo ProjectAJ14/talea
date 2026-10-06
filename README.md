@@ -73,15 +73,27 @@ talea pick some-repo          # keep that one — an unknown name opens the chec
 dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
-`where` prints the path and nothing else, and exits non-zero with nothing on
-stdout for a name it does not know. A plain `cd $(talea where typo)` still runs
-`cd` with no argument after that — which most shells read as "go home" — so
-check it with `&&`, and quote the path for folders with spaces in them. A shell
-function saves the typing:
+`where` prints the path and nothing else. A word that is not a repo name is a
+search over the repos cloned on this machine, by name or folder: one match is the answer, several
+open a list to pick from with the arrow keys and Enter, drawn on stderr so it
+works inside `$( )`. With no terminal to pick on, several matches list
+themselves and exit non-zero. No match exits non-zero with nothing on stdout.
+A plain `cd $(talea where typo)` still runs `cd` with no argument after that —
+which most shells read as "go home" — so check it with `&&`, and quote the path
+for folders with spaces in them.
+
+To go there in one step, add this to `~/.zshrc` or `~/.bashrc` (fish: `talea
+shell-init fish | source` in `config.fish`):
 
 ```sh
-tcd() { local dest; dest=$(talea where "$@") && cd -- "$dest"; }
+eval "$(talea shell-init)"
 ```
+
+Then `talea cd ek` or `tcd ek` moves your shell to eklavya, or lets you pick
+when several repos match. No program can change the folder of the shell that
+started it, so this is a small function that runs `talea where` and does the
+`cd` itself; every other `talea` command passes through unchanged. PowerShell
+is not covered yet.
 
 ## Cleaning up worktrees
 
@@ -283,6 +295,8 @@ at any repo — read one you did not write before you sync it.
 | `talea select` | reopen the checklist — `talea pick <repo>` for one |
 | `talea add` / `talea rm` | change that one repo at a time |
 | `talea where <repo>` | print a repo's path — `dest=$(talea where x) && cd -- "$dest"` |
+| `talea cd <word>` / `tcd <word>` | go to a repo, picking from every match — after `eval "$(talea shell-init)"` |
+| `talea shell-init [zsh\|bash\|fish]` | print the shell function behind `talea cd` and `tcd` |
 | `talea list` | the catalogue |
 | `talea tree` | the folder tree on disk |
 | `talea exec -- <cmd>` | run one command in every repo, arguments as typed; `--shell` for pipes |

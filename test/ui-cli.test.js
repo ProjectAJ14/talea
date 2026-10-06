@@ -131,6 +131,27 @@ describe('main', () => {
     writeFileSync(USER_STATE, '{}');
   });
 
+  test('shell-init is never followed by the update check — it runs in every new shell', async () => {
+    mkdirSync(USER_DIR, { recursive: true });
+    writeFileSync(USER_STATE, JSON.stringify({ autoUpdate: { from: '0.0.1' }, lastCheck: 0 }));
+    delete process.env.TALEA_NO_UPDATE_CHECK;
+    const write = process.stdout.write;
+    let script = '';
+    process.stdout.write = (s, ...rest) => (typeof s === 'string' ? ((script += s), true) : write.call(process.stdout, s, ...rest));
+    try {
+      const r = await run(['shell-init', 'zsh']);
+      process.stdout.write = write;
+      assert.match(script, /function tcd/);
+      assert.doesNotMatch(r.text, /Updated|Updating/);
+      // Untouched: the notice waits for the next real command.
+      assert.equal(JSON.parse(readFileSync(USER_STATE, 'utf8')).autoUpdate.from, '0.0.1');
+    } finally {
+      process.stdout.write = write;
+      process.env.TALEA_NO_UPDATE_CHECK = '1';
+      writeFileSync(USER_STATE, '{}');
+    }
+  });
+
   test('a failing update check cannot fail the command that ran', async () => {
     // A recorded update makes the check print; a console.error that throws
     // makes the check fail. The command still succeeds.

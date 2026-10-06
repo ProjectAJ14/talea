@@ -380,3 +380,78 @@ export function applyNames(rows, names) {
   }
   return { picked: selectedRepos(rows), unknown, refused };
 }
+
+/**
+ * Choose one line from a list. Resolves to its index, or null if cancelled.
+ *
+ * Drawn on stderr, never stdout: this is what `talea cd` shows inside
+ * `$(talea where …)`, where stdout is the path the shell is about to cd into.
+ * The caller must have already confirmed stdin and stderr are terminals.
+ */
+export function pickOne(labels, { title = 'Pick one' } = {}) {
+  return new Promise((resolve, reject) => {
+    const out = process.stderr;
+    let cursor = 0;
+    let top = 0;
+    let painted = 0;
+    const viewport = () => Math.max(3, (out.rows || 24) - 4);
+
+    const draw = () => {
+      const height = viewport();
+      if (cursor < top) top = cursor;
+      if (cursor >= top + height) top = cursor - height + 1;
+      const lines = [c.bold(title), ''];
+      for (let i = top; i < Math.min(labels.length, top + height); i++) {
+        lines.push(i === cursor ? `${c.cyan('❯')} ${c.bold(labels[i])}` : `  ${labels[i]}`);
+      }
+      const more = labels.length - (top + height);
+      lines.push('');
+      lines.push(c.dim(`${glyph.up}${glyph.down} move  enter go  q cancel`) + (more > 0 ? c.cyan(`   +${more} below`) : ''));
+      const width = Math.max(20, out.columns || 80);
+      const clamped = lines.map((line) => truncate(line, width));
+      if (painted) out.write(`${ESC}[${painted}A${ESC}[0J`);
+      out.write(clamped.join('\n') + '\n');
+      painted = clamped.length;
+    };
+
+    const restore = () => {
+      try {
+        process.stdin.setRawMode(false);
+      } catch {
+        // Nothing useful to do while unwinding.
+      }
+    };
+    process.once('exit', restore);
+
+    const finish = (value) => {
+      process.stdin.off('data', onData);
+      process.off('exit', restore);
+      restore();
+      process.stdin.pause();
+      out.write(`${ESC}[${painted}A${ESC}[0J`);
+      resolve(value);
+    };
+
+    const onData = (chunk) => {
+      for (const key of splitKeys(chunk)) {
+        if ([CTRL_C, ESC, 'q'].includes(key)) return finish(null);
+        if (key === '\r' || key === '\n') return finish(cursor);
+        if ([`${ESC}[A`, `${ESC}OA`, 'k'].includes(key)) cursor = Math.max(0, cursor - 1);
+        if ([`${ESC}[B`, `${ESC}OB`, 'j'].includes(key)) cursor = Math.min(labels.length - 1, cursor + 1);
+      }
+      draw();
+    };
+
+    try {
+      process.stdin.setRawMode(true);
+    } catch (err) {
+      process.off('exit', restore);
+      reject(err);
+      return;
+    }
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', onData);
+    draw();
+  });
+}

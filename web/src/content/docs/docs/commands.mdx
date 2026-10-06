@@ -117,9 +117,19 @@ The list is written as `owner/name`, so removing one owner's repo never touches 
 talea where eklavya             # the absolute path, one line, nothing else
 dest=$(talea where eklavya) && cd -- "$dest"
 talea where                     # the workspace root
+talea where ek                  # search the cloned repos: one match, or a list to pick from
 ```
 
-Exits non-zero on an unknown name, with every diagnostic on stderr.
+Exits non-zero when nothing matches, or when several do and there is no terminal to pick on, with every diagnostic on stderr.
+
+### talea shell-init
+
+```bash
+eval "$(talea shell-init)"          # in ~/.zshrc or ~/.bashrc; reads $SHELL
+talea shell-init fish | source      # in ~/.config/fish/config.fish
+```
+
+Prints the shell function that makes `talea cd <word>` and `tcd <word>` move your shell, using `talea where`. Knows zsh, bash and fish; PowerShell is not covered yet.
 
 ### talea list
 
