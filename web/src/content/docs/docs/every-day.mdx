@@ -100,19 +100,27 @@ A **squash merge** reads as `unmerged`: the squashed commit is a new change, not
 talea where eklavya          # the absolute path, one line, nothing else
 dest=$(talea where eklavya) && cd -- "$dest"   # what it is actually for
 talea where                  # the workspace root
+talea where ek               # a search: the one cloned repo with "ek" in its name, or a list to pick from
 ```
 
 The path goes to stdout on its own, so it composes with `cd`, `code`, `open` and anything else that takes a directory. Every diagnostic goes to **stderr**, and an unknown name **exits non-zero** with nothing on stdout. A plain `cd $(talea where typo)` still runs `cd` with nothing after a failed lookup, which most shells read as "go home" — the failure of a `$( )` does not stop the command around it. Check it with `&&`, and quote the path so a folder with a space in it survives.
 
+A word that is not a repo's name is a search over the repos **cloned on this machine**. One match prints its path. Several open a list — arrow keys to move, Enter to go, `q` to cancel — drawn on stderr, so it works inside `$( )`. With no terminal to pick on, several matches are listed on stderr and the command exits non-zero rather than choosing. A match that is in the catalogue but not cloned is named, never offered.
+
+To go there in one step, add one line to your shell's startup file:
+
 ```bash
-tcd() { local dest; dest=$(talea where "$@") && cd -- "$dest"; }   # bash and zsh
+eval "$(talea shell-init)"          # ~/.zshrc or ~/.bashrc
+talea shell-init fish | source      # ~/.config/fish/config.fish
 ```
+
+Then `talea cd ek` and `tcd ek` move your shell, and `tcd` alone goes to the workspace root. No program can change the folder of the shell that started it, so `shell-init` prints a small function that runs `talea where` and does the `cd` itself; every other `talea` command passes straight through. Without it, `talea cd` prints the path and says how to set it up.
 
 ```powershell
 $dest = talea where eklavya; if ($?) { Set-Location -LiteralPath $dest }
 ```
 
-If two owners have a repo of the same name it says so and exits non-zero rather than picking one. Pass `owner/name`. The same is true of `-r` and a bare repo name after `sync`, `clone`, `status`, `list`, `tree` and `prune`: `talea sync app` stops when two owners have an `app`, and `talea sync alice/app` syncs the one.
+If two owners have a repo of the same name it lists both to pick from at a terminal, and with no terminal says so and exits non-zero rather than picking one. Pass `owner/name`. The same is true of `-r` and a bare repo name after `sync`, `clone`, `status`, `list`, `tree` and `prune`: `talea sync app` stops when two owners have an `app`, and `talea sync alice/app` syncs the one.
 
 ### Changing what this machine keeps
 

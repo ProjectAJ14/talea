@@ -10,6 +10,7 @@ import {
   askScope,
   buildTree,
   pickByLine,
+  pickOne,
   pickRepos,
   renderRow,
   splitKeys,
@@ -149,6 +150,74 @@ describe('pickRepos', () => {
       },
     );
     assert.deepEqual(result, []);
+  });
+});
+
+describe('pickOne', () => {
+  /** pickOne draws on stderr; capture it the way withStdin captures stdout. */
+  async function withStderr(props, fn) {
+    const saved = ['rows', 'columns'].map((k) => [k, Object.getOwnPropertyDescriptor(process.stderr, k)]);
+    const write = process.stderr.write;
+    let drawn = '';
+    for (const [k, v] of Object.entries(props)) Object.defineProperty(process.stderr, k, { value: v, configurable: true });
+    process.stderr.write = (s, ...rest) =>
+      typeof s === 'string' ? ((drawn += s), true) : write.call(process.stderr, s, ...rest);
+    try {
+      return { ...(await fn()), err: stripAnsi(drawn) };
+    } finally {
+      process.stderr.write = write;
+      for (const [k, d] of saved) {
+        if (d) Object.defineProperty(process.stderr, k, d);
+        else delete process.stderr[k];
+      }
+    }
+  }
+  const labels = Array.from({ length: 8 }, (_, i) => `repo${i}`);
+
+  test('moves both ways, scrolls past the window and back, and resolves the index', async () => {
+    const modes = [];
+    const { result, err } = await withStderr({ rows: 6, columns: undefined }, () =>
+      withStdin({ raw: (m) => modes.push(m) }, (input) => {
+        const p = pickOne(labels, { title: 'Go' });
+        feed(input, 'jjjj', '\x1b[B\x1bOB', 'kkkkkk', '\x1b[A\x1bOA', 'jj', 'x', '\r');
+        return p;
+      }),
+    );
+    assert.equal(result, 2);
+    assert.deepEqual(modes, [true, false]);
+    assert.match(err, /^Go\n/);
+    assert.match(err, /❯ repo6/);
+    assert.match(err, /\+\d below/);
+    assert.equal(process.listenerCount('exit'), 0);
+  });
+
+  test('Ctrl-C, Escape and q cancel; the bottom is a floor', async () => {
+    for (const key of ['\u0003', '\x1b', 'q']) {
+      const { result } = await withStderr({}, () =>
+        withStdin({}, (input) => {
+          const p = pickOne(['a'], {});
+          feed(input, 'j', key);
+          return p;
+        }),
+      );
+      assert.equal(result, null);
+    }
+  });
+
+  test('a refused raw mode rejects; a failure to leave it is swallowed', async () => {
+    const no = () => {
+      throw new Error('raw mode unsupported');
+    };
+    await withStdin({ raw: no }, () => assert.rejects(pickOne(['a']), /raw mode unsupported/));
+    assert.equal(process.listenerCount('exit'), 0);
+    const { result } = await withStderr({}, () =>
+      withStdin({ raw: (m) => m || no() }, (input) => {
+        const p = pickOne(['a']);
+        feed(input, '\n');
+        return p;
+      }),
+    );
+    assert.equal(result, 0);
   });
 });
 

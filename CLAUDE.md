@@ -92,9 +92,12 @@ while one catalogue repo has it; once two do, neither is kept and the run says
 so on stderr, because guessing would sync a repo nobody chose; `talea add
 <owner>/<name>` or `talea rm <name>` settles it. Ignored and `missing` entries
 do not count as a second owner — neither can be kept. A `-r`, or a name typed
-into `add`, `rm`, `where` or the checklist, that two owners share stops the
+into `add`, `rm` or the checklist, that two owners share stops the
 run; `talea pick` opens the checklist instead, as it does for any name that
-does not pin down one repo.
+does not pin down one repo. `where` (and so `talea cd`) does the same with its
+own one-line picker on stderr — a word that is not an exact name is a search
+over the cloned repos — and with no terminal it stops and lists the matches,
+never picks.
 
 `state.selected` being **absent** and being **empty** mean different things.
 Absent is "never asked" and falls back to the catalogue defaults; empty is "I
@@ -409,6 +412,17 @@ The skill's content is mostly restraint — never `--apply` an unseen adopt, nev
 `--loose`, never call a removal a delete. Those are the same rules as above,
 written for a reader who will act on them without asking. When one of them
 changes here, it changes there.
+
+## `talea cd` is a shell function
+
+No process can change the folder of the shell that started it, so `talea cd`
+and `tcd` exist only once `eval "$(talea shell-init)"` is in the shell's rc
+file: a function that runs `talea where` and does the `cd` itself, passing
+every other command through to the real binary. `where` therefore owns the
+search and the picker, and draws the picker on **stderr** so `$( )` captures
+only the path. Typed without the function, `talea cd` prints the path and says
+how to set it up. The search covers cloned repos only — a pick that cannot be
+cd'd into is a dead end.
 
 ## `exec` runs argv, not a string
 

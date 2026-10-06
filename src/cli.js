@@ -22,6 +22,7 @@ import * as doctor from './commands/doctor.js';
 import * as exec from './commands/exec.js';
 import * as upgrade from './commands/upgrade.js';
 import * as skill from './commands/skill.js';
+import * as shellInit from './commands/shell-init.js';
 import { autoUpdateAsync } from './update.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,7 @@ const COMMANDS = {
   doctor,
   exec,
   skill,
+  'shell-init': shellInit,
   upgrade,
 };
 
@@ -76,7 +78,7 @@ const TAKES_REPOS = new Set(['sync', 'clone', 'status', 'list', 'tree', 'prune']
 // These read their own positionals. Everything else takes none, and a stray
 // word stops the run. `adopt` is left out on purpose: an explicit -r there lifts
 // the name-only guard, and a bare word must not do that by accident.
-const TAKES_WORDS = new Set(['init', 'select', 'add', 'rm', 'manifest', 'exec', 'skill', 'where']);
+const TAKES_WORDS = new Set(['init', 'select', 'add', 'rm', 'manifest', 'exec', 'skill', 'where', 'shell-init']);
 
 /** Fold a command's bare words into -r, pass them through, or refuse them. */
 export function routeWords(key, words, repo) {
@@ -137,6 +139,8 @@ ${c.bold('Commands')}
   ${c.cyan('select')}     reopen the checklist — or ${c.dim('talea pick <repo>')} for one
   ${c.cyan('add')}        keep another repo on this machine (${c.dim('rm')} to drop one)
   ${c.cyan('where')}      print a repo's path — ${c.dim('dest=$(talea where x) && cd -- "$dest"')}
+  ${c.cyan('cd')}         go to a repo, picking from every match — needs ${c.dim('shell-init')}
+  ${c.cyan('shell-init')} print the shell function behind ${c.dim('talea cd')} and ${c.dim('tcd')}
   ${c.cyan('list')}       show the catalogue
   ${c.cyan('tree')}       the folder tree on disk
   ${c.cyan('exec')}       run one command in every repo
@@ -241,6 +245,8 @@ export async function main(argv) {
     // being a near-copy of the same forty lines. `remove` is an alias, so it
     // has already become `rm` by here.
     removing: key === 'rm',
+    // `where` says how to make `talea cd` move the shell when it was typed as `cd`.
+    as: name,
     clone: !values['no-clone'],
     adopt: !values['no-adopt'],
     archived: !values['no-archived'],

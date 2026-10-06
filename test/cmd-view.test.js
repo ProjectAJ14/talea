@@ -6,6 +6,7 @@ import test, { describe, before, after } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
+import { PassThrough } from 'node:stream';
 import path from 'node:path';
 import { stripVTControlCharacters as strip } from 'node:util';
 
@@ -45,6 +46,34 @@ async function capture(fn) {
     [process.stdout.write, process.stderr.write, process.exit] = saved;
   }
   return { out: strip(out.join('')), err: strip(err.join('')), code };
+}
+
+/** `capture`, with stdin and stderr made terminals and `keys` typed into stdin. */
+async function atTerminal(keys, fn, { raw = true } = {}) {
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.setRawMode = () => {
+    if (!raw) throw new Error('no raw mode');
+  };
+  const stdinDesc = Object.getOwnPropertyDescriptor(process, 'stdin');
+  const errDesc = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+  Object.defineProperty(process, 'stdin', { value: input, configurable: true });
+  Object.defineProperty(process.stderr, 'isTTY', { value: true, configurable: true });
+  const typing = (async () => {
+    for (const k of keys) {
+      await new Promise((r) => setTimeout(r, 5));
+      input.write(k);
+    }
+  })();
+  try {
+    const result = await capture(fn);
+    await typing;
+    return result;
+  } finally {
+    Object.defineProperty(process, 'stdin', stdinDesc);
+    if (errDesc) Object.defineProperty(process.stderr, 'isTTY', errDesc);
+    else delete process.stderr.isTTY;
+  }
 }
 
 let tmp;
@@ -249,18 +278,70 @@ describe('where', () => {
     assert.equal(code, 1);
   });
 
-  test('a typo fails on stderr, with suggestions when there are some', async () => {
+  test('a typo fails on stderr, naming catalogue repos that are not cloned', async () => {
     const none = await capture(() => where.run({}, ['zzz']));
     assert.equal(none.out, '');
     assert.equal(none.code, 1);
-    assert.doesNotMatch(none.err, /Did you mean/);
-    const near = await capture(() => where.run({}, ['lph']));
+    assert.doesNotMatch(none.err, /not cloned/);
+    const near = await capture(() => where.run({}, ['elt']));
     assert.equal(near.out, '');
-    assert.match(near.err, /Did you mean: alpha/);
+    assert.match(near.err, /No repo matching "elt" on this machine/);
+    assert.match(near.err, /In the catalogue but not cloned: delta/);
     assert.equal(near.code, 1);
   });
 
-  test('two owners with one name is ambiguous, never a pick', async () => {
+  test('one cloned repo containing the word is the answer', async () => {
+    const { out, code } = await capture(() => where.run({}, ['lph']));
+    assert.equal(out, `${path.join(root, 'work', 'mine', 'alpha')}\n`);
+    assert.equal(code, undefined);
+    // With a slash the owner counts too.
+    assert.equal((await capture(() => where.run({}, ['me/alp']))).out, `${path.join(root, 'work', 'mine', 'alpha')}\n`);
+  });
+
+  test('several matches with no terminal stop and list them, prefix first', async () => {
+    const { out, err, code } = await capture(() => where.run({}, ['l']));
+    assert.equal(out, '');
+    assert.match(err, /"l" matches 2 repos/);
+    assert.ok(err.indexOf('loose') < err.indexOf('alpha'));
+    assert.equal(code, 1);
+    // Two prefix matches fall back to alphabetical.
+    const b = await capture(() => where.run({}, ['b']));
+    assert.ok(b.err.indexOf('beta') < b.err.indexOf('broken'));
+  });
+
+  test('several matches at a terminal open the picker on stderr', async () => {
+    const pick = await atTerminal(['j', '\r'], () => where.run({}, ['l']));
+    assert.equal(pick.out, `${path.join(root, 'work', 'mine', 'alpha')}\n`);
+    assert.match(pick.err, /2 repos match "l"/);
+    const cancel = await atTerminal(['q'], () => where.run({}, ['l']));
+    assert.equal(cancel.out, '');
+    assert.equal(cancel.code, 1);
+    // An exact name two owners share is picked from too, not refused.
+    const dup = await atTerminal(['\r'], () => where.run({}, ['dup']));
+    assert.match(dup.out, /dup\n$/);
+    assert.match(dup.err, /Not cloned yet/);
+  });
+
+  test('a console with no raw mode falls back to the list', async () => {
+    const { out, err, code } = await atTerminal([], () => where.run({}, ['l']), { raw: false });
+    assert.equal(out, '');
+    assert.match(err, /matches 2 repos/);
+    assert.equal(code, 1);
+  });
+
+  test('talea cd typed at a terminal says how to make it move the shell', async () => {
+    const saved = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    try {
+      assert.match((await capture(() => where.run({ as: 'cd' }, ['alpha']))).err, /talea shell-init/);
+      assert.doesNotMatch((await capture(() => where.run({ as: 'where' }, ['alpha']))).err, /shell-init/);
+    } finally {
+      if (saved) Object.defineProperty(process.stdout, 'isTTY', saved);
+      else delete process.stdout.isTTY;
+    }
+  });
+
+  test('two owners with one name, and no terminal, is ambiguous, never a pick', async () => {
     const { out, err, code } = await capture(() => where.run({}, ['dup']));
     assert.equal(out, '');
     assert.match(err, /ambiguous — 2 repos/);
