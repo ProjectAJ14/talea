@@ -202,9 +202,16 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    repo moved by hand), as a `<repo>-worktrees/feat-x` left behind is. Counted
    as a failure, it failed every sync forever (found in review). Decided with
    the developer: it is **warned about, not failed** — named, said to be a
-   worktree its repo has forgotten, with the fix (delete the folder, or `git
-   worktree repair <path>` from the repo if it still exists) — and it touches
-   neither the exit code nor the counts, and holds nothing back from cloning.
+   worktree its repo has forgotten, with the fix — and it touches neither the
+   exit code nor the failure count, and holds nothing back from cloning. One
+   sitting at a repo's own catalogue path is not fetched either: sync counts
+   that repo skipped, as clone counts it already there (fetching it failed
+   every run, found in review). The fix printed is the one that works. `git
+   worktree repair` cannot bring back a deleted record — it exits 1, "unable
+   to locate repository" — but deleting the record never deletes the branch,
+   so: save what is needed from the folder, delete it, and `git worktree add
+   <path> <branch>` from the repo. `repair` is printed only for the other
+   cause, a repo moved by hand, where its record still exists and it works.
    It is told by reading the `.git` file, never by parsing git's wording.
 
 4. **`ignore: true` means another tool owns that checkout.** No command touches
@@ -440,8 +447,13 @@ folders, branches and sort `talea tree` prints, laid out by one function,
 pictures. Each repo is placed by `repoPlace()` in `src/config.js` — its folder
 on disk, a nested `dir` like `tools/cli` keeping its `tools/` level — not by
 its catalogue name: the board once showed one and the tree the other (found in
-review). A resize that leaves a full frame on screen counts its settled lines
-as printed, so neither the rolling footer nor a regrown frame repeats them. The top level sits flush left because the heading above already names
+review). On a resize the block still fits, the next frame climbs over it and
+redraws in place. One now taller than the window cannot be climbed, so it is
+left on screen and every line it showed in its final state — a folder, a
+settled row, even one below a row still running — is remembered and never
+printed or drawn again; forgetting the frame appended a second copy, and
+counting only the settled run from the top reprinted the rest (both found in
+review). The top level sits flush left because the heading above already names
 the root. There are deliberately two renderings and one row formatter: on a
 terminal the tree is redrawn in place; off one, or when the tree is taller than
 the window, each tree line prints once, top to bottom, as soon as every row

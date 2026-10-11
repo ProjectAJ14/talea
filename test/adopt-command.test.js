@@ -530,9 +530,35 @@ describe('a worktree its repo no longer knows', () => {
       const { text, exitCode } = await capture(ws, go);
       assert.equal(exitCode, 0, text);
       assert.match(text, /feat-x left alone — a worktree whose repo no longer knows it/);
-      assert.match(text, /git worktree repair '[^']*feat-x'/);
+      // `worktree repair` cannot bring back a deleted record (git exits 1,
+      // "unable to locate repository"); making the worktree again can.
+      assert.match(text, /its branch is still in the repo: save what you need from the folder, delete it/);
+      assert.match(text, /git worktree add '[^']*feat-x' <branch>/);
+      assert.match(text, /moved by hand instead, run in it: {2}git worktree repair '[^']*feat-x'/);
       assert.doesNotMatch(text, /would not open|failed/);
     }
+    assert.equal(existsSync(path.join(wt, '.git')), true, 'and nothing deleted it');
+  });
+
+  test('at a repo\'s own catalogue path, sync warns, fetches nothing and fails nothing', async () => {
+    // isRepo saw its .git file, so sync fetched it: 128, failed, exit 1 on
+    // every run (found in review).
+    const ws = workspace('ws-orphan-at-path', [{ name: 'own', owner: 'me', url: origin('own') }], { selected: ['me/own'] });
+    const repo = clone('own', path.join(tmp, 'outside', 'own'));
+    const wt = path.join(ws, 'me', 'own');
+    git(['worktree', 'add', '-q', '-b', 'feat-y', wt], repo);
+    rmSync(path.join(repo, '.git', 'worktrees', 'own'), { recursive: true });
+    for (const opts of [{ jobs: 1 }, { jobs: 1, adopt: false }]) {
+      const { text, exitCode } = await capture(ws, () => syncCmd.run(opts));
+      assert.equal(exitCode, 0, text);
+      assert.match(text, /own left alone — a worktree whose repo no longer knows it/);
+      assert.match(text, /1 skipped/);
+      assert.doesNotMatch(text, /fetch failed|failed|ALL CLEAR/);
+    }
+    // clone treats it the same: skipped as already there, nothing cloned beside it.
+    const cloned = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(cloned.exitCode, 0, cloned.text);
+    assert.doesNotMatch(cloned.text, /failed/);
     assert.equal(existsSync(path.join(wt, '.git')), true, 'and nothing deleted it');
   });
 });

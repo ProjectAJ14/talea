@@ -28,6 +28,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -752,10 +753,12 @@ export function renameRetrying(from, to, budgetMs = RENAME_BUDGET_MS, wait = 100
     // only, is harmless — git restarts it on demand — and a git without the
     // command just says so.
     // Atomics.wait blocks the event loop, so no spinner can turn — one line
-    // says why the run has gone still (rule 14).
+    // says why the run has gone still (rule 14). Written with writeSync:
+    // process.stderr to a Windows terminal is asynchronous, so a queued line
+    // would not show until the wait it explains was over.
     if (wait === 100) {
       gitSync(['fsmonitor--daemon', 'stop'], from);
-      process.stderr.write(`  waiting for Windows to release ${from} …\n`);
+      writeSync(2, `  waiting for Windows to release ${from} …\n`);
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
     return renameRetrying(from, to, budgetMs - wait, Math.min(wait * 2, 1000));

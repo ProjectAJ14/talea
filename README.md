@@ -239,10 +239,13 @@ left out quietly.
 
 A linked worktree whose repo no longer knows it — its folder left behind after
 the repo pruned its record, or after the repo was moved by hand — is named as
-one with the fix: delete the folder once nothing in it is needed, or, if the
-repo still exists, run the printed `git worktree repair '<folder>'` in it. It is
-a warning: the run does not fail over it, and it holds nothing back from
-cloning.
+one with the fix. Its branch is still in the repo, so save what you need from
+the folder, delete it, and run the printed `git worktree add '<folder>'
+<branch>` in the repo if you still want it. If the repo was moved by hand
+instead, the printed `git worktree repair '<folder>'`, run in the repo, relinks
+it. It is a warning: the run does not fail over it, and it holds nothing back
+from cloning. One sitting where a catalogue repo belongs is not fetched — that
+repo is counted skipped until the folder is dealt with.
 
 If the same repo turns up twice, the copy at the catalogue path wins and the
 other moves into `.talea-duplicates/` with everything in it. **Nothing is ever

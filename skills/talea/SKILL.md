@@ -133,9 +133,11 @@ call. Show them the line and let them decide.
 
 A folder "left alone — a worktree whose repo no longer knows it" is a warning,
 not a failure. **Do not delete it for the developer**, even though deleting is
-one of the printed fixes: it may hold uncommitted work. Show them the line;
-`git worktree repair` from the repo is the safe one to suggest when the repo
-still exists.
+part of the printed fix: it may hold uncommitted work. Show them the lines and
+let them save what they need first. Do not suggest `git worktree repair` for it
+unless the repo was moved by hand — with the record gone it fails with "unable
+to locate repository"; the branch survives, so `git worktree add <path>
+<branch>` from the repo makes it again once the folder is gone.
 
 If a move reports worktrees that "could not be re-linked", the repo has moved
 and nothing is lost. Show the developer git's reason line; once its cause is

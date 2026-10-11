@@ -80,10 +80,13 @@ and the run exits non-zero. `clone` and `sync` clone nothing for a repo whose fo
 A linked worktree whose repo no longer knows it — left behind after the repo pruned its record, or after the repo was moved by hand — is not a refusal either. It is named as one, with the fix:
 
 ```bash
-git worktree repair '/path/to/app-worktrees/feat-x'   # run inside the repo, if it still exists
+# its branch is still in the repo: save what you need from the folder, delete it, then in the repo
+git worktree add '/path/to/app-worktrees/feat-x' <branch>
+# if the repo was moved by hand instead, run in it
+git worktree repair '/path/to/app-worktrees/feat-x'
 ```
 
-or delete the folder once nothing in it is needed. It is a warning only: the run does not fail over it, and it holds nothing back from cloning.
+`git worktree repair` cannot bring back a record the repo deleted — it fails with "unable to locate repository" — which is why the first fix makes the worktree again instead. It is a warning only: the run does not fail over it, and it holds nothing back from cloning. One sitting where a catalogue repo belongs is not fetched by `sync`; that repo counts as skipped until the folder is dealt with.
 
 ### Paths are repaired afterwards
 

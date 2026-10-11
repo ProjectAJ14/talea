@@ -12,10 +12,12 @@ import {
   isMissingRemote,
   pooled,
 } from '../git.js';
+import { orphanedWorktree } from '../adopt.js';
 import { board } from '../live.js';
 import { c, context, glyph, heading, plain, summary, verdict, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
 import { requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
+import { reportOrphans } from './adopt.js';
 import { adoptInPlace, cloneMissing, writeDocs } from './clone.js';
 import { formatBytes, planRepo, REMOVABLE } from './prune.js';
 
@@ -62,7 +64,8 @@ workspace through a symlink is refused — link the whole workspace, not a group
 
 It never clones beside a checkout git will not open: that checkout is named with
 its fix, the repo sharing its folder name is held back, and the run fails. A
-worktree whose repo no longer knows it is only warned about.
+worktree whose repo no longer knows it is only warned about; one sitting where a
+repo belongs is not fetched, and that repo is counted skipped.
 
 Worktrees are checked on the way through. When some are merged or unused, one
 line at the end says how many and how much space ${c.dim('talea prune --apply')} would
@@ -88,10 +91,10 @@ export async function run(opts) {
 
   // Adopt before cloning, never after: a repo already on disk must be moved
   // into place, not cloned a second time beside the work in it.
-  const adoption =
-    opts.adopt === false || opts.clone === false
-      ? { skip: new Map(), broken: 0, held: new Set() }
-      : await adoptInPlace({ manifest, root, state, repos, opts });
+  const adopting = opts.adopt !== false && opts.clone !== false;
+  const adoption = adopting
+    ? await adoptInPlace({ manifest, root, state, repos, opts })
+    : { skip: new Map(), broken: 0, held: new Set() };
 
   // Before the network work, not after: the group doc explains what is about to
   // land in the folder, and it must also appear on a re-run where nothing is
@@ -102,7 +105,14 @@ export async function run(opts) {
   const missing = entries.filter((e) => !e.cloned && !adoption.skip.has(repoId(e.repo)));
   // A checkout held because git would not open it is already a failure; a
   // fetch would only fail it again.
-  const present = entries.filter((e) => e.cloned && !adoption.held.has(repoId(e.repo)));
+  // A worktree its repo forgot, sitting at a repo's own path, has nothing to
+  // fetch: git exits 128 on it every run. Warned, never failed — the adoption
+  // pass already named it; without one it is named here.
+  const forgotten = entries.filter((e) => e.cloned && orphanedWorktree(e.dir));
+  if (!adopting) reportOrphans(forgotten);
+  const present = entries.filter(
+    (e) => e.cloned && !adoption.held.has(repoId(e.repo)) && !forgotten.includes(e),
+  );
 
   heading(`Syncing ${root}`);
   context([
@@ -116,7 +126,7 @@ export async function run(opts) {
   // not a skip: the run has to say so, not read as partly done.
   const counts = {
     ok: 0,
-    skipped: adoption.skip.size - adoption.held.size,
+    skipped: adoption.skip.size - adoption.held.size + forgotten.length,
     failed: adoption.broken + adoption.held.size,
     okLabel: 'synced',
   };

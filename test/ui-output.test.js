@@ -236,6 +236,57 @@ describe('board, live', () => {
     });
   });
 
+  test('a resize the block still fits is redrawn in place, not appended below', async () => {
+    await withProps(process.stdout, { rows: 40 }, async () => {
+      const got = await capture(() => {
+        const b = board(items(3), { live: true });
+        process.stdout.rows = undefined; // unknown reads as 24: still fits
+        process.stdout.emit('resize');
+        process.stdout.write('MARK');
+        b.stop();
+      });
+      // Five tree lines, a blank and the counter: the next draw climbs over all
+      // seven. Forgetting them drew the tree a second time below (found in review).
+      assert.ok(got.stdout.split('MARK')[1].startsWith('\x1b[7A'), JSON.stringify(got.stdout.split('MARK')[1].slice(0, 12)));
+      assert.deepEqual(got.log, []);
+    });
+  });
+
+  test('a settled row a stale frame showed below a pending one is never printed again', async () => {
+    await withProps(process.stdout, { rows: 40 }, async () => {
+      const one = (i) => ({ id: i, group: 'g', label: `repo${i}` });
+      const got = await capture(() => {
+        const b = board([one(0), one(1), one(2)], { live: true });
+        b.set(0, 'busy');
+        b.set(1, 'ok');
+        process.stdout.rows = 5; // the full frame stays on screen, now a footer
+        process.stdout.emit('resize');
+        b.set(0, 'ok');
+        b.set(2, 'ok');
+        b.stop();
+      });
+      assert.match(stripAnsi(got.stdout), /repo1/, 'the stale frame showed it');
+      // repo1 sat past the first unsettled row, so it was printed again with
+      // repo0 (found in review).
+      assert.deepEqual(got.log, ['├─ ▣ repo0', '└─ ▣ repo2']);
+    });
+  });
+
+  test('a footer taller than the window is forgotten, and none of it counts as shown', async () => {
+    await withProps(process.stdout, { rows: 4 }, async () => {
+      const got = await capture(async () => {
+        const b = board(items(4), { live: true });
+        for (const i of [0, 1, 2, 3]) b.set(i, 'busy');
+        await sleep(100); // a frame: four busy rows, a blank, the counter
+        process.stdout.emit('resize');
+        for (const i of [0, 1, 2, 3]) b.set(i, 'ok');
+        b.stop();
+      });
+      // The footer showed only rows in flight, so the whole tree still prints.
+      assert.match(got.log.join('\n'), /^g0\/\n├─ ▣ repo0[^]*g1\/[^]*repo3$/);
+    });
+  });
+
   test('a window that grows back draws only what the footer has not printed', async () => {
     await withProps(process.stdout, { rows: 5 }, async () => {
       const got = await capture(() => {

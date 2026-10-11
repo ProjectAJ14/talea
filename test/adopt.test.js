@@ -683,15 +683,12 @@ describe('Windows file locks', () => {
   test('a transient lock is waited out, stopping git\'s fsmonitor daemon once', async () => {
     const { dir } = makeRepo('held');
     const to = path.join(fresh(), 'held');
+    // Captured at fs.writeSync, not process.stderr: a stderr write to a Windows
+    // terminal is asynchronous and would not show before Atomics.wait blocks.
     const said = [];
-    const write = process.stderr.write;
-    process.stderr.write = (chunk) => (said.push(String(chunk)), true);
-    let calls;
-    try {
-      ({ calls } = await gitCalls(() => flaky(2)(() => onPlatform('win32', () => A.renameRetrying(dir, to)))));
-    } finally {
-      process.stderr.write = write;
-    }
+    const { calls } = await stubbed(fs, 'writeSync', (orig) => (fd, chunk, ...rest) =>
+      fd === 2 ? (said.push(String(chunk)), String(chunk).length) : orig(fd, chunk, ...rest),
+    () => gitCalls(() => flaky(2)(() => onPlatform('win32', () => A.renameRetrying(dir, to)))));
     assert.equal(existsSync(path.join(to, '.git')), true, 'the repo must arrive');
     assert.deepEqual(calls.filter((c) => c === 'fsmonitor--daemon stop'), ['fsmonitor--daemon stop']);
     // Atomics.wait blocks for up to five seconds; it was silent (rule 14, found in review).

@@ -65,10 +65,15 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
       .map((l) => visibleWidth(l.prefix) + Math.min(visibleWidth(l.item.name), LABEL_MAX)),
   );
 
-  // How far down the tree has been printed for good — piped, above the rolling
-  // footer, or in a full frame a resize left behind. A line goes out only once
-  // every row above it has settled, so the printed tree is never out of order.
+  // How far down the tree has been printed for good — piped, or above the
+  // rolling footer. A line goes out only once every row above it has settled,
+  // so the printed tree is never out of order.
   let printed = 0;
+  // Lines a full frame showed in their final state before a resize left it on
+  // screen. They are skipped wherever they come up again: a settled row below
+  // a pending one is not past `printed`, and printing it later repeated it
+  // (found in review).
+  const shown = new Set();
 
   // The tree, a blank line and the counter. When that does not fit the window,
   // `ansi.up()` would address a region that has already scrolled and tear the
@@ -106,7 +111,7 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
       if (item && !all && !SETTLED.has(item.status)) break;
       printed++;
     }
-    return tree.slice(start, printed);
+    return tree.slice(start, printed).filter((l) => !shown.has(l));
   };
 
   const lines = () => {
@@ -114,7 +119,7 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
     if (full) {
       // Not the lines already out for good: after a stretch in the rolling
       // footer they are on screen above, and drawing them again repeats them.
-      for (const l of tree.slice(printed)) body.push(treeLine(l));
+      for (const l of tree.slice(printed)) if (!shown.has(l)) body.push(treeLine(l));
     } else {
       // Only what is still moving, so the footer stays a fixed handful of lines
       // however many repos are queued behind it.
@@ -170,16 +175,19 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
     draw();
   };
 
-  // A window the board once fitted can stop fitting mid-run. Redrawing a block
-  // taller than the window makes `ansi.up()` address rows that have already
-  // scrolled off, which tears the screen — exactly what `full` exists to avoid —
-  // so re-decide on resize and forget the frame that is no longer up there.
-  // A forgotten full frame stays on screen, so its settled lines count as
-  // printed: the next block — rolling or full — starts below them instead of
-  // repeating them from the top (found in review).
+  // A window the board once fitted can stop fitting mid-run, so re-decide on
+  // resize. While the block on screen still fits the window, the next draw
+  // climbs over it and redraws in place; forgetting it there appended a second
+  // copy below (found in review). A block taller than the window cannot be
+  // climbed — `ansi.up()` would address rows already scrolled off and tear the
+  // screen — so it is left where it is, and what it showed in its final state
+  // is never printed again.
   const onResize = () => {
-    if (full) ready();
+    const was = full;
     full = fits();
+    if (drawn <= (process.stdout.rows || 24) - 1) return;
+    // A footer shows only rows in flight, which are not final.
+    if (was) for (const l of tree.slice(printed)) if (!l.item || SETTLED.has(l.item.status)) shown.add(l);
     drawn = 0;
   };
 

@@ -145,8 +145,12 @@ export function reportOrphans(orphans) {
   plain('');
   for (const o of orphans) {
     warn(`${c.bold(shorten(o.dir))} left alone — a worktree whose repo no longer knows it`);
-    plain(c.dim(`    delete the folder once nothing in it is needed, or, if the repo still exists, run in the repo:`));
-    plain(c.dim(`      git worktree repair ${quoted(o.dir)}`));
+    // `worktree repair` cannot bring back a deleted record — it exits 1,
+    // "unable to locate repository" — but deleting the record never deletes
+    // the branch, so the worktree can be made again.
+    plain(c.dim(`    its branch is still in the repo: save what you need from the folder, delete it, then in the repo:`));
+    plain(c.dim(`      git worktree add ${quoted(o.dir)} <branch>`));
+    plain(c.dim(`    if the repo was moved by hand instead, run in it:  git worktree repair ${quoted(o.dir)}`));
   }
 }
 
