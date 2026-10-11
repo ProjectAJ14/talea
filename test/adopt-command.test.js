@@ -15,7 +15,7 @@ import path from 'node:path';
 
 const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'talea-adoptcmd-home-')));
 process.env.HOME = process.env.USERPROFILE = home;
-const { run, applyMoves, refixPaths, parseFromPaths } = await import('../src/commands/adopt.js');
+const { run, applyMoves, refixPaths, parseFromPaths, quoted } = await import('../src/commands/adopt.js');
 const { claudeSlug, DUPLICATES_DIR } = await import('../src/adopt.js');
 const cloneCmd = await import('../src/commands/clone.js');
 const syncCmd = await import('../src/commands/sync.js');
@@ -454,7 +454,7 @@ describe('a checkout git will not open', () => {
     const { text, exitCode } = await dubious(() => capture(ws, () => run({})));
     assert.equal(exitCode, 1, 'a checkout git will not open must fail the run');
     assert.match(text, /stray[\\/]own left alone — git would not open it\n\s+git: fatal: detected dubious ownership/);
-    assert.match(text, /if it is yours:\s+git config --global --add safe\.directory "[^"]*stray\/own"/);
+    assert.match(text, /if it is yours:\s+git config --global --add safe\.directory '[^']*stray\/own'/);
     assert.match(text, /Nothing else to adopt\./);
     assert.equal(existsSync(path.join(stray, '.git')), true, 'and it is left exactly where it is');
   });
@@ -522,12 +522,24 @@ describe('printed commands on Windows', () => {
       return { text, ws };
     };
     const win = await run2('win32', 'ws-pwsh');
-    assert.match(win.text, /Remove-Item -Recurse -Force "[^"]*\.talea-duplicates"/);
-    assert.match(win.text, /Get-ChildItem "[^"]+","\$HOME" -Recurse -File .*Select-String -SimpleMatch -List "[^"]*a[\\/]pw"/);
+    assert.match(win.text, /Remove-Item -Recurse -Force '[^']*\.talea-duplicates'/);
+    assert.match(win.text, /Get-ChildItem '[^']+',"\$HOME" -Recurse -File .*Select-String -SimpleMatch -List '[^']*a[\\/]pw'/);
     assert.doesNotMatch(win.text, /rm -rf|grep -rl/);
     const posix = await run2('linux', 'ws-sh');
-    assert.match(posix.text, /rm -rf "[^"]*\.talea-duplicates"/);
-    assert.match(posix.text, /grep -rl "[^"]*a[\\/]pw" "[^"]+" ~ 2>\/dev\/null/);
+    assert.match(posix.text, /rm -rf '[^']*\.talea-duplicates'/);
+    assert.match(posix.text, /grep -rlF -- '[^']*a[\\/]pw' '[^']+' ~ 2>\/dev\/null/);
+  });
+});
+
+describe('quoted', () => {
+  // A folder name is whatever was on disk, and the line is pasted into a shell:
+  // \`$(…)\`, a stray quote or a curly one must stay part of the name.
+  const nasty = "/tmp/a$(touch pwned)'b\u2019c\"d";
+  test('sh reads it back as the one word it was', { skip: process.platform === 'win32' }, () => {
+    assert.equal(execFileSync('sh', ['-c', `printf %s ${quoted(nasty, 'linux')}`], { encoding: 'utf8' }), nasty);
+  });
+  test('PowerShell gets single quotes with every single-quote character doubled', () => {
+    assert.equal(quoted(nasty, 'win32'), "'/tmp/a$(touch pwned)''b\u2019\u2019c\"d'");
   });
 });
 

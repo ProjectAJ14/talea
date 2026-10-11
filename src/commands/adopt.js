@@ -100,6 +100,18 @@ export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
 }
 
 /**
+ * Quote a path for a command the developer will paste, so a folder named
+ * `x$(…)` or `a"; rm …` is a name and not a command: single quotes in both
+ * shells, since both expand inside double ones. PowerShell also reads the
+ * curly quotes as quotes, so those are doubled too.
+ */
+export function quoted(p, platform = process.platform) {
+  return platform === 'win32'
+    ? `'${p.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`
+    : `'${p.replaceAll("'", "'\\''")}'`;
+}
+
+/**
  * Name every checkout git refused to open, and fail the run. Without its origin
  * there is no telling which repo it is, so it cannot be moved — but saying
  * nothing reads as "you have no copy", and the developer gets a second one.
@@ -110,7 +122,7 @@ export function reportUnreadable(unreadable) {
   for (const u of unreadable) {
     warn(`${c.bold(shorten(u.dir))} left alone — git would not open it\n    ${c.dim(`git: ${u.error}`)}`);
     if (/dubious ownership/i.test(u.error)) {
-      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory "${u.dir.split('\\').join('/')}"`));
+      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory ${quoted(u.dir.split('\\').join('/'))}`));
     }
   }
   process.exitCode = 1;
@@ -559,7 +571,7 @@ export async function run(opts) {
     );
     plain(c.dim(`  Review them, then remove the folder yourself when you are happy:`));
     const parkedDir = path.join(root, DUPLICATES_DIR);
-    plain(c.dim(`    ${process.platform === 'win32' ? `Remove-Item -Recurse -Force "${parkedDir}"` : `rm -rf "${parkedDir}"`}`));
+    plain(c.dim(`    ${process.platform === 'win32' ? `Remove-Item -Recurse -Force ${quoted(parkedDir)}` : `rm -rf ${quoted(parkedDir)}`}`));
   }
 
   await reportLeftovers(root, applied);
@@ -580,8 +592,8 @@ export async function run(opts) {
     plain(
       c.dim(
         process.platform === 'win32'
-          ? `  Get-ChildItem "${root}","$HOME" -Recurse -File -ErrorAction SilentlyContinue | Select-String -SimpleMatch -List "${from}" | Select-Object Path`
-          : `  grep -rl "${from}" "${root}" ~ 2>/dev/null`,
+          ? `  Get-ChildItem ${quoted(root)},"$HOME" -Recurse -File -ErrorAction SilentlyContinue | Select-String -SimpleMatch -List ${quoted(from)} | Select-Object Path`
+          : `  grep -rlF -- ${quoted(from)} ${quoted(root)} ~ 2>/dev/null`,
       ),
     );
   }

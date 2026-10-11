@@ -211,7 +211,7 @@ machine.
 A checkout git refuses to open — on Windows usually *dubious ownership*, a
 folder cloned from an admin shell, another account or WSL — has no remote to
 match on, so it cannot be moved. It is named with git's reason and, for
-ownership, the `git config --global --add safe.directory "<folder>"` command to
+ownership, the `git config --global --add safe.directory '<folder>'` command to
 run if it really is yours; the run exits non-zero. `clone` and `sync` clone
 nothing for a repo whose folder name it shares, so no second copy lands beside
 it. A repo with no `origin` at all is a local-only repo, not a refusal, and is

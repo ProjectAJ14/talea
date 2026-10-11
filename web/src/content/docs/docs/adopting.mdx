@@ -72,7 +72,7 @@ An **empty** folder at the destination does not count as occupied. It is removed
 A checkout git refuses to open — on Windows usually *dubious ownership*: cloned from an admin shell, another account or WSL — has no remote to match on, so it is never moved. It is named with git's own reason and, for ownership, the command to run if it really is yours:
 
 ```bash
-git config --global --add safe.directory "C:/src/the-folder"
+git config --global --add safe.directory 'C:/src/the-folder'
 ```
 
 and the run exits non-zero. `clone` and `sync` clone nothing for a repo whose folder name it shares, so no second copy lands beside it. A repo with no `origin` at all is local-only, not refused, and is left out quietly.
