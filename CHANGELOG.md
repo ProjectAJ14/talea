@@ -4,6 +4,18 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-11
+
+### Added
+- **sync**: draw the live board as the workspace tree
+- **sync**: report worktrees prune could clear
+
+### Fixed
+- **adopt,sync**: close what the final review of the port found
+- **adopt,sync**: close the gaps a review of the port found
+- **adopt**: single-quote paths in the commands it prints
+- **adopt**: name a checkout git refuses to open, and survive Windows locks
+
 ## [0.11.0] - 2026-10-06
 
 ### Added
