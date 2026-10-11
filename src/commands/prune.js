@@ -319,7 +319,7 @@ export function formatBytes(n) {
 }
 
 // Removed by --apply. Everything else is kept.
-const REMOVABLE = new Set(['merged', 'unused']);
+export const REMOVABLE = new Set(['merged', 'unused']);
 // How long a branch with no commits counts as a task just started.
 const FRESH_FOR = 24 * 3600;
 
@@ -416,9 +416,11 @@ async function isMerged(repoDir, head, base) {
  * branch. `{ skip }` or `{ fail }` for a repo that cannot be judged, otherwise
  * `{ base, worktrees: [{ path, branch, verdict, age, stale, lockReason, size, lossy, held }] }`.
  * `withIgnored` lets a merged worktree go even with lossy ignored files in it;
- * `now` is the clock `fresh` is measured against.
+ * `now` is the clock `fresh` is measured against. `fetch: false` judges against
+ * whatever origin already says — for `sync`, which has just fetched this repo,
+ * where a second fetch would race the first for git's ref locks.
  */
-export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.now() } = {}) {
+export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.now(), fetch: refresh = true } = {}) {
   const listed = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
   if (listed.code !== 0) return { fail: `git worktree list failed: ${listed.stderr}` };
   // The first record is the main checkout. It is the repo, and never a candidate.
@@ -431,7 +433,7 @@ export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.
   // would have every worktree cut from develop called unmerged — or worse.
   if (!home) return { skip: 'no default branch recorded — run `talea discover`' };
 
-  const fetched = await fetch(dir);
+  const fetched = refresh ? await fetch(dir) : { code: 0 };
   if (fetched.code !== 0) {
     return { fail: `fetch failed: ${fetched.stderr.split('\n').pop() || 'unknown error'}` };
   }

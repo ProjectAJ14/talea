@@ -31,6 +31,8 @@ talea sync --no-clone        # fast-forward only, clone nothing
 talea sync --no-adopt        # skip the existing-checkout scan
 ```
 
+When some of your worktrees are merged or unused, `sync` ends with one amber line: how many, and how much space `talea prune --apply` would free. It is a hint, not a verdict — it changes neither the exit code nor `ALL CLEAR` — and it removes nothing; `prune` is still where you see the plan and decide.
+
 `talea clone` is the first half on its own — clone what is missing and never fetch or merge. It is what you want on a slow connection.
 
 ### `talea status`

@@ -376,6 +376,19 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    at a time, so a 100,000-file `node_modules` or two 1 GB files cost a
    bounded amount of memory, times the repo pool.
 
+   **`sync` reports what prune could clear, and clears nothing.** Nobody runs
+   `prune` to find out; everybody runs `sync`. So each repo's sync job runs
+   `planRepo(…, { fetch: false })` right after its own fetch — a second fetch
+   in the same repo would race the first for git's ref locks — inside the
+   board, with the row saying `checking worktrees …` while the walk sizes them
+   (rule 14). The run ends with one amber line, after the verdict, and the line
+   never touches the exit code or ALL CLEAR. A repo whose fetch failed is not
+   judged (its origin is stale), and a `{ skip }` or `{ fail }` plan adds
+   nothing — `prune` is where those are reported. A *throw* from the planner is
+   not caught: the planner returns every expected failure as a value and `git()`
+   never throws, so a throw is a bug, and sync treats it as it treats one in any
+   other per-repo call. Swallowing it (as baylor's port does) would hide it.
+
 14. **Nothing slow is silent.** Anything that can take longer than a blink — a
    network call, a filesystem walk, a git call per repo — has three states: a
    **loading** state while it works, an **error** state when it fails, and the

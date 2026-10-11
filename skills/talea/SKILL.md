@@ -94,6 +94,11 @@ talea sync eklavya           # one repo — same as -r eklavya
 leaves anything else alone with a line saying why. It never switches branches,
 never merges a divergence and never pushes.
 
+A sync can end with one amber line — *N worktrees are merged or unused — X to
+free with `talea prune --apply`*. That line is a hint, not permission: pass it
+on, offer the `talea prune` dry run, and run `--apply` only after the developer
+has seen that plan and said yes.
+
 Every bulk command exits non-zero if **any** repo failed, so check the exit
 code — the per-repo errors are printed but the run keeps going.
 

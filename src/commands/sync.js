@@ -17,6 +17,7 @@ import { c, context, glyph, heading, plain, summary, verdict, warn } from '../lo
 import { chooseRepos } from '../select.js';
 import { requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 import { adoptInPlace, cloneMissing, writeDocs } from './clone.js';
+import { formatBytes, planRepo, REMOVABLE } from './prune.js';
 
 export const help = `
 ${c.bold('talea sync')} — make this machine match the list
@@ -61,6 +62,10 @@ workspace through a symlink is refused — link the whole workspace, not a group
 
 It never clones beside a checkout git will not open: that checkout is named with
 its fix, the repo sharing its folder name is held back, and the run fails.
+
+Worktrees are checked on the way through. When some are merged or unused, one
+line at the end says how many and how much space ${c.dim('talea prune --apply')} would
+free. sync only reports it; nothing is removed.
 `;
 
 export async function run(opts) {
@@ -124,9 +129,10 @@ export async function run(opts) {
     counts.skipped += missing.length;
   }
 
+  const plans = [];
   if (present.length) {
     plain('');
-    await fastForward({ manifest, root, entries: present, jobs, counts });
+    await fastForward({ manifest, root, entries: present, jobs, counts, plans });
   }
 
   summary(counts);
@@ -135,6 +141,14 @@ export async function run(opts) {
     partial: `${counts.skipped} repo(s) were fetched only or left alone — see above`,
     trouble: `${counts.failed} repo(s) need attention — review above`,
   });
+
+  // A hint, never a verdict: it changes neither the exit code nor ALL CLEAR.
+  const spare = plans.flatMap((plan) => plan.worktrees ?? []).filter((wt) => REMOVABLE.has(wt.verdict));
+  if (spare.length) {
+    const bytes = spare.reduce((n, wt) => n + wt.size, 0);
+    const what = spare.length === 1 ? '1 worktree is' : `${spare.length} worktrees are`;
+    plain(c.yellow(`${what} merged or unused — ${formatBytes(bytes)} to free with \`talea prune --apply\``));
+  }
 }
 
 /**
@@ -144,7 +158,7 @@ export async function run(opts) {
  * did, and `ffMerge` merges the ref that fetch just updated. Over twenty repos
  * on a slow link that is half the wall clock.
  */
-async function fastForward({ manifest, root, entries, jobs, counts }) {
+async function fastForward({ manifest, root, entries, jobs, counts, plans }) {
   const view = board(
     entries.map(({ repo }) => ({
       id: repoId(repo),
@@ -171,6 +185,16 @@ async function fastForward({ manifest, root, entries, jobs, counts }) {
       view.note(repoId(repo), fetched.stderr.split('\n')[0]);
       return;
     }
+
+    // What `talea prune` could clear, judged here: after this repo's fetch, so
+    // against a fresh origin with no second fetch racing it for git's ref
+    // locks, and before the fast-forward, which touches only the main checkout
+    // and never the origin ref the planner reads. A repo with no linked
+    // worktrees costs one `git worktree list`; one with some is walked and
+    // sized, which is why the row says so. `{ skip }` and `{ fail }` carry no
+    // worktrees and add nothing — `talea prune` is where they are reported.
+    view.set(repoId(repo), 'busy', 'checking worktrees …');
+    plans.push(await planRepo({ repo, dir }, { fetch: false }));
 
     // Independent reads of the same checkout — no reason to wait for one before
     // starting the other, and every repo pays for all three.

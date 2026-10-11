@@ -191,6 +191,45 @@ describe('talea sync', () => {
     assert.equal(existsSync(path.join(empty, 'me')), false);
     assert.equal(exitCode, 0);
   });
+
+  test('ends with one line about worktrees prune could clear, and removes none', async () => {
+    const judged = makeOrigin('judged');
+    const unjudged = makeOrigin('unjudged');
+    const tasks = workspace([
+      { name: 'judged', owner: 'me', url: judged.bare, defaultBranch: 'main' },
+      // No default branch: prune skips it (rule 8), so its merged worktree is not counted.
+      { name: 'unjudged', owner: 'me', url: unjudged.bare },
+    ]);
+    // A task branch with a commit of its own, landed on origin's default branch.
+    const landed = (name, bare, branch) => {
+      const repo = path.join(tasks, 'me', name);
+      if (!existsSync(repo)) git(['clone', '-q', bare, repo]);
+      const wt = path.join(tmp, `${name}-${branch}`);
+      git(['fetch', '-q'], repo);
+      git(['worktree', 'add', '-q', '-b', branch, wt, 'origin/main'], repo);
+      commit(wt, `${branch}.txt`);
+      git(['push', '-q', 'origin', 'HEAD:main'], wt);
+      return wt;
+    };
+    const one = landed('judged', judged.bare, 'one');
+    const two = landed('judged', judged.bare, 'two');
+    landed('unjudged', unjudged.bare, 'three');
+
+    let { text, exitCode } = await inWs(tasks, () => sync.run({}));
+    assert.match(text, /2 worktrees are merged or unused — \S+ \S+ to free with `talea prune --apply`/);
+    // A hint, not a verdict, and not a prune.
+    assert.match(text, /ALL CLEAR/);
+    assert.equal(exitCode, 0);
+    assert.ok(existsSync(path.join(one, 'one.txt')));
+
+    git(['worktree', 'remove', two], path.join(tasks, 'me', 'judged'));
+    ({ text } = await inWs(tasks, () => sync.run({})));
+    assert.match(text, /\n1 worktree is merged or unused/);
+
+    git(['worktree', 'remove', one], path.join(tasks, 'me', 'judged'));
+    ({ text } = await inWs(tasks, () => sync.run({})));
+    assert.doesNotMatch(text, /merged or unused/);
+  });
 });
 
 describe('talea exec', () => {

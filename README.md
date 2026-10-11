@@ -73,6 +73,11 @@ talea pick some-repo          # keep that one — an unknown name opens the chec
 dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
+When some of your worktrees are merged or unused, `sync` ends with one amber
+line saying how many and how much space `talea prune --apply` would free. It
+only reports — nothing is removed, and the line changes neither the exit code
+nor `ALL CLEAR`.
+
 `where` prints the path and nothing else. A word that is not a repo name is a
 search over the repos cloned on this machine, by name or folder: one match is the answer, several
 open a list to pick from with the arrow keys and Enter, drawn on stderr so it
