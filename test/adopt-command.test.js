@@ -86,6 +86,16 @@ async function stubbed(mod, name, make, fn) {
   }
 }
 
+async function onPlatform(platform, fn) {
+  const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...desc, value: platform });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, 'platform', desc);
+  }
+}
+
 /** Claude Code "running" or not, whatever this machine is doing. */
 const claude = (running, fn) =>
   stubbed(
@@ -417,6 +427,107 @@ describe('a worktree git will not re-link', () => {
     const added = await repairFails(() => capture(ws, () => claude(false, () => addCmd.run({ jobs: 1 }, ['wt']))));
     assert.equal(added.exitCode, 1);
     assert.match(added.text, /could not be re-linked/);
+  });
+});
+
+describe('a checkout git will not open', () => {
+  /** git's own switch for "another account owns every repo", for the length of `fn`. */
+  async function dubious(fn) {
+    // NOSYSTEM: hosted CI images set `safe.directory = *` in git's system
+    // config, which silences the very refusal this needs. The global config is
+    // already the fake home's empty one.
+    const keys = ['GIT_TEST_ASSUME_DIFFERENT_OWNER', 'GIT_CONFIG_NOSYSTEM'];
+    const saved = keys.map((k) => process.env[k]);
+    for (const k of keys) process.env[k] = '1';
+    try {
+      return await fn();
+    } finally {
+      keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+    }
+  }
+  /** A folder git exits 128 for: a `.git` with nothing in it. */
+  const brokenAt = (dir) => mkdirSync(path.join(dir, '.git'), { recursive: true });
+
+  test('adopt names it with git\'s reason and the safe.directory fix, moves nothing, and fails', async () => {
+    const ws = workspace('ws-dubious', [{ name: 'own', owner: 'me', url: origin('own') }]);
+    const stray = clone('own', path.join(ws, 'stray', 'own'));
+    const { text, exitCode } = await dubious(() => capture(ws, () => run({})));
+    assert.equal(exitCode, 1, 'a checkout git will not open must fail the run');
+    assert.match(text, /stray[\\/]own left alone — git would not open it\n\s+git: fatal: detected dubious ownership/);
+    assert.match(text, /if it is yours:\s+git config --global --add safe\.directory "[^"]*stray\/own"/);
+    assert.match(text, /Nothing else to adopt\./);
+    assert.equal(existsSync(path.join(stray, '.git')), true, 'and it is left exactly where it is');
+  });
+
+  test('any other refusal gets no safe.directory line, and counts as a failure beside a move', async () => {
+    const ws = workspace('ws-broken', [{ name: 'mv', owner: 'me', url: origin('mv') }]);
+    clone('mv', path.join(ws, 'loose', 'mv'));
+    brokenAt(path.join(ws, 'loose', 'junk'));
+    const { text, exitCode } = await capture(ws, () => claude(false, () => run({ apply: true })));
+    assert.equal(exitCode, 1);
+    assert.match(text, /junk left alone — git would not open it\n\s+git: fatal: not a git repository/);
+    assert.doesNotMatch(text, /safe\.directory/);
+    assert.match(text, /1 relocated/);
+    assert.match(text, /1 failed/);
+    assert.equal(existsSync(path.join(ws, 'me', 'mv', '.git')), true);
+  });
+
+  test('a repo with no origin at all is not reported — that is a local-only repo, not a refusal', async () => {
+    const ws = workspace('ws-local', [{ name: 'home', owner: 'me', url: origin('home') }]);
+    git(['init', '-q', path.join(ws, 'notes')], tmp);
+    const { text, exitCode } = await capture(ws, () => run({}));
+    assert.equal(exitCode, 0);
+    assert.doesNotMatch(text, /would not open/);
+  });
+
+  test('clone holds back the repo whose folder it has, and counts one that matches nothing', async () => {
+    const ws = workspace(
+      'ws-held',
+      [
+        { name: 'beta', owner: 'me', url: origin('beta') },
+        { name: 'gamma', owner: 'me', url: origin('gamma') },
+      ],
+      { selected: ['me/beta', 'me/gamma'] },
+    );
+    brokenAt(path.join(ws, 'old', 'beta'));
+    brokenAt(path.join(ws, 'old', 'zzz'));
+    // One already in place is not held back by a stray folder sharing its name.
+    clone('gamma', path.join(ws, 'me', 'gamma'));
+    brokenAt(path.join(ws, 'old2', 'gamma'));
+    const { text, exitCode } = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(exitCode, 1);
+    assert.match(text, /beta left alone — git would not open the copy already on disk/);
+    assert.match(text, /3 failed/, 'beta held back, zzz and the stray gamma counted');
+    assert.equal(existsSync(path.join(ws, 'me', 'beta')), false, 'no second copy beside it');
+  });
+
+  test('sync fails a held-back repo rather than calling it skipped', async () => {
+    const ws = workspace('ws-held-sync', [{ name: 'beta', owner: 'me', url: origin('beta') }], { selected: ['me/beta'] });
+    brokenAt(path.join(ws, 'old', 'beta'));
+    const { text, exitCode } = await capture(ws, () => syncCmd.run({ jobs: 1 }));
+    assert.equal(exitCode, 1);
+    assert.match(text, /1 failed/);
+    assert.doesNotMatch(text, /ALL CLEAR|skipped/);
+    assert.equal(existsSync(path.join(ws, 'me', 'beta')), false);
+  });
+});
+
+describe('printed commands on Windows', () => {
+  test('the park cleanup and the sweep are PowerShell, not sh', async () => {
+    const run2 = async (platform, name) => {
+      const ws = workspace(name, [{ name: 'pw', owner: 'me', url: origin('pw') }]);
+      clone('pw', path.join(ws, 'a', 'pw'));
+      clone('pw', path.join(ws, 'b', 'pw'));
+      const { text } = await capture(ws, () => claude(false, () => onPlatform(platform, () => run({ apply: true }))));
+      return { text, ws };
+    };
+    const win = await run2('win32', 'ws-pwsh');
+    assert.match(win.text, /Remove-Item -Recurse -Force "[^"]*\.talea-duplicates"/);
+    assert.match(win.text, /Get-ChildItem "[^"]+","\$HOME" -Recurse -File .*Select-String -SimpleMatch -List "[^"]*a[\\/]pw"/);
+    assert.doesNotMatch(win.text, /rm -rf|grep -rl/);
+    const posix = await run2('linux', 'ws-sh');
+    assert.match(posix.text, /rm -rf "[^"]*\.talea-duplicates"/);
+    assert.match(posix.text, /grep -rl "[^"]*a[\\/]pw" "[^"]+" ~ 2>\/dev\/null/);
   });
 });
 

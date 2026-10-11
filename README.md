@@ -189,7 +189,11 @@ mistaken for a second copy of the repo, even though git reports the same
 Close editors, terminals and agents working in a checkout before `--apply`.
 Nothing else may change a repo or its worktrees while it moves: on Windows the
 move is refused while anything holds a file open in it, and elsewhere a process
-still inside it keeps writing to paths that no longer lead there.
+still inside it keeps writing to paths that no longer lead there. On Windows a
+brief hold — the virus scanner or the search indexer, just after talea read the
+repo — is waited out for up to five seconds, and git's own `fsmonitor` daemon
+is stopped once (git restarts it when it needs it). A terminal sitting inside
+the repo is named as the cause, since no wait outlasts it.
 
 ```sh
 talea adopt                      # show what would move, change nothing
@@ -203,6 +207,15 @@ or `-r <repo>` includes it once you have looked. That guard is not theoretical:
 an FVM Flutter SDK cache reports `origin` as `flutter/flutter`, which name-matches
 a personal `flutter` fork, and moving it would break every Flutter project on the
 machine.
+
+A checkout git refuses to open — on Windows usually *dubious ownership*, a
+folder cloned from an admin shell, another account or WSL — has no remote to
+match on, so it cannot be moved. It is named with git's reason and, for
+ownership, the `git config --global --add safe.directory "<folder>"` command to
+run if it really is yours; the run exits non-zero. `clone` and `sync` clone
+nothing for a repo whose folder name it shares, so no second copy lands beside
+it. A repo with no `origin` at all is a local-only repo, not a refusal, and is
+left out quietly.
 
 If the same repo turns up twice, the copy at the catalogue path wins and the
 other moves into `.talea-duplicates/` with everything in it. **Nothing is ever

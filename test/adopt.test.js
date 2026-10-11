@@ -176,7 +176,31 @@ describe('finding checkouts', () => {
     const got = await A.readOrigins([dir, bare], 2);
     assert.equal(got[0].dir, dir);
     assert.equal(A.normalizeUrl(got[0].originUrl), A.normalizeUrl(origin));
-    assert.deepEqual(got[1], { dir: bare, originUrl: null });
+    assert.deepEqual(got[1], { dir: bare, originUrl: null, error: null });
+  });
+
+  test('readOrigins names a checkout git refuses to open; no origin at all is not a refusal', async () => {
+    // Exit 128 — on Windows usually "dubious ownership"; a broken `.git` gets
+    // the same exit here. Exit 2 is a local-only repo and stays silent.
+    const broken = fresh();
+    mkdirSync(path.join(broken, '.git'));
+    const [got] = await A.readOrigins([broken]);
+    assert.equal(got.originUrl, null);
+    assert.match(got.error, /^fatal: not a git repository/);
+  });
+
+  test('readOrigins still gives a reason when git exits 128 saying nothing', { skip: process.platform === 'win32' && 'a shell-script git needs POSIX' }, async () => {
+    const bin = fresh('bin');
+    writeFileSync(path.join(bin, 'git'), '#!/bin/sh\nexit 128\n');
+    fs.chmodSync(path.join(bin, 'git'), 0o755);
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${saved}`;
+    try {
+      const [got] = await A.readOrigins([fresh()]);
+      assert.equal(got.error, 'git exited 128');
+    } finally {
+      process.env.PATH = saved;
+    }
   });
 });
 
@@ -582,6 +606,87 @@ describe('executeMove', () => {
   });
 });
 
+describe('Windows file locks', () => {
+  // Windows will not rename a folder something holds a handle in, nor onto an
+  // existing empty folder. POSIX does neither, so the failures are forced by
+  // swapping renameSync and the platform for the length of one call.
+  const flaky = (failures, code = 'EPERM') => (fn) =>
+    stubbed(fs, 'renameSync', (orig) => (a, b) => {
+      if (failures-- > 0) throw errno(code);
+      return orig(a, b);
+    }, fn);
+  /** Every git call made during `fn`, by its first two arguments. */
+  async function gitCalls(fn) {
+    const calls = [];
+    const result = await stubbed(cp, 'spawnSync', (orig) => (cmd, args, opts) => {
+      if (cmd === 'git') calls.push(`${args[0]} ${args[1]}`);
+      return orig(cmd, args, opts);
+    }, fn);
+    return { result, calls };
+  }
+
+  test('a transient lock is waited out, stopping git\'s fsmonitor daemon once', async () => {
+    const { dir } = makeRepo('held');
+    const to = path.join(fresh(), 'held');
+    const { calls } = await gitCalls(() => flaky(2)(() => onPlatform('win32', () => A.renameRetrying(dir, to))));
+    assert.equal(existsSync(path.join(to, '.git')), true, 'the repo must arrive');
+    assert.deepEqual(calls.filter((c) => c === 'fsmonitor--daemon stop'), ['fsmonitor--daemon stop']);
+  });
+
+  test('a lock that outlasts the wait, any other error, and any error off Windows are thrown at once', async () => {
+    const { dir } = makeRepo('stuck');
+    const to = path.join(fresh(), 'stuck');
+    await assert.rejects(flaky(1)(() => onPlatform('win32', async () => A.renameRetrying(dir, to, 0))), { code: 'EPERM' });
+    await assert.rejects(flaky(1, 'ENOENT')(() => onPlatform('win32', async () => A.renameRetrying(dir, to))), { code: 'ENOENT' });
+    const { calls } = await gitCalls(() =>
+      assert.rejects(flaky(1, 'EACCES')(() => onPlatform('linux', async () => A.renameRetrying(dir, to))), { code: 'EACCES' }),
+    );
+    assert.deepEqual(calls, [], 'a real permission error on POSIX is not retried');
+    assert.equal(existsSync(dir), true);
+  });
+
+  test('an empty folder at the destination is moved onto; one that filled up since the plan is named and kept', async () => {
+    // As Windows does: a rename onto any existing folder is EPERM.
+    const windowsRename = (fn) =>
+      stubbed(fs, 'renameSync', (orig) => (a, b) => {
+        if (existsSync(b)) throw errno('EPERM');
+        return orig(a, b);
+      }, fn);
+    const { dir } = makeRepo('empty');
+    const to = fresh('empty-dest');
+    const res = await windowsRename(() => A.executeMove({ from: dir, to }));
+    assert.equal(res.ok, true, res.message);
+    assert.equal(existsSync(path.join(to, '.git')), true);
+
+    const late = makeRepo('late').dir;
+    const filled = fresh('filled');
+    writeFileSync(path.join(filled, 'mine.txt'), 'not yours\n');
+    const refused = A.executeMove({ from: late, to: filled });
+    assert.equal(refused.ok, false);
+    assert.match(refused.message, /^destination already exists and is not empty — nothing was moved/, 'the destination is the problem, not a lock on the source');
+    assert.equal(readFileSync(path.join(filled, 'mine.txt'), 'utf8'), 'not yours\n');
+    assert.equal(existsSync(path.join(late, '.git')), true, 'the repo stays where it was');
+  });
+
+  test('a terminal sitting inside the repo is named as the cause, on Windows only', async () => {
+    const { dir } = makeRepo('cwd');
+    mkdirSync(path.join(dir, 'sub'));
+    const move = (cwd, platform) => {
+      const prev = process.cwd();
+      process.chdir(cwd);
+      // EINVAL: in the "something holds it" family, but never retried.
+      return flaky(1, 'EINVAL')(() => onPlatform(platform, () => A.executeMove({ from: dir, to: path.join(fresh(), 'cwd') }))).finally(() =>
+        process.chdir(prev),
+      );
+    };
+    assert.match((await move(dir, 'win32')).message, /\(EINVAL\) — this terminal is sitting inside it\.\n\s+cd out of /);
+    assert.match((await move(path.join(dir, 'sub'), 'win32')).message, /this terminal is sitting inside it/);
+    assert.match((await move(tmp, 'win32')).message, /something has it open/);
+    assert.match((await move(dir, 'linux')).message, /something has it open/);
+    assert.equal(existsSync(path.join(dir, '.git')), true);
+  });
+});
+
 describe('claudeMaybeRunning', () => {
   const answering = (status, stdout) => (fn) =>
     stubbed(cp, 'spawnSync', () => () => ({ status, stdout }), fn);
@@ -687,6 +792,20 @@ describe('rekeyClaudeJson', () => {
     assert.deepEqual(A.rekeyClaudeJson(from, to), { changed: true });
     assert.deepEqual(read(), { projects: { [to]: { a: 1 } }, other: true });
     if (process.platform !== 'win32') assert.equal(fs.statSync(file()).mode & 0o777, 0o600);
+  });
+
+  test('the entry is found however its slashes are spelled, and keeps its style on Windows', async () => {
+    // Claude Code on Windows can key one folder `C:/src/repo` or `c:\\src\\repo`.
+    // A backslash is a legal folder-name character on POSIX, which is how
+    // this test spells a key with one in it.
+    const odd = path.join(tmp, 'we\\ird');
+    write({ projects: { [odd]: { a: 1 } } });
+    assert.deepEqual(await onPlatform('win32', () => A.rekeyClaudeJson(odd, to)), { changed: true });
+    assert.deepEqual(read(), { projects: { [to]: { a: 1 } } });
+    const slashed = (p) => p.split('\\').join('/');
+    write({ projects: { [slashed(from)]: { a: 1 } } });
+    assert.deepEqual(await onPlatform('win32', () => A.rekeyClaudeJson(from, to)), { changed: true });
+    assert.deepEqual(read(), { projects: { [slashed(to)]: { a: 1 } } });
   });
 
   test('an entry already at the new path wins', () => {

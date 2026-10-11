@@ -58,6 +58,9 @@ leaves it alone, and says which.
 Nothing is placed outside the workspace. A run stops before it starts when two
 of its repos would share a folder, and a repo whose folder leads outside the
 workspace through a symlink is refused — link the whole workspace, not a group.
+
+It never clones beside a checkout git will not open: that checkout is named with
+its fix, the repo sharing its folder name is held back, and the run fails.
 `;
 
 export async function run(opts) {
@@ -81,7 +84,7 @@ export async function run(opts) {
   // into place, not cloned a second time beside the work in it.
   const adoption =
     opts.adopt === false || opts.clone === false
-      ? { skip: new Map(), broken: 0 }
+      ? { skip: new Map(), broken: 0, held: 0 }
       : await adoptInPlace({ manifest, root, state, repos, opts });
 
   // Before the network work, not after: the group doc explains what is about to
@@ -101,7 +104,14 @@ export async function run(opts) {
     ['jobs', `${jobs}`],
   ]);
 
-  const counts = { ok: 0, skipped: adoption.skip.size, failed: adoption.broken, okLabel: 'synced' };
+  // A repo held back because git would not open the copy on disk is a failure,
+  // not a skip: the run has to say so, not read as partly done.
+  const counts = {
+    ok: 0,
+    skipped: adoption.skip.size - adoption.held,
+    failed: adoption.broken + adoption.held,
+    okLabel: 'synced',
+  };
 
   if (missing.length && opts.clone !== false) {
     plain('');

@@ -52,6 +52,10 @@ destination, another filesystem, a destination a symlink leads outside the
 workspace) is left alone and the reason is printed. Two repos the catalogue
 puts in one folder stop the run before anything moves.
 
+A checkout git will not open (on Windows usually ${c.dim('dubious ownership')}: it was cloned
+from an admin shell, another account or WSL) cannot be matched, so it is named
+with git's reason and the ${c.dim('safe.directory')} command, and the run fails.
+
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
 Whatever it holds (branches, stashes, uncommitted work) comes with it, and is
@@ -91,7 +95,25 @@ export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
     parks: plans.filter((p) => p.action === 'park'),
     refused: plans.filter((p) => p.action === 'refuse'),
     inPlace: plans.filter((p) => p.action === 'in-place'),
+    unreadable: candidates.filter((x) => x.error),
   };
+}
+
+/**
+ * Name every checkout git refused to open, and fail the run. Without its origin
+ * there is no telling which repo it is, so it cannot be moved — but saying
+ * nothing reads as "you have no copy", and the developer gets a second one.
+ */
+export function reportUnreadable(unreadable) {
+  if (!unreadable.length) return;
+  plain('');
+  for (const u of unreadable) {
+    warn(`${c.bold(shorten(u.dir))} left alone — git would not open it\n    ${c.dim(`git: ${u.error}`)}`);
+    if (/dubious ownership/i.test(u.error)) {
+      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory "${u.dir.split('\\').join('/')}"`));
+    }
+  }
+  process.exitCode = 1;
 }
 
 /**
@@ -396,13 +418,14 @@ export async function run(opts) {
   );
   for (const dir of scanRoots) plain(`    ${c.dim(shorten(dir))}`);
 
-  const { moves, parks, refused, inPlace } = await planFor({
+  const { moves, parks, refused, inPlace, unreadable } = await planFor({
     manifest,
     root,
     repos,
     scanRoots,
     jobs: opts.jobs ?? 8,
   });
+  reportUnreadable(unreadable);
 
   if (inPlace.length) {
     plain('');
@@ -410,7 +433,7 @@ export async function run(opts) {
   }
 
   if (!moves.length && !parks.length && !refused.length) {
-    plain(`\n${c.dim('Nothing to adopt.')}`);
+    plain(`\n${c.dim(unreadable.length ? 'Nothing else to adopt.' : 'Nothing to adopt.')}`);
     return;
   }
 
@@ -522,7 +545,9 @@ export async function run(opts) {
   summary({
     ok: okCount + applied.parked.filter((p) => !p.partial).length,
     skipped: inPlace.length,
-    failed: applied.results.length - okCount + (willPark.length - applied.parked.length) + applied.parked.filter((p) => p.partial).length,
+    failed:
+      applied.results.length - okCount + (willPark.length - applied.parked.length) +
+      applied.parked.filter((p) => p.partial).length + unreadable.length,
     okLabel: 'relocated',
   });
 
@@ -533,7 +558,8 @@ export async function run(opts) {
         `${c.bold(DUPLICATES_DIR)}/ ${c.dim('— nothing was deleted.')}`,
     );
     plain(c.dim(`  Review them, then remove the folder yourself when you are happy:`));
-    plain(c.dim(`    rm -rf ${path.join(root, DUPLICATES_DIR)}`));
+    const parkedDir = path.join(root, DUPLICATES_DIR);
+    plain(c.dim(`    ${process.platform === 'win32' ? `Remove-Item -Recurse -Force "${parkedDir}"` : `rm -rf "${parkedDir}"`}`));
   }
 
   await reportLeftovers(root, applied);
@@ -549,9 +575,14 @@ export async function run(opts) {
 
   if (okCount) {
     plain(`\n${c.dim('To sweep anything this did not cover:')}`);
-    for (const r of applied.results.filter((x) => x.ok)) {
-      plain(c.dim(`  grep -rl "${r.plan.from}" ${root} ~ 2>/dev/null`));
-      break;
-    }
+    // One example is enough to adapt; PowerShell has neither grep nor /dev/null.
+    const { from } = applied.results.find((x) => x.ok).plan;
+    plain(
+      c.dim(
+        process.platform === 'win32'
+          ? `  Get-ChildItem "${root}","$HOME" -Recurse -File -ErrorAction SilentlyContinue | Select-String -SimpleMatch -List "${from}" | Select-Object Path`
+          : `  grep -rl "${from}" "${root}" ~ 2>/dev/null`,
+      ),
+    );
   }
 }

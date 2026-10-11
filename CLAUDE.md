@@ -183,6 +183,15 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `matchRepo` tries the exact match against the **whole catalogue** first: a
    checkout that is exactly another repo — another owner's, an ignored one — is
    that repo, and a name match against this one would claim it.
+   A checkout git refuses to open (exit 128 — on Windows usually "dubious
+   ownership", cloned from an admin shell, another account or WSL) has no
+   remote at all, so it is not even a name match: it is named with git's
+   reason and the `safe.directory` fix, and the run fails. Read as "no
+   origin", it vanished from the scan and `clone` put a second copy beside it
+   (ported from baylor-cli, where it was found). `clone` and `sync`
+   hold back every missing repo whose folder name it shares — too weak to move
+   it on, enough not to clone beside it. Exit 2, no `origin`, is a local-only
+   repo and stays silent.
 
 4. **`ignore: true` means another tool owns that checkout.** No command touches
    it — not `sync`, not `adopt`, not even an explicit `selected` entry. Two
@@ -205,8 +214,16 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    refused and reported instead.
    And why a *second* copy of a repo is **parked, not deleted**: it moves to
    `.talea-duplicates/<GROUP>/<repo>` with everything in it, and clearing that
-   folder is the developer's decision. `src/adopt.js` has no `rmSync` in it;
-   keep it that way.
+   folder is the developer's decision. `src/adopt.js` has no recursive
+   `rmSync` in it (its one `rmSync` tidies its own temp file); keep it that
+   way. Its one `rmdirSync` clears an **empty** destination right before a
+   move, because Windows will not rename onto an existing folder — and
+   `rmdirSync` refuses a folder with anything in it, so it cannot take a file.
+   The destination is re-checked first: one that filled up since the plan is
+   named as the cause, not reported as a lock on the source. A Windows handle
+   held briefly by Defender or the indexer is waited out for up to five
+   seconds (stopping git's fsmonitor daemon once); a terminal whose cwd is in
+   the repo is named, since no wait outlasts it.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
    The one removal in the tool is `talea prune --apply`, and rule 13 is why it

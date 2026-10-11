@@ -120,6 +120,12 @@ the guard exists because an FVM Flutter SDK cache reports `origin` as
 `flutter/flutter` and name-matches a personal fork, and adopting it breaks every
 Flutter project on the machine.
 
+A checkout "left alone — git would not open it" cannot be matched or moved, and
+the run exits non-zero. When git's reason is *dubious ownership*, talea prints a
+`git config --global --add safe.directory "…"` line. **Do not run it for the
+developer**: it tells git to trust a folder another account owns, which is their
+call. Show them the line and let them decide.
+
 If a move reports worktrees that "could not be re-linked", the repo has moved
 and nothing is lost. Show the developer git's reason line; once its cause is
 dealt with (often a permission or an unmounted drive), run the printed

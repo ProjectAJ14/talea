@@ -24,6 +24,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -242,8 +243,16 @@ export async function readOrigins(dirs, jobs = 8) {
   // ordered candidates by whichever `git` process happened to exit first, which
   // made the choice of "which copy is the real one" a coin flip.
   return pooled(dirs, jobs, async (dir) => {
-    const { code, stdout } = await git(['remote', 'get-url', 'origin'], { cwd: dir });
-    return { dir, originUrl: code === 0 ? stdout : null };
+    const { code, stdout, stderr } = await git(['remote', 'get-url', 'origin'], { cwd: dir });
+    // 2 is "no origin", which a local-only repo legitimately has. 128 is git
+    // refusing the repo outright — on Windows usually "dubious ownership", a
+    // folder cloned by another account, an admin shell or WSL. Dropped silently,
+    // that checkout was never moved and clone put a fresh copy beside it.
+    return {
+      dir,
+      originUrl: code === 0 ? stdout : null,
+      error: code === 128 ? stderr.split(/\r?\n/)[0] || 'git exited 128' : null,
+    };
   });
 }
 
@@ -689,6 +698,36 @@ function relocateWorktrees(from, to, recorded) {
   return { repaired, broken, siblings, stale: recorded.length - now.length };
 }
 
+// Windows refuses to rename a directory while any process holds a handle
+// inside it, and Defender or the search indexer holds one for a moment after
+// git has just been reading the repo — which planning always has. POSIX never
+// fails this way. Retried briefly, as npm's graceful-fs does, before it is
+// reported as a real lock. EACCES on POSIX is a real permission error and is
+// never retried.
+const TRANSIENT_LOCK = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const RENAME_BUDGET_MS = 5000;
+
+export function renameRetrying(from, to, budgetMs = RENAME_BUDGET_MS, wait = 100) {
+  try {
+    return renameSync(from, to);
+  } catch (err) {
+    if (process.platform !== 'win32' || !TRANSIENT_LOCK.has(err.code) || wait > budgetMs) throw err;
+    // Git's own filesystem-monitor daemon (core.fsmonitor) keeps a handle on
+    // the worktree for as long as it runs. Stopping it, on the first retry
+    // only, is harmless — git restarts it on demand — and a git without the
+    // command just says so.
+    if (wait === 100) gitSync(['fsmonitor--daemon', 'stop'], from);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+    return renameRetrying(from, to, budgetMs - wait, Math.min(wait * 2, 1000));
+  }
+}
+
+/** Is `p` the directory `dir`, or somewhere inside it? */
+function isWithin(dir, p) {
+  const rel = path.relative(canonical(dir), canonical(p));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 export function executeMove(plan) {
   try {
     // Gone since the plan: said as itself, not as a git that cannot list.
@@ -698,8 +737,21 @@ export function executeMove(plan) {
     if (recorded.error) {
       return { ok: false, message: `git could not list its worktrees (${recorded.error}) — nothing was moved` };
     }
+    // A case-only rename on a case-insensitive disk: the destination is the
+    // source itself, so neither check below applies.
+    const elsewhere = !samePath(plan.from, plan.to);
+    // Checked again because the plan is stale by now: a folder that filled up
+    // since would otherwise fail below as ENOTEMPTY, reported as a lock on the
+    // source — which names the wrong folder.
+    const blocked = elsewhere && destinationBlocked(plan.to);
+    if (blocked) return { ok: false, message: `${blocked} — nothing was moved:\n      ${plan.to}` };
     mkdirSync(path.dirname(plan.to), { recursive: true });
-    renameSync(plan.from, plan.to);
+    // An empty folder at the destination counts as free and POSIX rename
+    // replaces one, but Windows refuses to rename onto any existing directory —
+    // EPERM, reported as "something has it open". rmdirSync removes only an
+    // EMPTY directory and throws on anything else, so it cannot take a file.
+    if (elsewhere && existsSync(plan.to)) rmdirSync(plan.to);
+    renameRetrying(plan.from, plan.to);
     const worktrees = relocateWorktrees(plan.from, plan.to, recorded);
     return { ok: true, to: plan.to, worktrees };
   } catch (err) {
@@ -717,6 +769,16 @@ export function executeMove(plan) {
     // does. On POSIX the same rename would simply succeed, so the advice has
     // to name the real cause rather than the errno.
     if (['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY', 'ENAMETOOLONG', 'EINVAL'].includes(err.code)) {
+      // The commonest holder is the very terminal that typed the command: a
+      // shell's current directory is an open handle, and no retry outlasts it.
+      if (process.platform === 'win32' && isWithin(plan.from, process.cwd())) {
+        return {
+          ok: false,
+          message:
+            `could not be moved (${err.code}) — this terminal is sitting inside it.\n` +
+            `      cd out of ${plan.from}\n      (to the workspace root) and run the command again.`,
+        };
+      }
       return {
         ok: false,
         message:
@@ -861,9 +923,18 @@ export function rekeyClaudeJson(from, to) {
   }
   if (!data?.projects) return { changed: false };
 
-  const oldKey = path.resolve(from);
-  const newKey = path.resolve(to);
-  if (!(oldKey in data.projects)) return { changed: false };
+  // Found by what the key names, not how it is spelled: on Windows the same
+  // folder can be keyed `C:/src/repo` or `c:\\src\\repo`, and an exact-string
+  // lookup silently skipped the re-key. On Windows the new key copies the old
+  // one's slashes so the file stays in whatever style Claude Code wrote it; a
+  // backslash on POSIX is part of a folder name and is left alone.
+  const keys = Object.keys(data.projects);
+  const oldKey = keys.find((k) => samePath(k, from));
+  if (!oldKey) return { changed: false };
+  const resolvedTo = path.resolve(to);
+  const newKey =
+    keys.find((k) => samePath(k, to)) ??
+    (process.platform === 'win32' && !oldKey.includes('\\') ? resolvedTo.split('\\').join('/') : resolvedTo);
 
   if (newKey in data.projects) {
     delete data.projects[oldKey];
