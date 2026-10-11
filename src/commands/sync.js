@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, requireOwnFolders } from '../config.js';
+import { defaultBranch, repoId, repoLabel, repoPlace, requireOwnFolders } from '../config.js';
 import {
   aheadBehind,
   currentBranch,
@@ -61,7 +61,8 @@ of its repos would share a folder, and a repo whose folder leads outside the
 workspace through a symlink is refused — link the whole workspace, not a group.
 
 It never clones beside a checkout git will not open: that checkout is named with
-its fix, the repo sharing its folder name is held back, and the run fails.
+its fix, the repo sharing its folder name is held back, and the run fails. A
+worktree whose repo no longer knows it is only warned about.
 
 Worktrees are checked on the way through. When some are merged or unused, one
 line at the end says how many and how much space ${c.dim('talea prune --apply')} would
@@ -89,7 +90,7 @@ export async function run(opts) {
   // into place, not cloned a second time beside the work in it.
   const adoption =
     opts.adopt === false || opts.clone === false
-      ? { skip: new Map(), broken: 0, held: 0 }
+      ? { skip: new Map(), broken: 0, held: new Set() }
       : await adoptInPlace({ manifest, root, state, repos, opts });
 
   // Before the network work, not after: the group doc explains what is about to
@@ -99,7 +100,9 @@ export async function run(opts) {
 
   const entries = withPaths(manifest, root, repos);
   const missing = entries.filter((e) => !e.cloned && !adoption.skip.has(repoId(e.repo)));
-  const present = entries.filter((e) => e.cloned);
+  // A checkout held because git would not open it is already a failure; a
+  // fetch would only fail it again.
+  const present = entries.filter((e) => e.cloned && !adoption.held.has(repoId(e.repo)));
 
   heading(`Syncing ${root}`);
   context([
@@ -113,8 +116,8 @@ export async function run(opts) {
   // not a skip: the run has to say so, not read as partly done.
   const counts = {
     ok: 0,
-    skipped: adoption.skip.size - adoption.held,
-    failed: adoption.broken + adoption.held,
+    skipped: adoption.skip.size - adoption.held.size,
+    failed: adoption.broken + adoption.held.size,
     okLabel: 'synced',
   };
 
@@ -162,7 +165,7 @@ async function fastForward({ manifest, root, entries, jobs, counts, plans }) {
   const view = board(
     entries.map(({ repo }) => ({
       id: repoId(repo),
-      group: groupDir(manifest, repoGroup(repo)),
+      ...repoPlace(manifest, repo),
       label: repoLabel(manifest, repo),
     })),
   );
@@ -190,11 +193,12 @@ async function fastForward({ manifest, root, entries, jobs, counts, plans }) {
     // against a fresh origin with no second fetch racing it for git's ref
     // locks, and before the fast-forward, which touches only the main checkout
     // and never the origin ref the planner reads. A repo with no linked
-    // worktrees costs one `git worktree list`; one with some is walked and
-    // sized, which is why the row says so. `{ skip }` and `{ fail }` carry no
+    // worktrees costs one `git worktree list`; one with some is judged, and
+    // only a merged or unused one is walked and sized, which is why the row
+    // says so. `{ skip }` and `{ fail }` carry no
     // worktrees and add nothing — `talea prune` is where they are reported.
     view.set(repoId(repo), 'busy', 'checking worktrees …');
-    plans.push(await planRepo({ repo, dir }, { fetch: false }));
+    plans.push(await planRepo({ repo, dir }, { fetch: false, removableOnly: true }));
 
     // Independent reads of the same checkout — no reason to wait for one before
     // starting the other, and every repo pays for all three.

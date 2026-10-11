@@ -15,7 +15,7 @@ import path from 'node:path';
 
 const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'talea-adoptcmd-home-')));
 process.env.HOME = process.env.USERPROFILE = home;
-const { run, applyMoves, refixPaths, parseFromPaths, quoted } = await import('../src/commands/adopt.js');
+const { run, applyMoves, refixPaths, parseFromPaths, quoted, reportUnreadable } = await import('../src/commands/adopt.js');
 const { claudeSlug, DUPLICATES_DIR } = await import('../src/adopt.js');
 const cloneCmd = await import('../src/commands/clone.js');
 const syncCmd = await import('../src/commands/sync.js');
@@ -509,6 +509,71 @@ describe('a checkout git will not open', () => {
     assert.match(text, /1 failed/);
     assert.doesNotMatch(text, /ALL CLEAR|skipped/);
     assert.equal(existsSync(path.join(ws, 'me', 'beta')), false);
+  });
+});
+
+describe('a worktree its repo no longer knows', () => {
+  /** A repo in place with a linked worktree beside it whose admin folder is gone. */
+  function orphaned(name) {
+    const ws = workspace(name, [{ name: 'own', owner: 'me', url: origin('own'), defaultBranch: 'main' }], { selected: ['me/own'] });
+    const repo = clone('own', path.join(ws, 'me', 'own'));
+    const wt = path.join(ws, 'me', 'own-worktrees', 'feat-x');
+    git(['worktree', 'add', '-q', '-b', 'feat-x', wt], repo);
+    rmSync(path.join(repo, '.git', 'worktrees', 'feat-x'), { recursive: true });
+    return { ws, wt };
+  }
+
+  test('sync, clone and adopt warn with the fix, and none of them fails over it', async () => {
+    // git exits 128 on it, and every run failed forever (found in review).
+    const { ws, wt } = orphaned('ws-orphan');
+    for (const go of [() => syncCmd.run({ jobs: 1 }), () => cloneCmd.run({ jobs: 1 }), () => run({})]) {
+      const { text, exitCode } = await capture(ws, go);
+      assert.equal(exitCode, 0, text);
+      assert.match(text, /feat-x left alone — a worktree whose repo no longer knows it/);
+      assert.match(text, /git worktree repair '[^']*feat-x'/);
+      assert.doesNotMatch(text, /would not open|failed/);
+    }
+    assert.equal(existsSync(path.join(wt, '.git')), true, 'and nothing deleted it');
+  });
+});
+
+describe('a checkout git will not open, at its own catalogue path', () => {
+  test('is failed once by sync and not fetched, and clone counts it the same way', async () => {
+    const ws = workspace('ws-at-path', [{ name: 'beta', owner: 'me', url: origin('beta') }], { selected: ['me/beta'] });
+    mkdirSync(path.join(ws, 'me', 'beta', '.git'), { recursive: true });
+    // It was failed as matching nothing, then fetched and failed again:
+    // "2 need attention" for one repo (found in review).
+    const synced = await capture(ws, () => syncCmd.run({ jobs: 1 }));
+    assert.equal(synced.exitCode, 1);
+    assert.match(synced.text, /beta left alone — git would not open the copy already on disk/);
+    assert.match(synced.text, /1 failed/);
+    assert.doesNotMatch(synced.text, /fetch failed|skipped/);
+    const cloned = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(cloned.exitCode, 1);
+    assert.match(cloned.text, /1 failed/);
+    assert.doesNotMatch(cloned.text, /skipped/);
+  });
+});
+
+describe('reportUnreadable', () => {
+  const said = (u, platform) => {
+    const lines = [];
+    const saved = [console.log, console.error, process.exitCode];
+    console.log = console.error = (...a) => lines.push(a.join(' '));
+    try {
+      reportUnreadable([u], platform);
+    } finally {
+      [console.log, console.error] = saved;
+      process.exitCode = saved[2];
+    }
+    return lines.join('\n');
+  };
+
+  test('slashes are turned for safe.directory on Windows only — a backslash is a POSIX name character', () => {
+    const u = (dir) => ({ dir, error: 'fatal: detected dubious ownership', dubious: true });
+    assert.match(said(u('C:\\src\\app'), 'win32'), /safe\.directory 'C:\/src\/app'/);
+    assert.match(said(u('/src/we\\ird'), 'linux'), /safe\.directory '\/src\/we\\ird'/);
+    assert.doesNotMatch(said({ dir: '/x', error: 'fatal: not a git repository' }, 'linux'), /safe\.directory/);
   });
 });
 

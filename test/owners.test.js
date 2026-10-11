@@ -124,8 +124,9 @@ describe('two owners, one repo name', () => {
   test('sync gives each its own row, and a bare name that means both stops', async () => {
     const res = await inWs(ws, () => sync.run({ jobs: 2 }));
     assert.equal(res.error, null, res.text);
-    assert.match(res.text, /alice\/app/);
-    assert.match(res.text, /bob\/app/);
+    // Drawn as `talea tree` draws it: each under its owner's folder.
+    assert.match(res.text, /alice\/\n└─ ▣ app/);
+    assert.match(res.text, /bob\/\n└─ ▣ app/);
 
     const one = await inWs(ws, () => sync.run({ repo: 'bob/app', jobs: 1 }));
     assert.equal(one.error, null, one.text);

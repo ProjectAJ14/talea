@@ -32,9 +32,11 @@ const LABEL_MAX = 46;
 const out = (s) => process.stdout.write(s);
 
 /**
- * Start a board over `items` — `{ id, group, label }`, where `group` is the
- * folder path the repo lives under, split on `/` so work/api and work/web
- * share one work/.
+ * Start a board over `items` — `{ id, group, name, label }`, where `group` is
+ * the folder path the repo lives under, split on `/` so work/api and work/web
+ * share one work/, and `name` its own folder's name, as `talea tree` shows it
+ * (`repoPlace()` gives both). `label` names it in the notes under the block,
+ * and stands in for a missing `name`.
  *
  * `set(id, status, note)` moves a row; `note(id, text)` attaches detail that
  * belongs under the block rather than in the row (a git error, say); `stop()`
@@ -44,7 +46,7 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
   const rows = items.map((it) => ({
     ...it,
     path: it.group.split('/'),
-    name: it.label,
+    name: it.name ?? it.label,
     status: 'pending',
     note: null,
   }));
@@ -60,20 +62,21 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
     0,
     ...tree
       .filter((l) => l.item)
-      .map((l) => visibleWidth(l.prefix) + Math.min(visibleWidth(l.item.label), LABEL_MAX)),
+      .map((l) => visibleWidth(l.prefix) + Math.min(visibleWidth(l.item.name), LABEL_MAX)),
   );
+
+  // How far down the tree has been printed for good — piped, above the rolling
+  // footer, or in a full frame a resize left behind. A line goes out only once
+  // every row above it has settled, so the printed tree is never out of order.
+  let printed = 0;
 
   // The tree, a blank line and the counter. When that does not fit the window,
   // `ansi.up()` would address a region that has already scrolled and tear the
   // screen — so the tree prints line by line above a small footer instead of
   // being redrawn.
-  const fits = () => live && tree.length + 2 <= (process.stdout.rows || 24) - 1;
+  const fits = () => live && tree.length - printed + 2 <= (process.stdout.rows || 24) - 1;
   let full = fits();
 
-  // How far down the tree has been printed for good — piped, or above the
-  // rolling footer. A line goes out only once every row above it has settled,
-  // so the printed tree is never out of order.
-  let printed = 0;
 
   let frame = 0;
   let drawn = 0;
@@ -88,9 +91,9 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
 
   const rowLine = (r, prefix, w = width - visibleWidth(prefix)) => {
     const p = paint.dim(prefix);
-    if (r.status !== 'busy') return p + statusLine(r.status, r.label, r.note, w);
+    if (r.status !== 'busy') return p + statusLine(r.status, r.name, r.note, w);
     const f = paint.warn(spinner[frame % spinner.length]);
-    return `${p}${f} ${paint.dim(padEndVisible(r.label, w))}  ${paint.dim(r.note ?? 'working …')}`;
+    return `${p}${f} ${paint.dim(padEndVisible(r.name, w))}  ${paint.dim(r.note ?? 'working …')}`;
   };
 
   const treeLine = (l) => (l.item ? rowLine(l.item, l.prefix) : paint.dim(l.prefix) + paint.bold(`${l.folder}/`));
@@ -109,7 +112,9 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
   const lines = () => {
     const body = [];
     if (full) {
-      for (const l of tree) body.push(treeLine(l));
+      // Not the lines already out for good: after a stretch in the rolling
+      // footer they are on screen above, and drawing them again repeats them.
+      for (const l of tree.slice(printed)) body.push(treeLine(l));
     } else {
       // Only what is still moving, so the footer stays a fixed handful of lines
       // however many repos are queued behind it.
@@ -169,7 +174,11 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
   // taller than the window makes `ansi.up()` address rows that have already
   // scrolled off, which tears the screen — exactly what `full` exists to avoid —
   // so re-decide on resize and forget the frame that is no longer up there.
+  // A forgotten full frame stays on screen, so its settled lines count as
+  // printed: the next block — rolling or full — starts below them instead of
+  // repeating them from the top (found in review).
   const onResize = () => {
+    if (full) ready();
     full = fits();
     drawn = 0;
   };

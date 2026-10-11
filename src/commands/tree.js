@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { groupDir, repoGroup } from '../config.js';
+import { repoPlace } from '../config.js';
 import { c, context, folderTree, glyph, heading, icon, plain, table } from '../log.js';
 import { machineRepos, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 
@@ -40,7 +40,10 @@ export async function run(opts) {
   // and siblings are sorted, because this claims to show the folders on disk
   // and `ls` does not print them in catalogue order.
   const lines = folderTree(
-    entries.map((e) => ({ ...e, path: groupDir(manifest, repoGroup(e.repo)).split('/'), name: path.basename(e.dir) })),
+    entries.map((e) => {
+      const { group, name } = repoPlace(manifest, e.repo);
+      return { ...e, path: group.split('/'), name };
+    }),
   );
   const rows = lines.map(({ prefix, item, folder, path: segs }) => {
     const dir = item ? item.dir : path.join(root, ...segs);

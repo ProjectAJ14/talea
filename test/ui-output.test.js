@@ -5,6 +5,7 @@ import test, { describe } from 'node:test';
 
 import * as log from '../src/log.js';
 import { board, task } from '../src/live.js';
+import { repoPlace } from '../src/config.js';
 import { stripAnsi } from '../src/theme.js';
 
 /** Swap properties on `obj` for the duration of `fn`, restoring the originals. */
@@ -145,6 +146,24 @@ describe('board, piped', () => {
     assert.equal(got.stdout, '');
   });
 
+  test('a repo with a dir sits where `talea tree` puts it, nested levels and all', async () => {
+    // The board named rows by catalogue name and dropped a nested dir's
+    // tools/ level, so sync and tree drew two pictures (found in review).
+    const manifest = {
+      repos: [
+        { name: 'cli-tool', owner: 'me', group: 'work', dir: 'tools/cli' },
+        { name: 'api', owner: 'me', group: 'work', dir: 'svc' },
+      ],
+    };
+    const got = await capture(() => {
+      const b = board(manifest.repos.map((r) => ({ id: r.name, ...repoPlace(manifest, r), label: r.name })), { live: false });
+      b.set('cli-tool', 'ok');
+      b.set('api', 'ok');
+      b.stop();
+    });
+    assert.deepEqual(got.log, ['work/', '├─ ▣ svc', '└─ tools/', '   └─ ▣ cli']);
+  });
+
   test('defaults to live only on a terminal', async () => {
     await withProps(process.stdout, { isTTY: false }, async () => {
       const got = await capture(() => board([{ id: 1, group: 'g', label: 'a' }]).stop());
@@ -199,7 +218,7 @@ describe('board, live', () => {
     });
   });
 
-  test('a resize re-decides whether the block fits', async () => {
+  test('a resize re-decides whether the block fits, and never prints a line twice', async () => {
     await withProps(process.stdout, { rows: 40 }, async () => {
       const got = await capture(() => {
         const b = board(items(3), { live: true });
@@ -208,8 +227,30 @@ describe('board, live', () => {
         b.set(0, 'ok');
         b.stop();
       });
-      // Now a footer: the settled row is printed on its way out.
+      // Now a footer. The full frame the resize left on screen already shows
+      // g0/, so only the row that settled since is printed on its way out —
+      // re-printing from the top repeated the tree (found in review).
+      assert.equal(got.log[0], '├─ ▣ repo0');
+      assert.match(stripAnsi(got.stdout), /g0\//, 'the frame showed it');
+      assert.doesNotMatch(got.log.join('\n'), /g0\//, 'and nothing printed it again');
+    });
+  });
+
+  test('a window that grows back draws only what the footer has not printed', async () => {
+    await withProps(process.stdout, { rows: 5 }, async () => {
+      const got = await capture(() => {
+        const b = board(items(3), { live: true });
+        b.set(0, 'ok');
+        process.stdout.rows = 40;
+        process.stdout.emit('resize');
+        // A redraw now: the full frame must start below the printed head.
+        b.set(1, 'busy');
+        b.stop();
+      });
       assert.equal(got.log[0], 'g0/\n├─ ▣ repo0');
+      const frames = stripAnsi(got.stdout);
+      assert.doesNotMatch(frames, /repo0/, 'repo0 is in the scrollback already, not in the frame');
+      assert.match(frames, /repo2/);
     });
   });
 

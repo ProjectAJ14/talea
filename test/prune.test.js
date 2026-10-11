@@ -112,6 +112,21 @@ describe('prune judges each worktree', () => {
     assert.equal(existsSync(wt), true);
   });
 
+  test('removableOnly walks only what --apply could remove, and judges those the same', async () => {
+    // sync paid for sizing every unmerged worktree it would never report (found in review).
+    const dir = makeRepo('sizes');
+    const kept = addWorktree(dir, 'kept');
+    const gone = addWorktree(dir, 'gone');
+    git(['push', '-q', 'origin', 'gone:main'], dir);
+    const full = await planRepo(repo(dir));
+    const lean = await planRepo(repo(dir), { fetch: false, removableOnly: true });
+    assert.ok(entryOf(full, kept).size > 0);
+    assert.equal(entryOf(lean, kept).size, 0, 'the unmerged one was walked');
+    assert.equal(verdictOf(lean, kept), 'unmerged');
+    assert.equal(verdictOf(lean, gone), 'merged');
+    assert.equal(entryOf(lean, gone).size, entryOf(full, gone).size);
+  });
+
   test('a modified file and an untracked file both keep it', async () => {
     const dir = makeRepo('dirty');
     const modified = addWorktree(dir, 'a');

@@ -77,6 +77,14 @@ git config --global --add safe.directory 'C:/src/the-folder'
 
 and the run exits non-zero. `clone` and `sync` clone nothing for a repo whose folder name it shares, so no second copy lands beside it. A repo with no `origin` at all is local-only, not refused, and is left out quietly.
 
+A linked worktree whose repo no longer knows it — left behind after the repo pruned its record, or after the repo was moved by hand — is not a refusal either. It is named as one, with the fix:
+
+```bash
+git worktree repair '/path/to/app-worktrees/feat-x'   # run inside the repo, if it still exists
+```
+
+or delete the folder once nothing in it is needed. It is a warning only: the run does not fail over it, and it holds nothing back from cloning.
+
 ### Paths are repaired afterwards
 
 A repo that moves and loses its history has not really been helped. After a move, absolute paths that pointed at the old location are updated: Claude Code session history and memory, its per-project settings, and config files in the workspace and the repo — `.idea`, `.vscode`, `.claude`, `CLAUDE.md`.

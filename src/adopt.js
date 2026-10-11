@@ -244,16 +244,41 @@ export async function readOrigins(dirs, jobs = 8) {
   // made the choice of "which copy is the real one" a coin flip.
   return pooled(dirs, jobs, async (dir) => {
     const { code, stdout, stderr } = await git(['remote', 'get-url', 'origin'], { cwd: dir });
-    // 2 is "no origin", which a local-only repo legitimately has. 128 is git
-    // refusing the repo outright — on Windows usually "dubious ownership", a
-    // folder cloned by another account, an admin shell or WSL. Dropped silently,
-    // that checkout was never moved and clone put a fresh copy beside it.
+    if (code === 0) return { dir, originUrl: stdout, error: null };
+    // 2 is "no origin", which a local-only repo legitimately has; a git older
+    // than 2.30 says the same with 128, so its words decide, not the code.
+    if (code !== 128 || /No such remote/i.test(stderr)) return { dir, originUrl: null, error: null };
+    // A linked worktree whose repo has pruned or lost its record also exits
+    // 128 — every run, forever — and is no repo to adopt or hold back. It is
+    // told by its `.git` file, never by git's wording, and only warned about.
+    if (orphanedWorktree(dir)) return { dir, originUrl: null, error: null, orphan: true };
+    // Otherwise git is refusing the repo outright — on Windows usually "dubious
+    // ownership", a folder cloned by another account, an admin shell or WSL.
+    // Dropped silently, that checkout was never moved and clone put a fresh
+    // copy beside it. The `fatal:` line is the reason: a warning git prints
+    // first (a bad config value, say) used to stand in for it and hide the
+    // ownership advice (found in review).
+    const said = lines(stderr);
     return {
       dir,
-      originUrl: code === 0 ? stdout : null,
-      error: code === 128 ? stderr.split(/\r?\n/)[0] || 'git exited 128' : null,
+      originUrl: null,
+      error: said.find((l) => l.startsWith('fatal:')) ?? said[0] ?? 'git exited 128',
+      dubious: /dubious ownership/i.test(stderr),
     };
   });
+}
+
+/**
+ * A linked worktree its repo no longer knows: `.git` is a file whose `gitdir:`
+ * names a folder that is gone — pruned, or the repo moved by hand.
+ */
+export function orphanedWorktree(dir) {
+  try {
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(path.join(dir, '.git'), 'utf8'));
+    return Boolean(m) && !existsSync(path.resolve(dir, m[1]));
+  } catch {
+    return false; // a `.git` folder, or none: not a linked worktree
+  }
 }
 
 /** Is the destination free? An existing non-empty directory belongs to the developer. */
@@ -294,7 +319,17 @@ export async function moveBlockers(dir) {
  */
 export function insideRoot(root, dest) {
   const rel = path.relative(canonical(root), canonical(dest));
-  return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
+  return rel !== '' && staysInside(rel);
+}
+
+/**
+ * Does a `path.relative()` result stay inside its base — the base itself
+ * included? Not `startsWith('..')`: a child folder named `..cache` starts that
+ * way and is inside, and three copies of that check each read it as outside
+ * (found in review). An absolute result is another drive on Windows.
+ */
+export function staysInside(rel) {
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
 }
 
 /**
@@ -384,7 +419,7 @@ export function worktreeRecords(porcelain) {
 export function remapWorktree(p, { from, to, siblings }) {
   const within = (base) => {
     const rel = path.relative(canonical(base), canonical(p));
-    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null;
+    return rel && staysInside(rel) ? rel : null;
   };
 
   const nested = within(from);
@@ -526,7 +561,7 @@ export async function planAdoptions(manifest, root, repos, candidates) {
     const rank = (copy) => {
       if (samePath(copy.dir, to)) return 0;
       const rel = path.relative(root, copy.dir);
-      return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? 1 : 2;
+      return rel && staysInside(rel) ? 1 : 2;
     };
     const ordered = [...copies].sort((a, b) => rank(a) - rank(b) || a.dir.localeCompare(b.dir));
 
@@ -716,7 +751,12 @@ export function renameRetrying(from, to, budgetMs = RENAME_BUDGET_MS, wait = 100
     // the worktree for as long as it runs. Stopping it, on the first retry
     // only, is harmless — git restarts it on demand — and a git without the
     // command just says so.
-    if (wait === 100) gitSync(['fsmonitor--daemon', 'stop'], from);
+    // Atomics.wait blocks the event loop, so no spinner can turn — one line
+    // says why the run has gone still (rule 14).
+    if (wait === 100) {
+      gitSync(['fsmonitor--daemon', 'stop'], from);
+      process.stderr.write(`  waiting for Windows to release ${from} …\n`);
+    }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
     return renameRetrying(from, to, budgetMs - wait, Math.min(wait * 2, 1000));
   }
@@ -725,7 +765,7 @@ export function renameRetrying(from, to, budgetMs = RENAME_BUDGET_MS, wait = 100
 /** Is `p` the directory `dir`, or somewhere inside it? */
 function isWithin(dir, p) {
   const rel = path.relative(canonical(dir), canonical(p));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return staysInside(rel);
 }
 
 export function executeMove(plan) {
@@ -928,32 +968,28 @@ export function rekeyClaudeJson(from, to) {
   // lookup silently skipped the re-key. On Windows the new key copies the old
   // one's slashes so the file stays in whatever style Claude Code wrote it; a
   // backslash on POSIX is part of a folder name and is left alone.
+  // Every spelling is re-keyed, not only the first: a file holding both left
+  // the second pointing at the old folder (found in review). The first one
+  // found carries over; the rest are stale copies of it and are dropped.
   const keys = Object.keys(data.projects);
-  const oldKey = keys.find((k) => samePath(k, from));
-  if (!oldKey) return { changed: false };
+  const oldKeys = keys.filter((k) => samePath(k, from));
+  if (!oldKeys.length) return { changed: false };
   const resolvedTo = path.resolve(to);
-  const newKey =
-    keys.find((k) => samePath(k, to)) ??
-    (process.platform === 'win32' && !oldKey.includes('\\') ? resolvedTo.split('\\').join('/') : resolvedTo);
-
-  if (newKey in data.projects) {
-    delete data.projects[oldKey];
-    try {
-      writeJsonAtomic(file, data);
-      return { changed: true, note: 'dropped the stale entry; the new path already had one' };
-    } catch (err) {
-      return { changed: false, error: err.message };
-    }
+  const existing = keys.find((k) => samePath(k, to));
+  const carried = data.projects[oldKeys[0]];
+  for (const k of oldKeys) delete data.projects[k];
+  // An entry already at the new path wins — it is the newer of the two.
+  if (!existing) {
+    const newKey =
+      process.platform === 'win32' && !oldKeys[0].includes('\\') ? resolvedTo.split('\\').join('/') : resolvedTo;
+    data.projects[newKey] = carried;
   }
-
-  data.projects[newKey] = data.projects[oldKey];
-  delete data.projects[oldKey];
   try {
     writeJsonAtomic(file, data);
-    return { changed: true };
   } catch (err) {
     return { changed: false, error: err.message };
   }
+  return existing ? { changed: true, note: 'dropped the stale entry; the new path already had one' } : { changed: true };
 }
 
 // Files known to carry absolute paths, checked in the workspace root and in

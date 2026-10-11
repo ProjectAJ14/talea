@@ -237,6 +237,13 @@ nothing for a repo whose folder name it shares, so no second copy lands beside
 it. A repo with no `origin` at all is a local-only repo, not a refusal, and is
 left out quietly.
 
+A linked worktree whose repo no longer knows it — its folder left behind after
+the repo pruned its record, or after the repo was moved by hand — is named as
+one with the fix: delete the folder once nothing in it is needed, or, if the
+repo still exists, run the printed `git worktree repair '<folder>'` in it. It is
+a warning: the run does not fail over it, and it holds nothing back from
+cloning.
+
 If the same repo turns up twice, the copy at the catalogue path wins and the
 other moves into `.talea-duplicates/` with everything in it. **Nothing is ever
 deleted.** Clearing that folder is your call.

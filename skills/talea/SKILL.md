@@ -131,6 +131,12 @@ the run exits non-zero. When git's reason is *dubious ownership*, talea prints a
 developer**: it tells git to trust a folder another account owns, which is their
 call. Show them the line and let them decide.
 
+A folder "left alone — a worktree whose repo no longer knows it" is a warning,
+not a failure. **Do not delete it for the developer**, even though deleting is
+one of the printed fixes: it may hold uncommitted work. Show them the line;
+`git worktree repair` from the repo is the safe one to suggest when the repo
+still exists.
+
 If a move reports worktrees that "could not be re-linked", the repo has moved
 and nothing is lost. Show the developer git's reason line; once its cause is
 dealt with (often a permission or an unmounted drive), run the printed

@@ -52,6 +52,20 @@ may install into the one global npm prefix. What happens:
 All of this is pinned by the "runs that overlap" tests in
 `test/net-update.test.js`.
 
+### Commands it prints for you to paste
+
+`adopt`, `clone` and `sync` print a few commands they never run themselves: the
+`git config --global --add safe.directory` line for a checkout git will not
+open, the cleanup for `.talea-duplicates/`, and a search for old paths. Every
+path in them is a folder name found on disk, which talea did not choose, so
+each is single-quoted for the platform's shell by `quoted()` in
+`src/commands/adopt.js` — sh and PowerShell both expand `$(…)` inside double
+quotes, and a folder named that way would have run when the line was pasted
+(found in review). The `safe.directory` line in particular widens what git
+will trust, so the agent skill tells an agent never to run it for the
+developer. Pinned by the `quoted` tests in `test/adopt-command.test.js`, which
+round-trip a hostile name through a real `sh`.
+
 ## The site
 
 `web/` is a static Astro + Starlight build (no adapter, no server output, no

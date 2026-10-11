@@ -55,6 +55,7 @@ puts in one folder stop the run before anything moves.
 A checkout git will not open (on Windows usually ${c.dim('dubious ownership')}: it was cloned
 from an admin shell, another account or WSL) cannot be matched, so it is named
 with git's reason and the ${c.dim('safe.directory')} command, and the run fails.
+A worktree whose repo no longer knows it is named with its fix, as a warning.
 
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
@@ -96,6 +97,7 @@ export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
     refused: plans.filter((p) => p.action === 'refuse'),
     inPlace: plans.filter((p) => p.action === 'in-place'),
     unreadable: candidates.filter((x) => x.error),
+    orphans: candidates.filter((x) => x.orphan),
   };
 }
 
@@ -116,16 +118,36 @@ export function quoted(p, platform = process.platform) {
  * there is no telling which repo it is, so it cannot be moved — but saying
  * nothing reads as "you have no copy", and the developer gets a second one.
  */
-export function reportUnreadable(unreadable) {
+export function reportUnreadable(unreadable, platform = process.platform) {
   if (!unreadable.length) return;
   plain('');
   for (const u of unreadable) {
     warn(`${c.bold(shorten(u.dir))} left alone — git would not open it\n    ${c.dim(`git: ${u.error}`)}`);
-    if (/dubious ownership/i.test(u.error)) {
-      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory ${quoted(u.dir.split('\\').join('/'))}`));
+    if (u.dubious) {
+      // git matches safe.directory with forward slashes on Windows; anywhere
+      // else a backslash is part of the folder's name and must stay.
+      const dir = platform === 'win32' ? u.dir.split('\\').join('/') : u.dir;
+      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory ${quoted(dir, platform)}`));
     }
   }
   process.exitCode = 1;
+}
+
+/**
+ * Name every linked worktree whose repo no longer knows it — its admin folder
+ * pruned, or the repo moved by hand. A warning, never a failure: git exits 128
+ * on it every run, and counting that failed every sync forever over a folder
+ * that holds no repo back from cloning (found in review). The developer
+ * decides what is in it; nothing here deletes it.
+ */
+export function reportOrphans(orphans) {
+  if (!orphans.length) return;
+  plain('');
+  for (const o of orphans) {
+    warn(`${c.bold(shorten(o.dir))} left alone — a worktree whose repo no longer knows it`);
+    plain(c.dim(`    delete the folder once nothing in it is needed, or, if the repo still exists, run in the repo:`));
+    plain(c.dim(`      git worktree repair ${quoted(o.dir)}`));
+  }
 }
 
 /**
@@ -430,7 +452,7 @@ export async function run(opts) {
   );
   for (const dir of scanRoots) plain(`    ${c.dim(shorten(dir))}`);
 
-  const { moves, parks, refused, inPlace, unreadable } = await planFor({
+  const { moves, parks, refused, inPlace, unreadable, orphans } = await planFor({
     manifest,
     root,
     repos,
@@ -438,6 +460,7 @@ export async function run(opts) {
     jobs: opts.jobs ?? 8,
   });
   reportUnreadable(unreadable);
+  reportOrphans(orphans);
 
   if (inPlace.length) {
     plain('');
@@ -445,7 +468,7 @@ export async function run(opts) {
   }
 
   if (!moves.length && !parks.length && !refused.length) {
-    plain(`\n${c.dim(unreadable.length ? 'Nothing else to adopt.' : 'Nothing to adopt.')}`);
+    plain(`\n${c.dim(unreadable.length || orphans.length ? 'Nothing else to adopt.' : 'Nothing to adopt.')}`);
     return;
   }
 

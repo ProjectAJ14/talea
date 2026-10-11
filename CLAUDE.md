@@ -190,8 +190,22 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    origin", it vanished from the scan and `clone` put a second copy beside it
    (ported from baylor-cli, where it was found). `clone` and `sync`
    hold back every missing repo whose folder name it shares — too weak to move
-   it on, enough not to clone beside it. Exit 2, no `origin`, is a local-only
-   repo and stays silent.
+   it on, enough not to clone beside it; one sitting at its own catalogue
+   path is that repo, held and failed once, never fetched into a second
+   failure. The reason printed is git's `fatal:` line, and dubious ownership
+   is looked for across all of stderr, since a warning git prints first hid
+   both (found in review). No `origin` is a local-only repo and stays silent:
+   exit 2, or 128 saying "No such remote" from a git older than 2.30 — talea
+   declares no minimum git.
+   One 128 is not a refusal: a linked worktree whose repo no longer knows it
+   (its `.git` file's `gitdir:` names a folder that is gone — pruned, or the
+   repo moved by hand), as a `<repo>-worktrees/feat-x` left behind is. Counted
+   as a failure, it failed every sync forever (found in review). Decided with
+   the developer: it is **warned about, not failed** — named, said to be a
+   worktree its repo has forgotten, with the fix (delete the folder, or `git
+   worktree repair <path>` from the repo if it still exists) — and it touches
+   neither the exit code nor the counts, and holds nothing back from cloning.
+   It is told by reading the `.git` file, never by parsing git's wording.
 
 4. **`ignore: true` means another tool owns that checkout.** No command touches
    it — not `sync`, not `adopt`, not even an explicit `selected` entry. Two
@@ -222,8 +236,10 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    The destination is re-checked first: one that filled up since the plan is
    named as the cause, not reported as a lock on the source. A Windows handle
    held briefly by Defender or the indexer is waited out for up to five
-   seconds (stopping git's fsmonitor daemon once); a terminal whose cwd is in
-   the repo is named, since no wait outlasts it.
+   seconds (stopping git's fsmonitor daemon once), with one line on stderr
+   before the first wait naming the folder — the wait blocks the event loop,
+   so no spinner can turn, and five silent seconds read as a hang (rule 14).
+   A terminal whose cwd is in the repo is named, since no wait outlasts it.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
    The one removal in the tool is `talea prune --apply`, and rule 13 is why it
@@ -378,10 +394,14 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
 
    **`sync` reports what prune could clear, and clears nothing.** Nobody runs
    `prune` to find out; everybody runs `sync`. So each repo's sync job runs
-   `planRepo(…, { fetch: false })` right after its own fetch — a second fetch
-   in the same repo would race the first for git's ref locks — inside the
-   board, with the row saying `checking worktrees …` while the walk sizes them
-   (rule 14). The run ends with one amber line, after the verdict, and the line
+   `planRepo(…, { fetch: false, removableOnly: true })` right after its own
+   fetch — a second fetch in the same repo would race the first for git's ref
+   locks — inside the board, with the row saying `checking worktrees …` while
+   it works (rule 14). `removableOnly` walks and sizes only a worktree judged
+   merged or unused; sizing every unmerged, locked or dirty one made every
+   sync pay for a full prune (found in review). The nested-repo and
+   ignored-file checks still run on the ones it walks, so the count is the one
+   `talea prune` would remove. The run ends with one amber line, after the verdict, and the line
    never touches the exit code or ALL CLEAR. A repo whose fetch failed is not
    judged (its origin is stale), and a `{ skip }` or `{ fail }` plan adds
    nothing — `prune` is where those are reported. A *throw* from the planner is
@@ -417,7 +437,11 @@ spills the remaining parameters onto the line as visible text.
 **`clone` and `sync` draw their live board as the workspace tree** — the same
 folders, branches and sort `talea tree` prints, laid out by one function,
 `folderTree()` in `src/log.js`, so the two cannot drift into different
-pictures. The top level sits flush left because the heading above already names
+pictures. Each repo is placed by `repoPlace()` in `src/config.js` — its folder
+on disk, a nested `dir` like `tools/cli` keeping its `tools/` level — not by
+its catalogue name: the board once showed one and the tree the other (found in
+review). A resize that leaves a full frame on screen counts its settled lines
+as printed, so neither the rolling footer nor a regrown frame repeats them. The top level sits flush left because the heading above already names
 the root. There are deliberately two renderings and one row formatter: on a
 terminal the tree is redrawn in place; off one, or when the tree is taller than
 the window, each tree line prints once, top to bottom, as soon as every row

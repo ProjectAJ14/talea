@@ -189,18 +189,73 @@ describe('finding checkouts', () => {
     assert.match(got.error, /^fatal: not a git repository/);
   });
 
-  test('readOrigins still gives a reason when git exits 128 saying nothing', { skip: process.platform === 'win32' && 'a shell-script git needs POSIX' }, async () => {
+  /** readOrigins with a shell-script git that prints `stderr` and exits `code`. */
+  async function withFakeGit(stderr, code, dir = fresh()) {
     const bin = fresh('bin');
-    writeFileSync(path.join(bin, 'git'), '#!/bin/sh\nexit 128\n');
+    writeFileSync(path.join(bin, 'said'), stderr);
+    writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncat '${path.join(bin, 'said')}' >&2\nexit ${code}\n`);
     fs.chmodSync(path.join(bin, 'git'), 0o755);
     const saved = process.env.PATH;
     process.env.PATH = `${bin}${path.delimiter}${saved}`;
     try {
-      const [got] = await A.readOrigins([fresh()]);
-      assert.equal(got.error, 'git exited 128');
+      return (await A.readOrigins([dir]))[0];
     } finally {
       process.env.PATH = saved;
     }
+  }
+  const posixOnly = { skip: process.platform === 'win32' && 'a shell-script git needs POSIX' };
+
+  test('readOrigins still gives a reason when git exits 128 saying nothing', posixOnly, async () => {
+    assert.equal((await withFakeGit('', 128)).error, 'git exited 128');
+  });
+
+  test('a git older than 2.30 says "no origin" with 128, and it is still no origin', posixOnly, async () => {
+    const got = await withFakeGit("error: No such remote 'origin'\n", 128);
+    assert.deepEqual(got, { dir: got.dir, originUrl: null, error: null });
+  });
+
+  test('the fatal line is the reason, and dubious ownership is seen past a warning before it', posixOnly, async () => {
+    // A leading warning stood in for the reason and hid the safe.directory fix (found in review).
+    const got = await withFakeGit(
+      "warning: unable to access '/x/.config/git/attributes'\nfatal: detected dubious ownership in repository at '/r'\n",
+      128,
+    );
+    assert.equal(got.error, "fatal: detected dubious ownership in repository at '/r'");
+    assert.equal(got.dubious, true);
+    assert.equal((await withFakeGit('warning: one\nwarning: two\n', 128)).error, 'warning: one');
+  });
+
+  test('a linked worktree whose repo forgot it is an orphan, told by its .git file — not an error', async () => {
+    // git exits 128 "not a git repository" on it (found in review).
+    const { dir } = makeRepo('forgot');
+    const wt = path.join(fresh(), 'feat');
+    git(['worktree', 'add', '-q', '-b', 'feat', wt], dir);
+    rmSync(path.join(dir, '.git', 'worktrees', 'feat'), { recursive: true });
+    assert.deepEqual(await A.readOrigins([wt]), [{ dir: wt, originUrl: null, error: null, orphan: true }]);
+    // A `.git` file that names no gitdir is not one: git's refusal stands.
+    const odd = fresh();
+    writeFileSync(path.join(odd, '.git'), 'nonsense\n');
+    const [got] = await A.readOrigins([odd]);
+    assert.equal(A.orphanedWorktree(odd), false);
+    assert.ok(got.error);
+  });
+});
+
+describe('staysInside', () => {
+  test('a child named ..cache is inside; .. and above are not', () => {
+    // Three copies of `startsWith('..')` read ..cache as outside (found in review).
+    assert.equal(A.staysInside(''), true);
+    assert.equal(A.staysInside('..cache'), true);
+    assert.equal(A.staysInside(path.join('..cache', 'x')), true);
+    assert.equal(A.staysInside('..'), false);
+    assert.equal(A.staysInside(path.join('..', 'x')), false);
+    assert.equal(A.staysInside(path.resolve('/elsewhere')), false);
+  });
+
+  test('a worktree under the repo\'s ..cache folder travels with it', () => {
+    const from = path.join(tmp, 'mv-from');
+    const to = path.join(tmp, 'mv-to');
+    assert.equal(A.remapWorktree(path.join(from, '..cache', 'wt'), { from, to, siblings: null }), path.join(to, '..cache', 'wt'));
   });
 });
 
@@ -628,9 +683,19 @@ describe('Windows file locks', () => {
   test('a transient lock is waited out, stopping git\'s fsmonitor daemon once', async () => {
     const { dir } = makeRepo('held');
     const to = path.join(fresh(), 'held');
-    const { calls } = await gitCalls(() => flaky(2)(() => onPlatform('win32', () => A.renameRetrying(dir, to))));
+    const said = [];
+    const write = process.stderr.write;
+    process.stderr.write = (chunk) => (said.push(String(chunk)), true);
+    let calls;
+    try {
+      ({ calls } = await gitCalls(() => flaky(2)(() => onPlatform('win32', () => A.renameRetrying(dir, to)))));
+    } finally {
+      process.stderr.write = write;
+    }
     assert.equal(existsSync(path.join(to, '.git')), true, 'the repo must arrive');
     assert.deepEqual(calls.filter((c) => c === 'fsmonitor--daemon stop'), ['fsmonitor--daemon stop']);
+    // Atomics.wait blocks for up to five seconds; it was silent (rule 14, found in review).
+    assert.deepEqual(said, [`  waiting for Windows to release ${dir} …\n`], 'said once, before the first wait');
   });
 
   test('a lock that outlasts the wait, any other error, and any error off Windows are thrown at once', async () => {
@@ -806,6 +871,17 @@ describe('rekeyClaudeJson', () => {
     write({ projects: { [slashed(from)]: { a: 1 } } });
     assert.deepEqual(await onPlatform('win32', () => A.rekeyClaudeJson(from, to)), { changed: true });
     assert.deepEqual(read(), { projects: { [slashed(to)]: { a: 1 } } });
+  });
+
+  test('every spelling of the old path is re-keyed, not only the first', () => {
+    // The second one was left pointing at the old folder (found in review).
+    const other = `${from}${path.sep}`;
+    write({ projects: { [from]: { a: 1 }, [other]: { a: 2 }, keep: {} } });
+    assert.deepEqual(A.rekeyClaudeJson(from, to), { changed: true });
+    assert.deepEqual(read(), { projects: { keep: {}, [to]: { a: 1 } } });
+    write({ projects: { [from]: { a: 1 }, [other]: { a: 2 }, [to]: { b: 2 } } });
+    assert.match(A.rekeyClaudeJson(from, to).note, /stale entry/);
+    assert.deepEqual(read(), { projects: { [to]: { b: 2 } } });
   });
 
   test('an entry already at the new path wins', () => {

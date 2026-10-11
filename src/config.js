@@ -387,6 +387,18 @@ export const repoDir = (manifest, workspaceRoot, repo) =>
   path.join(workspaceRoot, groupDir(manifest, repoGroup(repo)), repo.dir ?? repo.name);
 
 /**
+ * Where a repo sits in the tree, as `talea tree` and the live board both draw
+ * it: `group`, the folder path above it, and `name`, its own folder. A nested
+ * `dir` like `tools/cli` keeps its `tools/` level, and the name is the folder
+ * on disk, not the catalogue name — the board once showed one and the tree the
+ * other (found in review).
+ */
+export function repoPlace(manifest, repo) {
+  const segs = `${groupDir(manifest, repoGroup(repo))}/${repo.dir ?? repo.name}`.split('/');
+  return { group: segs.slice(0, -1).join('/'), name: segs.at(-1) };
+}
+
+/**
  * The branch this repo is cloned on and fast-forwarded against.
  *
  * Recorded per repo by `talea discover`, because GitHub is the only thing that

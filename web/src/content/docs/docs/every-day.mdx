@@ -33,7 +33,7 @@ What it will **not** do, and this is the whole of it:
 - **It will not move you off your branch.** It fast-forwards the branch you are *on*, or leaves it alone and says why. A branch with no upstream is fetched and left.
 - **It will not touch a dirty repo.** Uncommitted changes mean it fetches and stops, with a line saying so.
 - **It will not push.**
-- **It will not clone beside a checkout git refuses to open.** That checkout is named with git's reason and its fix, the repo sharing its folder name is held back, and the run exits non-zero.
+- **It will not clone beside a checkout git refuses to open.** That checkout is named with git's reason and its fix, the repo sharing its folder name is held back, and the run exits non-zero. A linked worktree whose repo no longer knows it is named with its fix as a warning, and fails nothing.
 
 Every command runs **from anywhere**. Inside a workspace, that workspace. Outside one, the workspace `talea init` made — and if this machine has several, it asks which. With no terminal to ask on (a script, a pipe) it lists them and exits non-zero rather than picking one for you.
 
