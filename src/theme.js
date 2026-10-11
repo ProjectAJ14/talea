@@ -94,6 +94,10 @@ export const glyph = {
   maybe: '~',
   groupMark: '◇',
   rule: '─',
+  // The folder tree `talea tree` and the live board draw: one column each.
+  treeMid: '├',
+  treeLast: '└',
+  treeBar: '│',
   prompt: '==>',
 };
 

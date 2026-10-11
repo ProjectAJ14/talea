@@ -414,6 +414,18 @@ not caution for its own sake: a terminal that does not understand
 `\x1b[38;2;r;g;bm` does not silently drop it — it parses the SGR opener and
 spills the remaining parameters onto the line as visible text.
 
+**`clone` and `sync` draw their live board as the workspace tree** — the same
+folders, branches and sort `talea tree` prints, laid out by one function,
+`folderTree()` in `src/log.js`, so the two cannot drift into different
+pictures. The top level sits flush left because the heading above already names
+the root. There are deliberately two renderings and one row formatter: on a
+terminal the tree is redrawn in place; off one, or when the tree is taller than
+the window, each tree line prints once, top to bottom, as soon as every row
+above it has settled — through the same `statusLine()` the live block freezes.
+A slow repo therefore holds back the rows below it in a CI log until it
+finishes; a log that reads as the tree is worth that wait. Failures still go to
+stderr, one tree line each. Ported from baylor-cli.
+
 Both colour paths close with `39` ("default foreground") and never with `0`. A
 full reset also clears bold and dim, so a colour nested inside `dim()` would
 un-dim the rest of the line on a truecolor terminal and not on a basic one — a

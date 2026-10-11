@@ -73,6 +73,21 @@ talea pick some-repo          # keep that one — an unknown name opens the chec
 dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
+`sync` and `clone` draw their progress as the same folder tree `talea tree`
+prints. Piped or in CI, each line of that tree is printed once, top to bottom,
+as soon as every repo above it has finished — so the log reads as the tree:
+
+```text
+alice/
+└─ ▣ svc     main up to date
+work/
+├─ backend/
+│  └─ ▣ api  main up to date
+├─ ▣ Docs    main up to date
+└─ frontend/
+   └─ ▣ web  main up to date
+```
+
 When some of your worktrees are merged or unused, `sync` ends with one amber
 line saying how many and how much space `talea prune --apply` would free. It
 only reports — nothing is removed, and the line changes neither the exit code

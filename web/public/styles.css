@@ -535,13 +535,13 @@ kbd {
 .ask__count { color: var(--neutral-500); font-size: 11.5px; padding: 6px 0 0 2px; }
 
 /* ---------- the live block, as live.js paints it ----------
-   One row per repo, a glyph carrying the outcome and a note after it. The
-   glyphs are the ones the CLI actually prints — they are content, not
+   The workspace folder tree, as folderTree() lays it out for the board: a
+   folder line, then one row per repo on its branch, a glyph carrying the
+   outcome and a note after it. The glyphs are the ones the CLI actually prints — they are content, not
    decoration, which is why they survive with colour stripped. */
-.grp { color: var(--green-300); margin: 10px 0 2px; }
-.grp__rule { color: var(--neutral-700); }
-.grp__n { color: var(--neutral-600); }
+.grp { color: #D6DDE2; font-weight: 700; margin-top: 6px; }
 .row { display: flex; align-items: baseline; gap: 1ch; }
+.row__t { flex: none; color: var(--neutral-600); }
 .row__g { flex: none; width: 1ch; color: var(--neutral-500); }
 .row--ok .row__g { color: var(--green-400); }
 .row--skip .row__g { color: #E8920C; }

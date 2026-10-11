@@ -140,8 +140,8 @@ describe('board, piped', () => {
       b.note(42, 'orphan'); // a note for an id that has no row keeps the id
       b.stop();
     });
-    assert.deepEqual(got.log, ['▣ one  cloned']);
-    assert.deepEqual(got.error, ['▤ two  boom', '  two\n    fatal: nope', '  42\n    orphan']);
+    assert.deepEqual(got.log, ['g/', '├─ ▣ one  cloned']);
+    assert.deepEqual(got.error, ['└─ ▤ two  boom', '  two\n    fatal: nope', '  42\n    orphan']);
     assert.equal(got.stdout, '');
   });
 
@@ -189,8 +189,13 @@ describe('board, live', () => {
         b.set(1, 'busy');
         b.stop();
       });
-      assert.deepEqual(got.log, ['  ▣ repo0   done']); // padded to repo10
-      assert.doesNotMatch(stripAnsi(got.stdout), /◇ g0/);
+      // The tree's head goes out as soon as repo0 settles (padded to repo10),
+      // and stop() prints whatever is left of it, so the scrollback holds all
+      // thirty rows even though only one finished.
+      assert.equal(got.log[0], 'g0/\n├─ ▣ repo0   done');
+      assert.equal(got.log.length, 2);
+      assert.match(got.log[1], /^├─ · repo10  queued\n[^]*\ng1\/\n├─ \S repo1   working …\n[^]*└─ · repo9   queued$/);
+      assert.doesNotMatch(stripAnsi(got.stdout), /g0\//, 'the tree belongs above the footer, not in it');
     });
   });
 
@@ -204,7 +209,7 @@ describe('board, live', () => {
         b.stop();
       });
       // Now a footer: the settled row is printed on its way out.
-      assert.deepEqual(got.log, ['  ▣ repo0']);
+      assert.equal(got.log[0], 'g0/\n├─ ▣ repo0');
     });
   });
 

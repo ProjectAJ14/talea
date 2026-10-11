@@ -94,9 +94,9 @@ async function inWs(ws, fn) {
   return { text: stripVTControlCharacters(out.join('\n')), error, exitCode };
 }
 
-/** The row for one repo in the board's piped output. */
+/** The row for one repo in the board's piped output, under its tree branch (`├─ ▣ name  note`). */
 const row = (text, name) =>
-  text.split('\n').find((l) => new RegExp(`^\\s*\\S+\\s+${name}\\s`).test(l)) ?? '';
+  text.split('\n').find((l) => new RegExp(`^[\\s│├└─]*\\S+\\s+${name}\\s`).test(l)) ?? '';
 
 describe('talea sync', () => {
   let ws;

@@ -14,6 +14,19 @@ dest=$(talea where eklavya) && cd -- "$dest"
 
 Clones what is missing, fast-forwards what is there. Safe to run unattended, and safe to run twice.
 
+Progress is drawn as the workspace's folder tree, the one `talea tree` prints. In a pipe or a CI log each line of it is printed once, as soon as every repo above it has finished:
+
+```text
+alice/
+└─ ▣ svc     main up to date
+work/
+├─ backend/
+│  └─ ▣ api  main up to date
+├─ ▣ Docs    main up to date
+└─ frontend/
+   └─ ▣ web  main up to date
+```
+
 What it will **not** do, and this is the whole of it:
 
 - **It will not merge a divergence.** Fast-forwards only. Anything else is reported for you to deal with.
