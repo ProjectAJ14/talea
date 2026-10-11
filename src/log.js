@@ -71,6 +71,49 @@ export function groupHeader(name, count, noun = 'repo') {
 export const group = (name, count, noun) => console.log(groupHeader(name, count, noun));
 
 /**
+ * Lay `items` — each with `path`, its folder segments, and `name` — out as a
+ * folder tree: `{ prefix, folder, path }` for a folder, `{ prefix, item }` for
+ * an item, top to bottom. `talea tree` and the live board both draw from this,
+ * so the board reads as the same picture. Siblings sort by name, ignoring
+ * case, as `ls` does — not in catalogue order. Items are kept in a list, never
+ * keyed by name, so two of them in one folder both show. `rooted: false` sits
+ * the top level flush left, for a tree with no root line to hang from. The
+ * prefix is plain text; the caller paints it.
+ */
+export function folderTree(items, { rooted = true } = {}) {
+  const make = () => ({ folders: new Map(), items: [] });
+  const top = make();
+  for (const it of items) {
+    let node = top;
+    for (const seg of it.path) {
+      if (!node.folders.has(seg)) node.folders.set(seg, make());
+      node = node.folders.get(seg);
+    }
+    node.items.push(it);
+  }
+  const lines = [];
+  const walk = (node, at, prefix, flush) => {
+    const kids = [
+      ...[...node.folders].map(([name, sub]) => ({ name, sub })),
+      ...node.items.map((item) => ({ name: item.name, item })),
+    ].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+    kids.forEach((k, i) => {
+      const last = i === kids.length - 1;
+      const branch = flush ? '' : `${last ? glyph.treeLast : glyph.treeMid}${glyph.rule} `;
+      if (k.item) {
+        lines.push({ prefix: prefix + branch, item: k.item });
+        return;
+      }
+      const p = [...at, k.name];
+      lines.push({ prefix: prefix + branch, folder: k.name, path: p });
+      walk(k.sub, p, flush ? '' : prefix + (last ? '   ' : `${glyph.treeBar}  `), false);
+    });
+  };
+  walk(top, [], '', !rooted);
+  return lines;
+}
+
+/**
  * The context strip under a heading — where the command is working, on which
  * environment, how wide. `parts` is a list of [label, value] pairs.
  */

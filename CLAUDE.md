@@ -183,6 +183,36 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    `matchRepo` tries the exact match against the **whole catalogue** first: a
    checkout that is exactly another repo — another owner's, an ignored one — is
    that repo, and a name match against this one would claim it.
+   A checkout git refuses to open (exit 128 — on Windows usually "dubious
+   ownership", cloned from an admin shell, another account or WSL) has no
+   remote at all, so it is not even a name match: it is named with git's
+   reason and the `safe.directory` fix, and the run fails. Read as "no
+   origin", it vanished from the scan and `clone` put a second copy beside it
+   (ported from baylor-cli, where it was found). `clone` and `sync`
+   hold back every missing repo whose folder name it shares — too weak to move
+   it on, enough not to clone beside it; one sitting at its own catalogue
+   path is that repo, held and failed once, never fetched into a second
+   failure. The reason printed is git's `fatal:` line, and dubious ownership
+   is looked for across all of stderr, since a warning git prints first hid
+   both (found in review). No `origin` is a local-only repo and stays silent:
+   exit 2, or 128 saying "No such remote" from a git older than 2.30 — talea
+   declares no minimum git.
+   One 128 is not a refusal: a linked worktree whose repo no longer knows it
+   (its `.git` file's `gitdir:` names a folder that is gone — pruned, or the
+   repo moved by hand), as a `<repo>-worktrees/feat-x` left behind is. Counted
+   as a failure, it failed every sync forever (found in review). Decided with
+   the developer: it is **warned about, not failed** — named, said to be a
+   worktree its repo has forgotten, with the fix — and it touches neither the
+   exit code nor the failure count, and holds nothing back from cloning. One
+   sitting at a repo's own catalogue path is not fetched either: sync counts
+   that repo skipped, as clone counts it already there (fetching it failed
+   every run, found in review). The fix printed is the one that works. `git
+   worktree repair` cannot bring back a deleted record — it exits 1, "unable
+   to locate repository" — but deleting the record never deletes the branch,
+   so: save what is needed from the folder, delete it, and `git worktree add
+   <path> <branch>` from the repo. `repair` is printed only for the other
+   cause, a repo moved by hand, where its record still exists and it works.
+   It is told by reading the `.git` file, never by parsing git's wording.
 
 4. **`ignore: true` means another tool owns that checkout.** No command touches
    it — not `sync`, not `adopt`, not even an explicit `selected` entry. Two
@@ -205,8 +235,18 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    refused and reported instead.
    And why a *second* copy of a repo is **parked, not deleted**: it moves to
    `.talea-duplicates/<GROUP>/<repo>` with everything in it, and clearing that
-   folder is the developer's decision. `src/adopt.js` has no `rmSync` in it;
-   keep it that way.
+   folder is the developer's decision. `src/adopt.js` has no recursive
+   `rmSync` in it (its one `rmSync` tidies its own temp file); keep it that
+   way. Its one `rmdirSync` clears an **empty** destination right before a
+   move, because Windows will not rename onto an existing folder — and
+   `rmdirSync` refuses a folder with anything in it, so it cannot take a file.
+   The destination is re-checked first: one that filled up since the plan is
+   named as the cause, not reported as a lock on the source. A Windows handle
+   held briefly by Defender or the indexer is waited out for up to five
+   seconds (stopping git's fsmonitor daemon once), with one line on stderr
+   before the first wait naming the folder — the wait blocks the event loop,
+   so no spinner can turn, and five silent seconds read as a hang (rule 14).
+   A terminal whose cwd is in the repo is named, since no wait outlasts it.
    `talea rm` follows the same rule: it takes the repo off this machine's list
    and leaves the checkout exactly where it is.
    The one removal in the tool is `talea prune --apply`, and rule 13 is why it
@@ -359,6 +399,23 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    at a time, so a 100,000-file `node_modules` or two 1 GB files cost a
    bounded amount of memory, times the repo pool.
 
+   **`sync` reports what prune could clear, and clears nothing.** Nobody runs
+   `prune` to find out; everybody runs `sync`. So each repo's sync job runs
+   `planRepo(…, { fetch: false, removableOnly: true })` right after its own
+   fetch — a second fetch in the same repo would race the first for git's ref
+   locks — inside the board, with the row saying `checking worktrees …` while
+   it works (rule 14). `removableOnly` walks and sizes only a worktree judged
+   merged or unused; sizing every unmerged, locked or dirty one made every
+   sync pay for a full prune (found in review). The nested-repo and
+   ignored-file checks still run on the ones it walks, so the count is the one
+   `talea prune` would remove. The run ends with one amber line, after the verdict, and the line
+   never touches the exit code or ALL CLEAR. A repo whose fetch failed is not
+   judged (its origin is stale), and a `{ skip }` or `{ fail }` plan adds
+   nothing — `prune` is where those are reported. A *throw* from the planner is
+   not caught: the planner returns every expected failure as a value and `git()`
+   never throws, so a throw is a bug, and sync treats it as it treats one in any
+   other per-repo call. Swallowing it (as baylor's port does) would hide it.
+
 14. **Nothing slow is silent.** Anything that can take longer than a blink — a
    network call, a filesystem walk, a git call per repo — has three states: a
    **loading** state while it works, an **error** state when it fails, and the
@@ -383,6 +440,27 @@ name. Change one and change the other.
 not caution for its own sake: a terminal that does not understand
 `\x1b[38;2;r;g;bm` does not silently drop it — it parses the SGR opener and
 spills the remaining parameters onto the line as visible text.
+
+**`clone` and `sync` draw their live board as the workspace tree** — the same
+folders, branches and sort `talea tree` prints, laid out by one function,
+`folderTree()` in `src/log.js`, so the two cannot drift into different
+pictures. Each repo is placed by `repoPlace()` in `src/config.js` — its folder
+on disk, a nested `dir` like `tools/cli` keeping its `tools/` level — not by
+its catalogue name: the board once showed one and the tree the other (found in
+review). On a resize the block still fits, the next frame climbs over it and
+redraws in place. One now taller than the window cannot be climbed, so it is
+left on screen and every line it showed in its final state — a folder, a
+settled row, even one below a row still running — is remembered and never
+printed or drawn again; forgetting the frame appended a second copy, and
+counting only the settled run from the top reprinted the rest (both found in
+review). The top level sits flush left because the heading above already names
+the root. There are deliberately two renderings and one row formatter: on a
+terminal the tree is redrawn in place; off one, or when the tree is taller than
+the window, each tree line prints once, top to bottom, as soon as every row
+above it has settled — through the same `statusLine()` the live block freezes.
+A slow repo therefore holds back the rows below it in a CI log until it
+finishes; a log that reads as the tree is worth that wait. Failures still go to
+stderr, one tree line each. Ported from baylor-cli.
 
 Both colour paths close with `39` ("default foreground") and never with `0`. A
 full reset also clears bold and dim, so a colour nested inside `dim()` would

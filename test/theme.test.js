@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 
 import {
+  bold,
   centerVisible,
+  dim,
   glyph,
   padEndVisible,
   stripAnsi,
@@ -104,7 +106,55 @@ test('the board freezes a row with the same formatter the pipe prints', () => {
     view.stop();
   });
 
-  assert.equal(piped[0][1], statusLine('skip', 'alpha', 'origin is gone', 5));
+  // The folder comes first, then the row on its branch — the same tree
+  // `talea tree` draws. The name is padded to the column minus the branch.
+  assert.equal(piped[0][1], bold('CORE/'));
+  assert.equal(piped[1][1], dim('├─ ') + statusLine('skip', 'alpha', 'origin is gone', 5));
+});
+
+test('the board draws the folder tree, sorted, sharing parent folders', () => {
+  const lines = captured(() => {
+    const view = board(
+      [
+        { id: 'b', group: 'work/web', label: 'ui' },
+        { id: 'a', group: 'work/api', label: 'api' },
+        { id: 'c', group: 'alice', label: 'svc' },
+        { id: 'd', group: 'work', label: 'Docs' },
+      ],
+      { live: false },
+    );
+    for (const id of ['a', 'b', 'c', 'd']) view.set(id, 'ok', 'main');
+    view.stop();
+  }).map(([, l]) => stripAnsi(l).trimEnd());
+
+  // Case ignored in the sort, folders and repos side by side, as `ls` and
+  // `talea tree` order them — not in catalogue order.
+  assert.deepEqual(lines, [
+    'alice/',
+    '└─ ▣ svc     main',
+    'work/',
+    '├─ api/',
+    '│  └─ ▣ api  main',
+    '├─ ▣ Docs    main',
+    '└─ web/',
+    '   └─ ▣ ui   main',
+  ]);
+});
+
+test('piped tree lines wait for every row above them to settle', () => {
+  // beta settles first but prints after alpha. Printing a row the moment it
+  // lands would scatter the tree; holding it until the rows above it are done
+  // keeps the log readable top to bottom.
+  const view = board(ITEMS, { live: false });
+  const early = captured(() => view.set('beta', 'ok', 'qa'));
+  const late = captured(() => {
+    view.set('alpha', 'ok', 'qa');
+    view.stop();
+  });
+
+  // The folder above alpha is free to go; beta is not, until alpha is.
+  assert.deepEqual(early.map(([, l]) => stripAnsi(l)), ['CORE/']);
+  assert.deepEqual(late.map(([, l]) => stripAnsi(l).match(/alpha|beta/)?.[0]), ['alpha', 'beta']);
 });
 
 test('an unknown row id is ignored rather than throwing', () => {
@@ -115,7 +165,7 @@ test('an unknown row id is ignored rather than throwing', () => {
     view.set('nobody', 'ok', 'somewhere');
     view.stop();
   });
-  assert.equal(lines.length, 0);
+  assert.doesNotMatch(lines.map(([, l]) => l).join('\n'), /nobody|somewhere/);
 });
 
 test('the default job count stays inside its bounds', () => {
@@ -356,8 +406,8 @@ test('the live board never moves the cursor above the block it drew', () => {
 
   assert.equal(highestClimb(out), 0, 'cursor climbed above the block');
   assert.ok(out.includes('\x1b[?25l') && out.includes('\x1b[?25h'), 'cursor not hidden/restored');
-  // Full mode really was taken: group headers are only drawn there.
-  assert.match(out, /◇ CORE/);
+  // Full mode really was taken: the tree is drawn in the block itself.
+  assert.match(out, /CORE\//);
 });
 
 test('the rolling footer is used when the board would not fit the window', () => {
@@ -370,7 +420,7 @@ test('the rolling footer is used when the board would not fit the window', () =>
   });
 
   assert.equal(highestClimb(out), 0, 'cursor climbed above the block');
-  assert.doesNotMatch(out, /◇ CORE/, 'group headers belong to full mode only');
+  assert.doesNotMatch(out, /CORE\//, 'the tree belongs above the footer, not in it');
   // Each settled repo is still recorded on its way out of the footer — without
   // this the run would finish having shown no trace of most of its work.
   for (const name of ['repo-0', 'repo-1', 'repo-2']) assert.match(logged, new RegExp(name));

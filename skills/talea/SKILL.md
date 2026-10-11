@@ -94,6 +94,11 @@ talea sync eklavya           # one repo — same as -r eklavya
 leaves anything else alone with a line saying why. It never switches branches,
 never merges a divergence and never pushes.
 
+A sync can end with one amber line — *N worktrees are merged or unused — X to
+free with `talea prune --apply`*. That line is a hint, not permission: pass it
+on, offer the `talea prune` dry run, and run `--apply` only after the developer
+has seen that plan and said yes.
+
 Every bulk command exits non-zero if **any** repo failed, so check the exit
 code — the per-repo errors are printed but the run keeps going.
 
@@ -119,6 +124,20 @@ or `-r <repo>` includes it. Do not reach for `--loose` on the developer's behalf
 the guard exists because an FVM Flutter SDK cache reports `origin` as
 `flutter/flutter` and name-matches a personal fork, and adopting it breaks every
 Flutter project on the machine.
+
+A checkout "left alone — git would not open it" cannot be matched or moved, and
+the run exits non-zero. When git's reason is *dubious ownership*, talea prints a
+`git config --global --add safe.directory '…'` line. **Do not run it for the
+developer**: it tells git to trust a folder another account owns, which is their
+call. Show them the line and let them decide.
+
+A folder "left alone — a worktree whose repo no longer knows it" is a warning,
+not a failure. **Do not delete it for the developer**, even though deleting is
+part of the printed fix: it may hold uncommitted work. Show them the lines and
+let them save what they need first. Do not suggest `git worktree repair` for it
+unless the repo was moved by hand — with the record gone it fails with "unable
+to locate repository"; the branch survives, so `git worktree add <path>
+<branch>` from the repo makes it again once the folder is gone.
 
 If a move reports worktrees that "could not be re-linked", the repo has moved
 and nothing is lost. Show the developer git's reason line; once its cause is

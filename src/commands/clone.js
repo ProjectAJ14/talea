@@ -1,15 +1,15 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-import { defaultBranch, groupDir, repoGroup, repoId, repoLabel, repoUrl, requireOwnFolders, saveState } from '../config.js';
+import { defaultBranch, repoDir, repoGroup, repoId, repoLabel, repoPlace, repoUrl, requireOwnFolders, saveState } from '../config.js';
 import { dropDocs } from '../docs.js';
-import { clone, defaultJobs, isMissingRemote, pooled } from '../git.js';
+import { clone, defaultJobs, isMissingRemote, isRepo, pooled } from '../git.js';
 import { board } from '../live.js';
 import { c, heading, icon, ok, plain, summary, warn } from '../log.js';
 import { chooseRepos } from '../select.js';
 import { adoptable, requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
-import { insideRoot } from '../adopt.js';
-import { applyMoves, parseFromPaths, planFor } from './adopt.js';
+import { insideRoot, samePath } from '../adopt.js';
+import { applyMoves, parseFromPaths, planFor, reportOrphans, reportUnreadable } from './adopt.js';
 
 export const help = `
 ${c.bold('talea clone')} — clone what is missing, and nothing else
@@ -32,7 +32,9 @@ Before cloning anything, the workspace is checked for repos that are already on
 disk in the wrong place — cloned by hand, or moved by a catalogue change. Those
 are ${c.bold('moved')} into place, keeping every branch and uncommitted change, instead of
 being cloned again. Pass ${c.dim('--from ~/Desktop')} to look outside the workspace too;
-folders you name are remembered.
+folders you name are remembered. A checkout git will not open is named with its
+fix and fails the run, and a repo sharing its folder name is not cloned beside it.
+A worktree whose repo no longer knows it is only warned about.
 
 Already-cloned repos are left completely alone, so re-running is safe. A repo
 the server will not hand over — renamed, deleted, or never granted to your
@@ -70,7 +72,7 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
   }
 
   const ours = repos.filter((r) => !r.ignore);
-  const { moves, parks, refused } = await planFor({
+  const { moves, parks, refused, unreadable, orphans } = await planFor({
     manifest,
     root,
     repos: ours,
@@ -110,6 +112,38 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
     broken = [...applied.results, ...applied.parked].filter((r) => r.partial).length;
   }
 
+  // A checkout git will not open has no origin to match on, so its folder name
+  // is all there is — too weak to move it, enough to keep a fresh clone from
+  // landing beside it. Named once, by reportUnreadable, before the warnings
+  // below list what it holds back. A held-back repo is in `held`, so sync can
+  // fail it rather than call it skipped, and neither sync nor clone counts it
+  // twice; one matching no repo is counted in `broken`, or the results box
+  // would read clean under the warning.
+  reportUnreadable(unreadable);
+  // A worktree its repo has forgotten is not one of these: no repo is behind
+  // it, so it is warned about and counts against nothing.
+  reportOrphans(orphans);
+  const held = new Set();
+  for (const u of unreadable) {
+    // Sitting at a repo's own catalogue path, it is that repo: held, so sync
+    // does not fetch it into a second failure on the same line (found in
+    // review). Anywhere else, every missing repo with that folder name — two
+    // owners' `app` both stay uncloned.
+    const at = ours.find((r) => samePath(repoDir(manifest, root, r), u.dir));
+    const name = path.basename(u.dir).toLowerCase();
+    const matches = at
+      ? [at]
+      : ours.filter((r) => {
+          const dir = repoDir(manifest, root, r);
+          return path.basename(dir).toLowerCase() === name && !isRepo(dir) && !skip.has(repoId(r));
+        });
+    for (const r of matches) {
+      leave(r, 'git would not open the copy already on disk');
+      held.add(repoId(r));
+    }
+    if (!matches.length) broken++;
+  }
+
   if (skip.size) {
     plain('');
     for (const { label, reason } of skip.values()) warn(`${c.bold(label)} left alone — ${reason}`);
@@ -120,7 +154,7 @@ export async function adoptInPlace({ manifest, root, state, repos, opts }) {
     warn(`a second copy of ${c.bold(repoLabel(manifest, p.repo))} at ${p.from} left alone — its remote host is not one the catalogue lists. Run \`talea adopt\` to see it.`);
   }
 
-  return { skip, broken };
+  return { skip, broken, held };
 }
 
 /**
@@ -135,7 +169,7 @@ export async function cloneMissing({ manifest, root, entries, protocol, jobs, co
   const view = board(
     entries.map(({ repo }) => ({
       id: repoId(repo),
-      group: groupDir(manifest, repoGroup(repo)),
+      ...repoPlace(manifest, repo),
       label: repoLabel(manifest, repo),
     })),
   );
@@ -243,14 +277,16 @@ export async function run(opts) {
 
   const adoption =
     opts.adopt === false
-      ? { skip: new Map(), broken: 0 }
+      ? { skip: new Map(), broken: 0, held: new Set() }
       : await adoptInPlace({ manifest, root, state, repos, opts });
 
   writeDocs(manifest, root, repos);
 
   const entries = withPaths(manifest, root, repos);
   const todo = entries.filter((e) => !e.cloned && !adoption.skip.has(repoId(e.repo)));
-  const already = entries.filter((e) => e.cloned).length;
+  // A held checkout is already a failure through `skip`; counting it as
+  // already cloned too would put one repo in two columns.
+  const already = entries.filter((e) => e.cloned && !adoption.held.has(repoId(e.repo))).length;
 
   heading(`Cloning into ${root}`);
   // A repo left alone counts against the run: without this, a clone that

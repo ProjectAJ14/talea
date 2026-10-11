@@ -15,7 +15,7 @@ import path from 'node:path';
 
 const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'talea-adoptcmd-home-')));
 process.env.HOME = process.env.USERPROFILE = home;
-const { run, applyMoves, refixPaths, parseFromPaths } = await import('../src/commands/adopt.js');
+const { run, applyMoves, refixPaths, parseFromPaths, quoted, reportUnreadable } = await import('../src/commands/adopt.js');
 const { claudeSlug, DUPLICATES_DIR } = await import('../src/adopt.js');
 const cloneCmd = await import('../src/commands/clone.js');
 const syncCmd = await import('../src/commands/sync.js');
@@ -83,6 +83,16 @@ async function stubbed(mod, name, make, fn) {
   } finally {
     mod[name] = orig;
     syncBuiltinESMExports();
+  }
+}
+
+async function onPlatform(platform, fn) {
+  const desc = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...desc, value: platform });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, 'platform', desc);
   }
 }
 
@@ -417,6 +427,210 @@ describe('a worktree git will not re-link', () => {
     const added = await repairFails(() => capture(ws, () => claude(false, () => addCmd.run({ jobs: 1 }, ['wt']))));
     assert.equal(added.exitCode, 1);
     assert.match(added.text, /could not be re-linked/);
+  });
+});
+
+describe('a checkout git will not open', () => {
+  /** git's own switch for "another account owns every repo", for the length of `fn`. */
+  async function dubious(fn) {
+    // NOSYSTEM: hosted CI images set `safe.directory = *` in git's system
+    // config, which silences the very refusal this needs. The global config is
+    // already the fake home's empty one.
+    const keys = ['GIT_TEST_ASSUME_DIFFERENT_OWNER', 'GIT_CONFIG_NOSYSTEM'];
+    const saved = keys.map((k) => process.env[k]);
+    for (const k of keys) process.env[k] = '1';
+    try {
+      return await fn();
+    } finally {
+      keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+    }
+  }
+  /** A folder git exits 128 for: a `.git` with nothing in it. */
+  const brokenAt = (dir) => mkdirSync(path.join(dir, '.git'), { recursive: true });
+
+  test('adopt names it with git\'s reason and the safe.directory fix, moves nothing, and fails', async () => {
+    const ws = workspace('ws-dubious', [{ name: 'own', owner: 'me', url: origin('own') }]);
+    const stray = clone('own', path.join(ws, 'stray', 'own'));
+    const { text, exitCode } = await dubious(() => capture(ws, () => run({})));
+    assert.equal(exitCode, 1, 'a checkout git will not open must fail the run');
+    assert.match(text, /stray[\\/]own left alone — git would not open it\n\s+git: fatal: detected dubious ownership/);
+    assert.match(text, /if it is yours:\s+git config --global --add safe\.directory '[^']*stray\/own'/);
+    assert.match(text, /Nothing else to adopt\./);
+    assert.equal(existsSync(path.join(stray, '.git')), true, 'and it is left exactly where it is');
+  });
+
+  test('any other refusal gets no safe.directory line, and counts as a failure beside a move', async () => {
+    const ws = workspace('ws-broken', [{ name: 'mv', owner: 'me', url: origin('mv') }]);
+    clone('mv', path.join(ws, 'loose', 'mv'));
+    brokenAt(path.join(ws, 'loose', 'junk'));
+    const { text, exitCode } = await capture(ws, () => claude(false, () => run({ apply: true })));
+    assert.equal(exitCode, 1);
+    assert.match(text, /junk left alone — git would not open it\n\s+git: fatal: not a git repository/);
+    assert.doesNotMatch(text, /safe\.directory/);
+    assert.match(text, /1 relocated/);
+    assert.match(text, /1 failed/);
+    assert.equal(existsSync(path.join(ws, 'me', 'mv', '.git')), true);
+  });
+
+  test('a repo with no origin at all is not reported — that is a local-only repo, not a refusal', async () => {
+    const ws = workspace('ws-local', [{ name: 'home', owner: 'me', url: origin('home') }]);
+    git(['init', '-q', path.join(ws, 'notes')], tmp);
+    const { text, exitCode } = await capture(ws, () => run({}));
+    assert.equal(exitCode, 0);
+    assert.doesNotMatch(text, /would not open/);
+  });
+
+  test('clone holds back the repo whose folder it has, and counts one that matches nothing', async () => {
+    const ws = workspace(
+      'ws-held',
+      [
+        { name: 'beta', owner: 'me', url: origin('beta') },
+        { name: 'gamma', owner: 'me', url: origin('gamma') },
+      ],
+      { selected: ['me/beta', 'me/gamma'] },
+    );
+    brokenAt(path.join(ws, 'old', 'beta'));
+    brokenAt(path.join(ws, 'old', 'zzz'));
+    // One already in place is not held back by a stray folder sharing its name.
+    clone('gamma', path.join(ws, 'me', 'gamma'));
+    brokenAt(path.join(ws, 'old2', 'gamma'));
+    const { text, exitCode } = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(exitCode, 1);
+    assert.match(text, /beta left alone — git would not open the copy already on disk/);
+    assert.match(text, /3 failed/, 'beta held back, zzz and the stray gamma counted');
+    assert.equal(existsSync(path.join(ws, 'me', 'beta')), false, 'no second copy beside it');
+  });
+
+  test('sync fails a held-back repo rather than calling it skipped', async () => {
+    const ws = workspace('ws-held-sync', [{ name: 'beta', owner: 'me', url: origin('beta') }], { selected: ['me/beta'] });
+    brokenAt(path.join(ws, 'old', 'beta'));
+    const { text, exitCode } = await capture(ws, () => syncCmd.run({ jobs: 1 }));
+    assert.equal(exitCode, 1);
+    assert.match(text, /1 failed/);
+    assert.doesNotMatch(text, /ALL CLEAR|skipped/);
+    assert.equal(existsSync(path.join(ws, 'me', 'beta')), false);
+  });
+});
+
+describe('a worktree its repo no longer knows', () => {
+  /** A repo in place with a linked worktree beside it whose admin folder is gone. */
+  function orphaned(name) {
+    const ws = workspace(name, [{ name: 'own', owner: 'me', url: origin('own'), defaultBranch: 'main' }], { selected: ['me/own'] });
+    const repo = clone('own', path.join(ws, 'me', 'own'));
+    const wt = path.join(ws, 'me', 'own-worktrees', 'feat-x');
+    git(['worktree', 'add', '-q', '-b', 'feat-x', wt], repo);
+    rmSync(path.join(repo, '.git', 'worktrees', 'feat-x'), { recursive: true });
+    return { ws, wt };
+  }
+
+  test('sync, clone and adopt warn with the fix, and none of them fails over it', async () => {
+    // git exits 128 on it, and every run failed forever (found in review).
+    const { ws, wt } = orphaned('ws-orphan');
+    for (const go of [() => syncCmd.run({ jobs: 1 }), () => cloneCmd.run({ jobs: 1 }), () => run({})]) {
+      const { text, exitCode } = await capture(ws, go);
+      assert.equal(exitCode, 0, text);
+      assert.match(text, /feat-x left alone — a worktree whose repo no longer knows it/);
+      // `worktree repair` cannot bring back a deleted record (git exits 1,
+      // "unable to locate repository"); making the worktree again can.
+      assert.match(text, /its branch is still in the repo: save what you need from the folder, delete it/);
+      assert.match(text, /git worktree add '[^']*feat-x' <branch>/);
+      assert.match(text, /moved by hand instead, run in it: {2}git worktree repair '[^']*feat-x'/);
+      assert.doesNotMatch(text, /would not open|failed/);
+    }
+    assert.equal(existsSync(path.join(wt, '.git')), true, 'and nothing deleted it');
+  });
+
+  test('at a repo\'s own catalogue path, sync warns, fetches nothing and fails nothing', async () => {
+    // isRepo saw its .git file, so sync fetched it: 128, failed, exit 1 on
+    // every run (found in review).
+    const ws = workspace('ws-orphan-at-path', [{ name: 'own', owner: 'me', url: origin('own') }], { selected: ['me/own'] });
+    const repo = clone('own', path.join(tmp, 'outside', 'own'));
+    const wt = path.join(ws, 'me', 'own');
+    git(['worktree', 'add', '-q', '-b', 'feat-y', wt], repo);
+    rmSync(path.join(repo, '.git', 'worktrees', 'own'), { recursive: true });
+    for (const opts of [{ jobs: 1 }, { jobs: 1, adopt: false }]) {
+      const { text, exitCode } = await capture(ws, () => syncCmd.run(opts));
+      assert.equal(exitCode, 0, text);
+      assert.match(text, /own left alone — a worktree whose repo no longer knows it/);
+      assert.match(text, /1 skipped/);
+      assert.doesNotMatch(text, /fetch failed|failed|ALL CLEAR/);
+    }
+    // clone treats it the same: skipped as already there, nothing cloned beside it.
+    const cloned = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(cloned.exitCode, 0, cloned.text);
+    assert.doesNotMatch(cloned.text, /failed/);
+    assert.equal(existsSync(path.join(wt, '.git')), true, 'and nothing deleted it');
+  });
+});
+
+describe('a checkout git will not open, at its own catalogue path', () => {
+  test('is failed once by sync and not fetched, and clone counts it the same way', async () => {
+    const ws = workspace('ws-at-path', [{ name: 'beta', owner: 'me', url: origin('beta') }], { selected: ['me/beta'] });
+    mkdirSync(path.join(ws, 'me', 'beta', '.git'), { recursive: true });
+    // It was failed as matching nothing, then fetched and failed again:
+    // "2 need attention" for one repo (found in review).
+    const synced = await capture(ws, () => syncCmd.run({ jobs: 1 }));
+    assert.equal(synced.exitCode, 1);
+    assert.match(synced.text, /beta left alone — git would not open the copy already on disk/);
+    assert.match(synced.text, /1 failed/);
+    assert.doesNotMatch(synced.text, /fetch failed|skipped/);
+    const cloned = await capture(ws, () => cloneCmd.run({ jobs: 1 }));
+    assert.equal(cloned.exitCode, 1);
+    assert.match(cloned.text, /1 failed/);
+    assert.doesNotMatch(cloned.text, /skipped/);
+  });
+});
+
+describe('reportUnreadable', () => {
+  const said = (u, platform) => {
+    const lines = [];
+    const saved = [console.log, console.error, process.exitCode];
+    console.log = console.error = (...a) => lines.push(a.join(' '));
+    try {
+      reportUnreadable([u], platform);
+    } finally {
+      [console.log, console.error] = saved;
+      process.exitCode = saved[2];
+    }
+    return lines.join('\n');
+  };
+
+  test('slashes are turned for safe.directory on Windows only — a backslash is a POSIX name character', () => {
+    const u = (dir) => ({ dir, error: 'fatal: detected dubious ownership', dubious: true });
+    assert.match(said(u('C:\\src\\app'), 'win32'), /safe\.directory 'C:\/src\/app'/);
+    assert.match(said(u('/src/we\\ird'), 'linux'), /safe\.directory '\/src\/we\\ird'/);
+    assert.doesNotMatch(said({ dir: '/x', error: 'fatal: not a git repository' }, 'linux'), /safe\.directory/);
+  });
+});
+
+describe('printed commands on Windows', () => {
+  test('the park cleanup and the sweep are PowerShell, not sh', async () => {
+    const run2 = async (platform, name) => {
+      const ws = workspace(name, [{ name: 'pw', owner: 'me', url: origin('pw') }]);
+      clone('pw', path.join(ws, 'a', 'pw'));
+      clone('pw', path.join(ws, 'b', 'pw'));
+      const { text } = await capture(ws, () => claude(false, () => onPlatform(platform, () => run({ apply: true }))));
+      return { text, ws };
+    };
+    const win = await run2('win32', 'ws-pwsh');
+    assert.match(win.text, /Remove-Item -Recurse -Force '[^']*\.talea-duplicates'/);
+    assert.match(win.text, /Get-ChildItem '[^']+',"\$HOME" -Recurse -File .*Select-String -SimpleMatch -List '[^']*a[\\/]pw'/);
+    assert.doesNotMatch(win.text, /rm -rf|grep -rl/);
+    const posix = await run2('linux', 'ws-sh');
+    assert.match(posix.text, /rm -rf '[^']*\.talea-duplicates'/);
+    assert.match(posix.text, /grep -rlF -- '[^']*a[\\/]pw' '[^']+' ~ 2>\/dev\/null/);
+  });
+});
+
+describe('quoted', () => {
+  // A folder name is whatever was on disk, and the line is pasted into a shell:
+  // \`$(…)\`, a stray quote or a curly one must stay part of the name.
+  const nasty = "/tmp/a$(touch pwned)'b\u2019c\"d";
+  test('sh reads it back as the one word it was', { skip: process.platform === 'win32' }, () => {
+    assert.equal(execFileSync('sh', ['-c', `printf %s ${quoted(nasty, 'linux')}`], { encoding: 'utf8' }), nasty);
+  });
+  test('PowerShell gets single quotes with every single-quote character doubled', () => {
+    assert.equal(quoted(nasty, 'win32'), "'/tmp/a$(touch pwned)''b\u2019\u2019c\"d'");
   });
 });
 

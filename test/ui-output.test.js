@@ -5,6 +5,7 @@ import test, { describe } from 'node:test';
 
 import * as log from '../src/log.js';
 import { board, task } from '../src/live.js';
+import { repoPlace } from '../src/config.js';
 import { stripAnsi } from '../src/theme.js';
 
 /** Swap properties on `obj` for the duration of `fn`, restoring the originals. */
@@ -140,9 +141,27 @@ describe('board, piped', () => {
       b.note(42, 'orphan'); // a note for an id that has no row keeps the id
       b.stop();
     });
-    assert.deepEqual(got.log, ['▣ one  cloned']);
-    assert.deepEqual(got.error, ['▤ two  boom', '  two\n    fatal: nope', '  42\n    orphan']);
+    assert.deepEqual(got.log, ['g/', '├─ ▣ one  cloned']);
+    assert.deepEqual(got.error, ['└─ ▤ two  boom', '  two\n    fatal: nope', '  42\n    orphan']);
     assert.equal(got.stdout, '');
+  });
+
+  test('a repo with a dir sits where `talea tree` puts it, nested levels and all', async () => {
+    // The board named rows by catalogue name and dropped a nested dir's
+    // tools/ level, so sync and tree drew two pictures (found in review).
+    const manifest = {
+      repos: [
+        { name: 'cli-tool', owner: 'me', group: 'work', dir: 'tools/cli' },
+        { name: 'api', owner: 'me', group: 'work', dir: 'svc' },
+      ],
+    };
+    const got = await capture(() => {
+      const b = board(manifest.repos.map((r) => ({ id: r.name, ...repoPlace(manifest, r), label: r.name })), { live: false });
+      b.set('cli-tool', 'ok');
+      b.set('api', 'ok');
+      b.stop();
+    });
+    assert.deepEqual(got.log, ['work/', '├─ ▣ svc', '└─ tools/', '   └─ ▣ cli']);
   });
 
   test('defaults to live only on a terminal', async () => {
@@ -189,12 +208,17 @@ describe('board, live', () => {
         b.set(1, 'busy');
         b.stop();
       });
-      assert.deepEqual(got.log, ['  ▣ repo0   done']); // padded to repo10
-      assert.doesNotMatch(stripAnsi(got.stdout), /◇ g0/);
+      // The tree's head goes out as soon as repo0 settles (padded to repo10),
+      // and stop() prints whatever is left of it, so the scrollback holds all
+      // thirty rows even though only one finished.
+      assert.equal(got.log[0], 'g0/\n├─ ▣ repo0   done');
+      assert.equal(got.log.length, 2);
+      assert.match(got.log[1], /^├─ · repo10  queued\n[^]*\ng1\/\n├─ \S repo1   working …\n[^]*└─ · repo9   queued$/);
+      assert.doesNotMatch(stripAnsi(got.stdout), /g0\//, 'the tree belongs above the footer, not in it');
     });
   });
 
-  test('a resize re-decides whether the block fits', async () => {
+  test('a resize re-decides whether the block fits, and never prints a line twice', async () => {
     await withProps(process.stdout, { rows: 40 }, async () => {
       const got = await capture(() => {
         const b = board(items(3), { live: true });
@@ -203,8 +227,81 @@ describe('board, live', () => {
         b.set(0, 'ok');
         b.stop();
       });
-      // Now a footer: the settled row is printed on its way out.
-      assert.deepEqual(got.log, ['  ▣ repo0']);
+      // Now a footer. The full frame the resize left on screen already shows
+      // g0/, so only the row that settled since is printed on its way out —
+      // re-printing from the top repeated the tree (found in review).
+      assert.equal(got.log[0], '├─ ▣ repo0');
+      assert.match(stripAnsi(got.stdout), /g0\//, 'the frame showed it');
+      assert.doesNotMatch(got.log.join('\n'), /g0\//, 'and nothing printed it again');
+    });
+  });
+
+  test('a resize the block still fits is redrawn in place, not appended below', async () => {
+    await withProps(process.stdout, { rows: 40 }, async () => {
+      const got = await capture(() => {
+        const b = board(items(3), { live: true });
+        process.stdout.rows = undefined; // unknown reads as 24: still fits
+        process.stdout.emit('resize');
+        process.stdout.write('MARK');
+        b.stop();
+      });
+      // Five tree lines, a blank and the counter: the next draw climbs over all
+      // seven. Forgetting them drew the tree a second time below (found in review).
+      assert.ok(got.stdout.split('MARK')[1].startsWith('\x1b[7A'), JSON.stringify(got.stdout.split('MARK')[1].slice(0, 12)));
+      assert.deepEqual(got.log, []);
+    });
+  });
+
+  test('a settled row a stale frame showed below a pending one is never printed again', async () => {
+    await withProps(process.stdout, { rows: 40 }, async () => {
+      const one = (i) => ({ id: i, group: 'g', label: `repo${i}` });
+      const got = await capture(() => {
+        const b = board([one(0), one(1), one(2)], { live: true });
+        b.set(0, 'busy');
+        b.set(1, 'ok');
+        process.stdout.rows = 5; // the full frame stays on screen, now a footer
+        process.stdout.emit('resize');
+        b.set(0, 'ok');
+        b.set(2, 'ok');
+        b.stop();
+      });
+      assert.match(stripAnsi(got.stdout), /repo1/, 'the stale frame showed it');
+      // repo1 sat past the first unsettled row, so it was printed again with
+      // repo0 (found in review).
+      assert.deepEqual(got.log, ['├─ ▣ repo0', '└─ ▣ repo2']);
+    });
+  });
+
+  test('a footer taller than the window is forgotten, and none of it counts as shown', async () => {
+    await withProps(process.stdout, { rows: 4 }, async () => {
+      const got = await capture(async () => {
+        const b = board(items(4), { live: true });
+        for (const i of [0, 1, 2, 3]) b.set(i, 'busy');
+        await sleep(100); // a frame: four busy rows, a blank, the counter
+        process.stdout.emit('resize');
+        for (const i of [0, 1, 2, 3]) b.set(i, 'ok');
+        b.stop();
+      });
+      // The footer showed only rows in flight, so the whole tree still prints.
+      assert.match(got.log.join('\n'), /^g0\/\n├─ ▣ repo0[^]*g1\/[^]*repo3$/);
+    });
+  });
+
+  test('a window that grows back draws only what the footer has not printed', async () => {
+    await withProps(process.stdout, { rows: 5 }, async () => {
+      const got = await capture(() => {
+        const b = board(items(3), { live: true });
+        b.set(0, 'ok');
+        process.stdout.rows = 40;
+        process.stdout.emit('resize');
+        // A redraw now: the full frame must start below the printed head.
+        b.set(1, 'busy');
+        b.stop();
+      });
+      assert.equal(got.log[0], 'g0/\n├─ ▣ repo0');
+      const frames = stripAnsi(got.stdout);
+      assert.doesNotMatch(frames, /repo0/, 'repo0 is in the scrollback already, not in the frame');
+      assert.match(frames, /repo2/);
     });
   });
 

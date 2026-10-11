@@ -319,7 +319,7 @@ export function formatBytes(n) {
 }
 
 // Removed by --apply. Everything else is kept.
-const REMOVABLE = new Set(['merged', 'unused']);
+export const REMOVABLE = new Set(['merged', 'unused']);
 // How long a branch with no commits counts as a task just started.
 const FRESH_FOR = 24 * 3600;
 
@@ -416,9 +416,19 @@ async function isMerged(repoDir, head, base) {
  * branch. `{ skip }` or `{ fail }` for a repo that cannot be judged, otherwise
  * `{ base, worktrees: [{ path, branch, verdict, age, stale, lockReason, size, lossy, held }] }`.
  * `withIgnored` lets a merged worktree go even with lossy ignored files in it;
- * `now` is the clock `fresh` is measured against.
+ * `now` is the clock `fresh` is measured against. `fetch: false` judges against
+ * whatever origin already says — for `sync`, which has just fetched this repo,
+ * where a second fetch would race the first for git's ref locks.
+ * `removableOnly` sizes only the worktrees `--apply` could remove: sync wants
+ * a count and the space, and walking every unmerged or locked worktree for a
+ * size nobody reads made every sync pay for a full prune (found in review). The checks that
+ * can still keep a merged one — nested repos, ignored files — run as before,
+ * so the count is the one `talea prune` would give.
  */
-export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.now() } = {}) {
+export async function planRepo(
+  { repo, dir },
+  { withIgnored = false, now = Date.now(), fetch: refresh = true, removableOnly = false } = {},
+) {
   const listed = await git(['worktree', 'list', '--porcelain'], { cwd: dir });
   if (listed.code !== 0) return { fail: `git worktree list failed: ${listed.stderr}` };
   // The first record is the main checkout. It is the repo, and never a candidate.
@@ -431,7 +441,7 @@ export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.
   // would have every worktree cut from develop called unmerged — or worse.
   if (!home) return { skip: 'no default branch recorded — run `talea discover`' };
 
-  const fetched = await fetch(dir);
+  const fetched = refresh ? await fetch(dir) : { code: 0 };
   if (fetched.code !== 0) {
     return { fail: `fetch failed: ${fetched.stderr.split('\n').pop() || 'unknown error'}` };
   }
@@ -440,16 +450,17 @@ export async function planRepo({ repo, dir }, { withIgnored = false, now = Date.
   if (known.code !== 0) return { skip: `${base} does not exist` };
 
   const worktrees = [];
-  for (const wt of linked) worktrees.push(await judgeWorktree(dir, wt, base, { withIgnored, now }));
+  for (const wt of linked) worktrees.push(await judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly }));
   return { base, now, worktrees };
 }
 
 /** One linked worktree's entry in the plan, from its `git worktree list` record. */
-async function judgeWorktree(dir, wt, base, { withIgnored, now }) {
+async function judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly }) {
   // A lock is never second-guessed except a leftover one (see staleLock).
   const stale = wt.locked && (await staleLock(wt.lockReason));
   let { verdict, age, unread = [] } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
-  const measured = verdict === 'missing' ? { size: 0, nested: [], unreadable: [] } : await measure(wt.path);
+  const unmeasured = verdict === 'missing' || (removableOnly && !REMOVABLE.has(verdict));
+  const measured = unmeasured ? { size: 0, nested: [], unreadable: [] } : await measure(wt.path);
   // git's spelling, so it matches what `ls-files` lists on any platform.
   const rel = (p) => path.relative(wt.path, p).split(path.sep).join('/') || '.';
   const held = [];

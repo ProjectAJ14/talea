@@ -2,19 +2,21 @@
 //
 // Bulk commands used to print a line per repo as each one landed, which under
 // `-j 6` meant the order was whichever clone the network finished first. The
-// board fixes the order (catalogue order, grouped by folder) and shows what is
-// queued, in flight and done while it happens.
+// board draws the folder tree exactly as `talea tree` does — same branches,
+// same sort, from the same folderTree() — and shows what is queued, in flight
+// and done while it happens.
 //
-// There are two renderings and ONE formatter. On a terminal the rows are
-// redrawn in place; on a pipe, in CI, or when the board would not fit the
-// window, each row prints once as it settles — exactly what this tool printed
-// before. Both go through `statusLine()` in log.js, so the animated and the
-// plain rendering of a finished repo cannot drift apart.
+// There are two renderings and ONE formatter. On a terminal the tree is
+// redrawn in place; on a pipe, in CI, or when it would not fit the window, its
+// lines print once each, top to bottom, as soon as every row above them has
+// settled — so the scrollback ends up holding the same tree. Rows go through
+// `statusLine()` in log.js, so the animated and the plain rendering of a
+// finished repo cannot drift apart.
 
 import {
   ansi,
+  folderTree,
   glyph,
-  groupHeader,
   padEndVisible,
   paint,
   spinner,
@@ -30,28 +32,56 @@ const LABEL_MAX = 46;
 const out = (s) => process.stdout.write(s);
 
 /**
- * Start a board over `items` — `{ id, group, label }`, already in the order
- * they should appear.
+ * Start a board over `items` — `{ id, group, name, label }`, where `group` is
+ * the folder path the repo lives under, split on `/` so work/api and work/web
+ * share one work/, and `name` its own folder's name, as `talea tree` shows it
+ * (`repoPlace()` gives both). `label` names it in the notes under the block,
+ * and stands in for a missing `name`.
  *
  * `set(id, status, note)` moves a row; `note(id, text)` attaches detail that
  * belongs under the block rather than in the row (a git error, say); `stop()`
  * freezes the block and prints the detail.
  */
 export function board(items, { live = process.stdout.isTTY } = {}) {
-  const rows = items.map((it) => ({ ...it, status: 'pending', note: null }));
+  const rows = items.map((it) => ({
+    ...it,
+    path: it.group.split('/'),
+    name: it.name ?? it.label,
+    status: 'pending',
+    note: null,
+  }));
   const byId = new Map(rows.map((r) => [r.id, r]));
   const notes = [];
 
-  const width = Math.min(Math.max(0, ...rows.map((r) => visibleWidth(r.label))), LABEL_MAX);
+  // Top-level folders sit flush left: the workspace root is in the heading
+  // above the board, so there is no root line for them to hang from.
+  const tree = folderTree(rows, { rooted: false });
+  // The name column is as wide as the deepest branch plus the longest name, so
+  // the notes line up down the whole tree, not just within one folder.
+  const width = Math.max(
+    0,
+    ...tree
+      .filter((l) => l.item)
+      .map((l) => visibleWidth(l.prefix) + Math.min(visibleWidth(l.item.name), LABEL_MAX)),
+  );
 
-  // Group headers, rows, a blank line and the counter. When that does not fit
-  // the window, `ansi.up()` would address a region that has already scrolled
-  // and tear the screen — so settled rows scroll away above a small footer
-  // instead of everything being redrawn.
-  const groups = [...new Set(rows.map((r) => r.group))];
-  const fits = () =>
-    live && groups.length + rows.length + 3 <= (process.stdout.rows || 24) - 1;
+  // How far down the tree has been printed for good — piped, or above the
+  // rolling footer. A line goes out only once every row above it has settled,
+  // so the printed tree is never out of order.
+  let printed = 0;
+  // Lines a full frame showed in their final state before a resize left it on
+  // screen. They are skipped wherever they come up again: a settled row below
+  // a pending one is not past `printed`, and printing it later repeated it
+  // (found in review).
+  const shown = new Set();
+
+  // The tree, a blank line and the counter. When that does not fit the window,
+  // `ansi.up()` would address a region that has already scrolled and tear the
+  // screen — so the tree prints line by line above a small footer instead of
+  // being redrawn.
+  const fits = () => live && tree.length - printed + 2 <= (process.stdout.rows || 24) - 1;
   let full = fits();
+
 
   let frame = 0;
   let drawn = 0;
@@ -64,24 +94,36 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
       : `${paint.ok(glyph.arrow)} ${paint.bold(`${done} of ${rows.length} done`)}`;
   };
 
-  const rowLine = (r) => {
-    if (r.status !== 'busy') return '  ' + statusLine(r.status, r.label, r.note, width);
+  const rowLine = (r, prefix, w = width - visibleWidth(prefix)) => {
+    const p = paint.dim(prefix);
+    if (r.status !== 'busy') return p + statusLine(r.status, r.name, r.note, w);
     const f = paint.warn(spinner[frame % spinner.length]);
-    return `  ${f} ${paint.dim(padEndVisible(r.label, width))}  ${paint.dim(r.note ?? 'working …')}`;
+    return `${p}${f} ${paint.dim(padEndVisible(r.name, w))}  ${paint.dim(r.note ?? 'working …')}`;
+  };
+
+  const treeLine = (l) => (l.item ? rowLine(l.item, l.prefix) : paint.dim(l.prefix) + paint.bold(`${l.folder}/`));
+
+  /** The tree lines that can go out for good now — or all of them, at the end. */
+  const ready = (all = false) => {
+    const start = printed;
+    while (printed < tree.length) {
+      const { item } = tree[printed];
+      if (item && !all && !SETTLED.has(item.status)) break;
+      printed++;
+    }
+    return tree.slice(start, printed).filter((l) => !shown.has(l));
   };
 
   const lines = () => {
     const body = [];
     if (full) {
-      for (const g of groups) {
-        const mine = rows.filter((r) => r.group === g);
-        body.push(groupHeader(g, mine.length));
-        for (const r of mine) body.push(rowLine(r));
-      }
+      // Not the lines already out for good: after a stretch in the rolling
+      // footer they are on screen above, and drawing them again repeats them.
+      for (const l of tree.slice(printed)) if (!shown.has(l)) body.push(treeLine(l));
     } else {
       // Only what is still moving, so the footer stays a fixed handful of lines
       // however many repos are queued behind it.
-      for (const r of rows.filter((r) => r.status === 'busy')) body.push(rowLine(r));
+      for (const r of rows.filter((r) => r.status === 'busy')) body.push(rowLine(r, '  ', width));
     }
     body.push('');
     body.push(counter());
@@ -116,19 +158,36 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
     drawn = body.length;
   };
 
-  /** Print above the live block without tearing it. */
-  const emit = (text) => {
+  // Piped: the tree, a line at a time. Failures keep going to stderr, which is
+  // where every script and CI job already looks for them.
+  const printPiped = (lines) => {
+    for (const l of lines) {
+      if (l.item?.status === 'fail') console.error(treeLine(l));
+      else console.log(treeLine(l));
+    }
+  };
+
+  /** Print tree lines above the live block without tearing it. */
+  const emitTree = (lines) => {
+    if (!lines.length) return;
     erase();
-    console.log(text);
+    console.log(lines.map(treeLine).join('\n'));
     draw();
   };
 
-  // A window the board once fitted can stop fitting mid-run. Redrawing a block
-  // taller than the window makes `ansi.up()` address rows that have already
-  // scrolled off, which tears the screen — exactly what `full` exists to avoid —
-  // so re-decide on resize and forget the frame that is no longer up there.
+  // A window the board once fitted can stop fitting mid-run, so re-decide on
+  // resize. While the block on screen still fits the window, the next draw
+  // climbs over it and redraws in place; forgetting it there appended a second
+  // copy below (found in review). A block taller than the window cannot be
+  // climbed — `ansi.up()` would address rows already scrolled off and tear the
+  // screen — so it is left where it is, and what it showed in its final state
+  // is never printed again.
   const onResize = () => {
+    const was = full;
     full = fits();
+    if (drawn <= (process.stdout.rows || 24) - 1) return;
+    // A footer shows only rows in flight, which are not final.
+    if (was) for (const l of tree.slice(printed)) if (!l.item || SETTLED.has(l.item.status)) shown.add(l);
     drawn = 0;
   };
 
@@ -153,19 +212,12 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
       r.status = status;
       r.note = note;
 
-      if (live) {
-        // In the rolling footer a finished row leaves the block, so print it on
-        // the way out — otherwise the run would keep no record of it at all.
-        if (!full && SETTLED.has(status)) emit('  ' + statusLine(status, r.label, note, width));
-        return;
-      }
-
-      // Piped: one line per row, as it settles. Failures keep going to stderr,
-      // which is where every script and CI job already looks for them.
       if (!SETTLED.has(status)) return;
-      const line = statusLine(status, r.label, note, width);
-      if (status === 'fail') console.error(line);
-      else console.log(line);
+      if (!live) return printPiped(ready());
+      // In the rolling footer a finished row leaves the block, so its part of
+      // the tree is printed above it — otherwise the run would keep no record
+      // of it at all. A full block already shows it.
+      if (!full) emitTree(ready());
     },
 
     /** Detail that belongs under the block rather than in the row. */
@@ -179,7 +231,9 @@ export function board(items, { live = process.stdout.isTTY } = {}) {
         clearInterval(timer);
         timer = null;
       }
-      if (live) {
+      if (!live) printPiped(ready(true));
+      else {
+        if (!full) emitTree(ready(true));
         draw();
         restoreCursor();
         process.off('exit', restoreCursor);

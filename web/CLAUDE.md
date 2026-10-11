@@ -101,7 +101,7 @@ colour, row format and count in it comes from the CLI:
 |---|---|
 | the checkbox picker | `src/prompt.js` — space toggles, arrows walk, enter accepts |
 | the glyphs and the spinner frames | `glyph` and `spinner` in `src/theme.js` |
-| the group header with its rule and count | `groupHeader()` in `src/log.js` |
+| the live block's folder tree: flush-left folders, `├─`/`└─` branches, case-ignoring sort | `folderTree()` in `src/log.js`, drawn by `board()` in `src/live.js` |
 | the row: glyph, name, note | `statusLine()` in `src/log.js` |
 | the results box and its counts | `summary()` in `src/log.js` |
 

@@ -24,9 +24,11 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -242,9 +244,42 @@ export async function readOrigins(dirs, jobs = 8) {
   // ordered candidates by whichever `git` process happened to exit first, which
   // made the choice of "which copy is the real one" a coin flip.
   return pooled(dirs, jobs, async (dir) => {
-    const { code, stdout } = await git(['remote', 'get-url', 'origin'], { cwd: dir });
-    return { dir, originUrl: code === 0 ? stdout : null };
+    const { code, stdout, stderr } = await git(['remote', 'get-url', 'origin'], { cwd: dir });
+    if (code === 0) return { dir, originUrl: stdout, error: null };
+    // 2 is "no origin", which a local-only repo legitimately has; a git older
+    // than 2.30 says the same with 128, so its words decide, not the code.
+    if (code !== 128 || /No such remote/i.test(stderr)) return { dir, originUrl: null, error: null };
+    // A linked worktree whose repo has pruned or lost its record also exits
+    // 128 — every run, forever — and is no repo to adopt or hold back. It is
+    // told by its `.git` file, never by git's wording, and only warned about.
+    if (orphanedWorktree(dir)) return { dir, originUrl: null, error: null, orphan: true };
+    // Otherwise git is refusing the repo outright — on Windows usually "dubious
+    // ownership", a folder cloned by another account, an admin shell or WSL.
+    // Dropped silently, that checkout was never moved and clone put a fresh
+    // copy beside it. The `fatal:` line is the reason: a warning git prints
+    // first (a bad config value, say) used to stand in for it and hide the
+    // ownership advice (found in review).
+    const said = lines(stderr);
+    return {
+      dir,
+      originUrl: null,
+      error: said.find((l) => l.startsWith('fatal:')) ?? said[0] ?? 'git exited 128',
+      dubious: /dubious ownership/i.test(stderr),
+    };
   });
+}
+
+/**
+ * A linked worktree its repo no longer knows: `.git` is a file whose `gitdir:`
+ * names a folder that is gone — pruned, or the repo moved by hand.
+ */
+export function orphanedWorktree(dir) {
+  try {
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(path.join(dir, '.git'), 'utf8'));
+    return Boolean(m) && !existsSync(path.resolve(dir, m[1]));
+  } catch {
+    return false; // a `.git` folder, or none: not a linked worktree
+  }
 }
 
 /** Is the destination free? An existing non-empty directory belongs to the developer. */
@@ -285,7 +320,17 @@ export async function moveBlockers(dir) {
  */
 export function insideRoot(root, dest) {
   const rel = path.relative(canonical(root), canonical(dest));
-  return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
+  return rel !== '' && staysInside(rel);
+}
+
+/**
+ * Does a `path.relative()` result stay inside its base — the base itself
+ * included? Not `startsWith('..')`: a child folder named `..cache` starts that
+ * way and is inside, and three copies of that check each read it as outside
+ * (found in review). An absolute result is another drive on Windows.
+ */
+export function staysInside(rel) {
+  return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
 }
 
 /**
@@ -375,7 +420,7 @@ export function worktreeRecords(porcelain) {
 export function remapWorktree(p, { from, to, siblings }) {
   const within = (base) => {
     const rel = path.relative(canonical(base), canonical(p));
-    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null;
+    return rel && staysInside(rel) ? rel : null;
   };
 
   const nested = within(from);
@@ -517,7 +562,7 @@ export async function planAdoptions(manifest, root, repos, candidates) {
     const rank = (copy) => {
       if (samePath(copy.dir, to)) return 0;
       const rel = path.relative(root, copy.dir);
-      return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? 1 : 2;
+      return rel && staysInside(rel) ? 1 : 2;
     };
     const ordered = [...copies].sort((a, b) => rank(a) - rank(b) || a.dir.localeCompare(b.dir));
 
@@ -689,6 +734,43 @@ function relocateWorktrees(from, to, recorded) {
   return { repaired, broken, siblings, stale: recorded.length - now.length };
 }
 
+// Windows refuses to rename a directory while any process holds a handle
+// inside it, and Defender or the search indexer holds one for a moment after
+// git has just been reading the repo — which planning always has. POSIX never
+// fails this way. Retried briefly, as npm's graceful-fs does, before it is
+// reported as a real lock. EACCES on POSIX is a real permission error and is
+// never retried.
+const TRANSIENT_LOCK = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const RENAME_BUDGET_MS = 5000;
+
+export function renameRetrying(from, to, budgetMs = RENAME_BUDGET_MS, wait = 100) {
+  try {
+    return renameSync(from, to);
+  } catch (err) {
+    if (process.platform !== 'win32' || !TRANSIENT_LOCK.has(err.code) || wait > budgetMs) throw err;
+    // Git's own filesystem-monitor daemon (core.fsmonitor) keeps a handle on
+    // the worktree for as long as it runs. Stopping it, on the first retry
+    // only, is harmless — git restarts it on demand — and a git without the
+    // command just says so.
+    // Atomics.wait blocks the event loop, so no spinner can turn — one line
+    // says why the run has gone still (rule 14). Written with writeSync:
+    // process.stderr to a Windows terminal is asynchronous, so a queued line
+    // would not show until the wait it explains was over.
+    if (wait === 100) {
+      gitSync(['fsmonitor--daemon', 'stop'], from);
+      writeSync(2, `  waiting for Windows to release ${from} …\n`);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
+    return renameRetrying(from, to, budgetMs - wait, Math.min(wait * 2, 1000));
+  }
+}
+
+/** Is `p` the directory `dir`, or somewhere inside it? */
+function isWithin(dir, p) {
+  const rel = path.relative(canonical(dir), canonical(p));
+  return staysInside(rel);
+}
+
 export function executeMove(plan) {
   try {
     // Gone since the plan: said as itself, not as a git that cannot list.
@@ -698,8 +780,21 @@ export function executeMove(plan) {
     if (recorded.error) {
       return { ok: false, message: `git could not list its worktrees (${recorded.error}) — nothing was moved` };
     }
+    // A case-only rename on a case-insensitive disk: the destination is the
+    // source itself, so neither check below applies.
+    const elsewhere = !samePath(plan.from, plan.to);
+    // Checked again because the plan is stale by now: a folder that filled up
+    // since would otherwise fail below as ENOTEMPTY, reported as a lock on the
+    // source — which names the wrong folder.
+    const blocked = elsewhere && destinationBlocked(plan.to);
+    if (blocked) return { ok: false, message: `${blocked} — nothing was moved:\n      ${plan.to}` };
     mkdirSync(path.dirname(plan.to), { recursive: true });
-    renameSync(plan.from, plan.to);
+    // An empty folder at the destination counts as free and POSIX rename
+    // replaces one, but Windows refuses to rename onto any existing directory —
+    // EPERM, reported as "something has it open". rmdirSync removes only an
+    // EMPTY directory and throws on anything else, so it cannot take a file.
+    if (elsewhere && existsSync(plan.to)) rmdirSync(plan.to);
+    renameRetrying(plan.from, plan.to);
     const worktrees = relocateWorktrees(plan.from, plan.to, recorded);
     return { ok: true, to: plan.to, worktrees };
   } catch (err) {
@@ -717,6 +812,16 @@ export function executeMove(plan) {
     // does. On POSIX the same rename would simply succeed, so the advice has
     // to name the real cause rather than the errno.
     if (['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY', 'ENAMETOOLONG', 'EINVAL'].includes(err.code)) {
+      // The commonest holder is the very terminal that typed the command: a
+      // shell's current directory is an open handle, and no retry outlasts it.
+      if (process.platform === 'win32' && isWithin(plan.from, process.cwd())) {
+        return {
+          ok: false,
+          message:
+            `could not be moved (${err.code}) — this terminal is sitting inside it.\n` +
+            `      cd out of ${plan.from}\n      (to the workspace root) and run the command again.`,
+        };
+      }
       return {
         ok: false,
         message:
@@ -861,28 +966,33 @@ export function rekeyClaudeJson(from, to) {
   }
   if (!data?.projects) return { changed: false };
 
-  const oldKey = path.resolve(from);
-  const newKey = path.resolve(to);
-  if (!(oldKey in data.projects)) return { changed: false };
-
-  if (newKey in data.projects) {
-    delete data.projects[oldKey];
-    try {
-      writeJsonAtomic(file, data);
-      return { changed: true, note: 'dropped the stale entry; the new path already had one' };
-    } catch (err) {
-      return { changed: false, error: err.message };
-    }
+  // Found by what the key names, not how it is spelled: on Windows the same
+  // folder can be keyed `C:/src/repo` or `c:\\src\\repo`, and an exact-string
+  // lookup silently skipped the re-key. On Windows the new key copies the old
+  // one's slashes so the file stays in whatever style Claude Code wrote it; a
+  // backslash on POSIX is part of a folder name and is left alone.
+  // Every spelling is re-keyed, not only the first: a file holding both left
+  // the second pointing at the old folder (found in review). The first one
+  // found carries over; the rest are stale copies of it and are dropped.
+  const keys = Object.keys(data.projects);
+  const oldKeys = keys.filter((k) => samePath(k, from));
+  if (!oldKeys.length) return { changed: false };
+  const resolvedTo = path.resolve(to);
+  const existing = keys.find((k) => samePath(k, to));
+  const carried = data.projects[oldKeys[0]];
+  for (const k of oldKeys) delete data.projects[k];
+  // An entry already at the new path wins — it is the newer of the two.
+  if (!existing) {
+    const newKey =
+      process.platform === 'win32' && !oldKeys[0].includes('\\') ? resolvedTo.split('\\').join('/') : resolvedTo;
+    data.projects[newKey] = carried;
   }
-
-  data.projects[newKey] = data.projects[oldKey];
-  delete data.projects[oldKey];
   try {
     writeJsonAtomic(file, data);
-    return { changed: true };
   } catch (err) {
     return { changed: false, error: err.message };
   }
+  return existing ? { changed: true, note: 'dropped the stale entry; the new path already had one' } : { changed: true };
 }
 
 // Files known to carry absolute paths, checked in the workspace root and in

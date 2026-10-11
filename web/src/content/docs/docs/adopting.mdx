@@ -49,7 +49,7 @@ Every git call here runs with git's repository-scoping variables cleared (`GIT_D
 
 ### While a move runs
 
-Nothing else may change a repo or its worktrees while talea moves it. Close editors, terminals, agents and long-running builds that sit in the checkout first. On Windows the move is refused while any process holds a file open in it; elsewhere it succeeds, and a process still inside keeps writing to paths that no longer lead to the repo. A worktree created by another process during the move is not in the list read before it, and is not re-linked.
+Nothing else may change a repo or its worktrees while talea moves it. Close editors, terminals, agents and long-running builds that sit in the checkout first. On Windows the move is refused while any process holds a file open in it; elsewhere it succeeds, and a process still inside keeps writing to paths that no longer lead to the repo. A brief hold on Windows — the virus scanner or search indexer, just after talea read the repo — is waited out for up to five seconds, stopping git's `fsmonitor` daemon once; a terminal whose current folder is inside the repo is named as the cause, because no wait outlasts it. A worktree created by another process during the move is not in the list read before it, and is not re-linked.
 
 A linked worktree is never treated as a second copy of the repo, even though git reports the same `origin` for both. Renaming one would unroot its commits.
 
@@ -57,15 +57,36 @@ A linked worktree is never treated as a second copy of the repo, even though git
 
 If the same repo turns up twice, the copy at the catalogue path wins and the other moves into `.talea-duplicates/<GROUP>/<repo>` with everything in it — branches, stashes, uncommitted work — and is listed so you can decide what to do with it.
 
-There is no `rmSync` anywhere in the code that moves things. Clearing that folder is your decision.
+There is no recursive delete anywhere in the code that moves things. Clearing that folder is your decision.
 
 ### What cannot be moved
 
 A repo that cannot be moved safely is left alone and the reason is printed:
 
 - it is itself a linked worktree
-- the destination is already occupied
+- the destination is already occupied — checked again just before the move, so a folder that filled up since the plan is named as the cause rather than reported as a lock
 - the move would cross a filesystem
+
+An **empty** folder at the destination does not count as occupied. It is removed first — with the call that refuses a folder holding anything — because Windows will not rename onto an existing folder.
+
+A checkout git refuses to open — on Windows usually *dubious ownership*: cloned from an admin shell, another account or WSL — has no remote to match on, so it is never moved. It is named with git's own reason and, for ownership, the command to run if it really is yours:
+
+```bash
+git config --global --add safe.directory 'C:/src/the-folder'
+```
+
+and the run exits non-zero. `clone` and `sync` clone nothing for a repo whose folder name it shares, so no second copy lands beside it. A repo with no `origin` at all is local-only, not refused, and is left out quietly.
+
+A linked worktree whose repo no longer knows it — left behind after the repo pruned its record, or after the repo was moved by hand — is not a refusal either. It is named as one, with the fix:
+
+```bash
+# its branch is still in the repo: save what you need from the folder, delete it, then in the repo
+git worktree add '/path/to/app-worktrees/feat-x' <branch>
+# if the repo was moved by hand instead, run in it
+git worktree repair '/path/to/app-worktrees/feat-x'
+```
+
+`git worktree repair` cannot bring back a record the repo deleted — it fails with "unable to locate repository" — which is why the first fix makes the worktree again instead. It is a warning only: the run does not fail over it, and it holds nothing back from cloning. One sitting where a catalogue repo belongs is not fetched by `sync`; that repo counts as skipped until the folder is dealt with.
 
 ### Paths are repaired afterwards
 

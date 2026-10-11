@@ -14,12 +14,26 @@ dest=$(talea where eklavya) && cd -- "$dest"
 
 Clones what is missing, fast-forwards what is there. Safe to run unattended, and safe to run twice.
 
+Progress is drawn as the workspace's folder tree, the one `talea tree` prints. In a pipe or a CI log each line of it is printed once, as soon as every repo above it has finished:
+
+```text
+alice/
+└─ ▣ svc     main up to date
+work/
+├─ backend/
+│  └─ ▣ api  main up to date
+├─ ▣ Docs    main up to date
+└─ frontend/
+   └─ ▣ web  main up to date
+```
+
 What it will **not** do, and this is the whole of it:
 
 - **It will not merge a divergence.** Fast-forwards only. Anything else is reported for you to deal with.
 - **It will not move you off your branch.** It fast-forwards the branch you are *on*, or leaves it alone and says why. A branch with no upstream is fetched and left.
 - **It will not touch a dirty repo.** Uncommitted changes mean it fetches and stops, with a line saying so.
 - **It will not push.**
+- **It will not clone beside a checkout git refuses to open.** That checkout is named with git's reason and its fix, the repo sharing its folder name is held back, and the run exits non-zero. A linked worktree whose repo no longer knows it is named with its fix as a warning, and fails nothing; one sitting where a repo belongs is not fetched, and that repo is counted skipped.
 
 Every command runs **from anywhere**. Inside a workspace, that workspace. Outside one, the workspace `talea init` made — and if this machine has several, it asks which. With no terminal to ask on (a script, a pipe) it lists them and exits non-zero rather than picking one for you.
 
@@ -29,6 +43,8 @@ talea sync eklavya           # one repo — same as -r eklavya
 talea sync --no-clone        # fast-forward only, clone nothing
 talea sync --no-adopt        # skip the existing-checkout scan
 ```
+
+When some of your worktrees are merged or unused, `sync` ends with one amber line: how many, and how much space `talea prune --apply` would free. It is a hint, not a verdict — it changes neither the exit code nor `ALL CLEAR` — and it removes nothing; `prune` is still where you see the plan and decide.
 
 `talea clone` is the first half on its own — clone what is missing and never fetch or merge. It is what you want on a slow connection.
 

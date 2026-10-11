@@ -271,25 +271,27 @@
 
       board.innerHTML = '';
       var rows = {};
-      var lastGroup = null;
-      chosen.forEach(function (id) {
-        var r = RUN[id];
-        if (r.group !== lastGroup) {
-          lastGroup = r.group;
-          var n = chosen.filter(function (x) { return RUN[x].group === r.group; }).length;
-          var head = document.createElement('div');
-          head.className = 'grp';
-          head.innerHTML = '◇ ' + r.group + ' <span class="grp__rule">' +
-            new Array(Math.max(2, 34 - r.group.length)).join('─') +
-            '</span><span class="grp__n"> ' + n + ' repo' + (n === 1 ? '' : 's') + '</span>';
-          board.appendChild(head);
-        }
-        var row = document.createElement('div');
-        row.className = 'row row--busy';
-        row.innerHTML = '<span class="row__g">·</span><span class="row__name">' + id +
-          '</span><span class="row__note"></span>';
-        board.appendChild(row);
-        rows[id] = row;
+      /* The folder tree, as folderTree() in src/log.js lays it out for the
+         board: folders flush left, each repo on a ├─ or └─ branch, and
+         siblings sorted ignoring case — not in the order they were ticked. */
+      var byName = function (a, b) { return a.localeCompare(b, 'en', { sensitivity: 'base' }); };
+      var groups = {};
+      chosen.forEach(function (id) { (groups[RUN[id].group] = groups[RUN[id].group] || []).push(id); });
+      Object.keys(groups).sort(byName).forEach(function (g) {
+        var head = document.createElement('div');
+        head.className = 'grp';
+        head.textContent = g + '/';
+        board.appendChild(head);
+        var mine = groups[g].sort(byName);
+        mine.forEach(function (id, i) {
+          var row = document.createElement('div');
+          row.className = 'row row--busy';
+          row.innerHTML = '<span class="row__t">' + (i === mine.length - 1 ? '└─' : '├─') +
+            '</span><span class="row__g">·</span><span class="row__name">' + id +
+            '</span><span class="row__note"></span>';
+          board.appendChild(row);
+          rows[id] = row;
+        });
       });
       show(lines.work);
 

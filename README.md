@@ -73,6 +73,26 @@ talea pick some-repo          # keep that one — an unknown name opens the chec
 dest=$(talea where eklavya) && cd -- "$dest"
 ```
 
+`sync` and `clone` draw their progress as the same folder tree `talea tree`
+prints. Piped or in CI, each line of that tree is printed once, top to bottom,
+as soon as every repo above it has finished — so the log reads as the tree:
+
+```text
+alice/
+└─ ▣ svc     main up to date
+work/
+├─ backend/
+│  └─ ▣ api  main up to date
+├─ ▣ Docs    main up to date
+└─ frontend/
+   └─ ▣ web  main up to date
+```
+
+When some of your worktrees are merged or unused, `sync` ends with one amber
+line saying how many and how much space `talea prune --apply` would free. It
+only reports — nothing is removed, and the line changes neither the exit code
+nor `ALL CLEAR`.
+
 `where` prints the path and nothing else. A word that is not a repo name is a
 search over the repos cloned on this machine, by name or folder: one match is the answer, several
 open a list to pick from with the arrow keys and Enter, drawn on stderr so it
@@ -189,7 +209,11 @@ mistaken for a second copy of the repo, even though git reports the same
 Close editors, terminals and agents working in a checkout before `--apply`.
 Nothing else may change a repo or its worktrees while it moves: on Windows the
 move is refused while anything holds a file open in it, and elsewhere a process
-still inside it keeps writing to paths that no longer lead there.
+still inside it keeps writing to paths that no longer lead there. On Windows a
+brief hold — the virus scanner or the search indexer, just after talea read the
+repo — is waited out for up to five seconds, and git's own `fsmonitor` daemon
+is stopped once (git restarts it when it needs it). A terminal sitting inside
+the repo is named as the cause, since no wait outlasts it.
 
 ```sh
 talea adopt                      # show what would move, change nothing
@@ -203,6 +227,25 @@ or `-r <repo>` includes it once you have looked. That guard is not theoretical:
 an FVM Flutter SDK cache reports `origin` as `flutter/flutter`, which name-matches
 a personal `flutter` fork, and moving it would break every Flutter project on the
 machine.
+
+A checkout git refuses to open — on Windows usually *dubious ownership*, a
+folder cloned from an admin shell, another account or WSL — has no remote to
+match on, so it cannot be moved. It is named with git's reason and, for
+ownership, the `git config --global --add safe.directory '<folder>'` command to
+run if it really is yours; the run exits non-zero. `clone` and `sync` clone
+nothing for a repo whose folder name it shares, so no second copy lands beside
+it. A repo with no `origin` at all is a local-only repo, not a refusal, and is
+left out quietly.
+
+A linked worktree whose repo no longer knows it — its folder left behind after
+the repo pruned its record, or after the repo was moved by hand — is named as
+one with the fix. Its branch is still in the repo, so save what you need from
+the folder, delete it, and run the printed `git worktree add '<folder>'
+<branch>` in the repo if you still want it. If the repo was moved by hand
+instead, the printed `git worktree repair '<folder>'`, run in the repo, relinks
+it. It is a warning: the run does not fail over it, and it holds nothing back
+from cloning. One sitting where a catalogue repo belongs is not fetched — that
+repo is counted skipped until the folder is dealt with.
 
 If the same repo turns up twice, the copy at the catalogue path wins and the
 other moves into `.talea-duplicates/` with everything in it. **Nothing is ever

@@ -52,6 +52,11 @@ destination, another filesystem, a destination a symlink leads outside the
 workspace) is left alone and the reason is printed. Two repos the catalogue
 puts in one folder stop the run before anything moves.
 
+A checkout git will not open (on Windows usually ${c.dim('dubious ownership')}: it was cloned
+from an admin shell, another account or WSL) cannot be matched, so it is named
+with git's reason and the ${c.dim('safe.directory')} command, and the run fails.
+A worktree whose repo no longer knows it is named with its fix, as a warning.
+
 When the same repo is found twice, the copy at the catalogue path wins and the
 other moves into ${c.bold(DUPLICATES_DIR)}/ — never deleted, never left outside the tree.
 Whatever it holds (branches, stashes, uncommitted work) comes with it, and is
@@ -91,7 +96,62 @@ export async function planFor({ manifest, root, repos, scanRoots, jobs = 8 }) {
     parks: plans.filter((p) => p.action === 'park'),
     refused: plans.filter((p) => p.action === 'refuse'),
     inPlace: plans.filter((p) => p.action === 'in-place'),
+    unreadable: candidates.filter((x) => x.error),
+    orphans: candidates.filter((x) => x.orphan),
   };
+}
+
+/**
+ * Quote a path for a command the developer will paste, so a folder named
+ * `x$(…)` or `a"; rm …` is a name and not a command: single quotes in both
+ * shells, since both expand inside double ones. PowerShell also reads the
+ * curly quotes as quotes, so those are doubled too.
+ */
+export function quoted(p, platform = process.platform) {
+  return platform === 'win32'
+    ? `'${p.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`
+    : `'${p.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * Name every checkout git refused to open, and fail the run. Without its origin
+ * there is no telling which repo it is, so it cannot be moved — but saying
+ * nothing reads as "you have no copy", and the developer gets a second one.
+ */
+export function reportUnreadable(unreadable, platform = process.platform) {
+  if (!unreadable.length) return;
+  plain('');
+  for (const u of unreadable) {
+    warn(`${c.bold(shorten(u.dir))} left alone — git would not open it\n    ${c.dim(`git: ${u.error}`)}`);
+    if (u.dubious) {
+      // git matches safe.directory with forward slashes on Windows; anywhere
+      // else a backslash is part of the folder's name and must stay.
+      const dir = platform === 'win32' ? u.dir.split('\\').join('/') : u.dir;
+      plain(c.dim(`    another account owns it; if it is yours:  git config --global --add safe.directory ${quoted(dir, platform)}`));
+    }
+  }
+  process.exitCode = 1;
+}
+
+/**
+ * Name every linked worktree whose repo no longer knows it — its admin folder
+ * pruned, or the repo moved by hand. A warning, never a failure: git exits 128
+ * on it every run, and counting that failed every sync forever over a folder
+ * that holds no repo back from cloning (found in review). The developer
+ * decides what is in it; nothing here deletes it.
+ */
+export function reportOrphans(orphans) {
+  if (!orphans.length) return;
+  plain('');
+  for (const o of orphans) {
+    warn(`${c.bold(shorten(o.dir))} left alone — a worktree whose repo no longer knows it`);
+    // `worktree repair` cannot bring back a deleted record — it exits 1,
+    // "unable to locate repository" — but deleting the record never deletes
+    // the branch, so the worktree can be made again.
+    plain(c.dim(`    its branch is still in the repo: save what you need from the folder, delete it, then in the repo:`));
+    plain(c.dim(`      git worktree add ${quoted(o.dir)} <branch>`));
+    plain(c.dim(`    if the repo was moved by hand instead, run in it:  git worktree repair ${quoted(o.dir)}`));
+  }
 }
 
 /**
@@ -396,13 +456,15 @@ export async function run(opts) {
   );
   for (const dir of scanRoots) plain(`    ${c.dim(shorten(dir))}`);
 
-  const { moves, parks, refused, inPlace } = await planFor({
+  const { moves, parks, refused, inPlace, unreadable, orphans } = await planFor({
     manifest,
     root,
     repos,
     scanRoots,
     jobs: opts.jobs ?? 8,
   });
+  reportUnreadable(unreadable);
+  reportOrphans(orphans);
 
   if (inPlace.length) {
     plain('');
@@ -410,7 +472,7 @@ export async function run(opts) {
   }
 
   if (!moves.length && !parks.length && !refused.length) {
-    plain(`\n${c.dim('Nothing to adopt.')}`);
+    plain(`\n${c.dim(unreadable.length || orphans.length ? 'Nothing else to adopt.' : 'Nothing to adopt.')}`);
     return;
   }
 
@@ -522,7 +584,9 @@ export async function run(opts) {
   summary({
     ok: okCount + applied.parked.filter((p) => !p.partial).length,
     skipped: inPlace.length,
-    failed: applied.results.length - okCount + (willPark.length - applied.parked.length) + applied.parked.filter((p) => p.partial).length,
+    failed:
+      applied.results.length - okCount + (willPark.length - applied.parked.length) +
+      applied.parked.filter((p) => p.partial).length + unreadable.length,
     okLabel: 'relocated',
   });
 
@@ -533,7 +597,8 @@ export async function run(opts) {
         `${c.bold(DUPLICATES_DIR)}/ ${c.dim('— nothing was deleted.')}`,
     );
     plain(c.dim(`  Review them, then remove the folder yourself when you are happy:`));
-    plain(c.dim(`    rm -rf ${path.join(root, DUPLICATES_DIR)}`));
+    const parkedDir = path.join(root, DUPLICATES_DIR);
+    plain(c.dim(`    ${process.platform === 'win32' ? `Remove-Item -Recurse -Force ${quoted(parkedDir)}` : `rm -rf ${quoted(parkedDir)}`}`));
   }
 
   await reportLeftovers(root, applied);
@@ -549,9 +614,14 @@ export async function run(opts) {
 
   if (okCount) {
     plain(`\n${c.dim('To sweep anything this did not cover:')}`);
-    for (const r of applied.results.filter((x) => x.ok)) {
-      plain(c.dim(`  grep -rl "${r.plan.from}" ${root} ~ 2>/dev/null`));
-      break;
-    }
+    // One example is enough to adapt; PowerShell has neither grep nor /dev/null.
+    const { from } = applied.results.find((x) => x.ok).plan;
+    plain(
+      c.dim(
+        process.platform === 'win32'
+          ? `  Get-ChildItem ${quoted(root)},"$HOME" -Recurse -File -ErrorAction SilentlyContinue | Select-String -SimpleMatch -List ${quoted(from)} | Select-Object Path`
+          : `  grep -rlF -- ${quoted(from)} ${quoted(root)} ~ 2>/dev/null`,
+      ),
+    );
   }
 }
