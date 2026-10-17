@@ -125,8 +125,8 @@ talea prune                  # every linked worktree, its verdict and its size
 talea prune --apply          # remove the merged and unused ones
 ```
 
-A worktree is `merged` when every commit on it is on `origin/<default branch>`
-— directly, or as an identical change after a rebase merge. A merge commit on
+A worktree is `merged` when every change on it is on `origin/<default branch>`
+— directly, as an identical change after a rebase merge, or as one squashed commit. A merge commit on
 the branch counts only when it is the merge git would make by itself; one that
 adds a change of its own reads as `unmerged` (checking one needs git 2.38+). `dirty`, `locked`
 and `unmerged` ones are kept, and so is a `nested` one — merged, but with a repo inside its folder that
@@ -162,8 +162,10 @@ added today covers worktrees branched before it. Mark only what a build
 really writes: a marked file is deleted with the folder. Each row shows the worktree's folder name, with its
 full path dimmed on the line below.
 
-A **squash merge** reads as `unmerged`: the squashed commit is new, and telling
-it apart would mean asking GitHub. Remove those by hand.
+A **squash merge** reads as `merged`: the squashed commit is new, but merging the
+branch into origin's default branch would add nothing, and git can tell that
+without asking GitHub (`git merge-tree`, git 2.38 or newer). A branch with a
+change the default branch lacks, or one that would conflict, stays `unmerged`.
 
 ## Let your coding agent do it
 

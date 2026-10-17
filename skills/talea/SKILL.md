@@ -171,14 +171,15 @@ delete it to free the worktree. An `unreadable` verdict names the path talea
 could not read; report it, and never change permissions to get the
 worktree removed.
 
-Only `merged` worktrees are removed (every commit already on origin's default
-branch) and `unused` ones (no commits of their own, cut over a day ago), plus
+Only `merged` worktrees are removed (every change already on origin's default
+branch, squash merges included) and `unused` ones (no commits of their own, cut over a day ago), plus
 the records of `missing` ones. `dirty`, `ignored`, `nested`, `unreadable`, `fresh` (no
 commits yet, cut within the day), `locked` and `unmerged` are kept. A verdict
 marked `· stale lock` was locked by a Claude Code agent that has exited; prune
 unlocks it itself. Never run `git worktree unlock` on a `locked` one to get it
 removed — a lock prune keeps is somebody's. A branch whose merge commit adds a
-change of its own reads as `unmerged`. A squash-merged branch reads as `unmerged`; say so rather than
+change of its own reads as `unmerged`. A squash-merged branch reads as `merged` (git 2.38+); one with a change the
+default branch lacks, or on an older git, reads as `unmerged` — say so rather than
 removing it by hand. Report a removal as **worktree removed, branch kept** — the
 branch is still there and `git worktree add` brings the checkout back. Never
 reach for `git worktree remove --force` to finish what prune refused.

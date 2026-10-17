@@ -69,7 +69,7 @@ Worktrees pile up. Each one carries its own `node_modules`, `build` or `.dart_to
 
 | Verdict | Means | With `--apply` |
 |---|---|---|
-| `merged` | every commit is on `origin/<default branch>`, or an identical change is (a rebase merge); a merge commit only if it is the merge git would make by itself | removed |
+| `merged` | every change is on `origin/<default branch>` — the commits, identical ones (a rebase merge) or one squashed commit; a merge commit only if it is the merge git would make by itself | removed |
 | `missing` | the folder is already gone | the record is cleared |
 | `dirty` | modified or untracked files | kept |
 | `ignored` | merged, but holds ignored files that are not build output, like a `.env` | kept, unless `--with-ignored` |
@@ -108,7 +108,7 @@ Each row names the worktree by its folder; the full path sits dimmed on the line
 
 A merge commit on the branch counts as merged only when its result is the merge git would make from its two parents by itself. One that adds a change of its own — a hand-resolved conflict, a file added mid-merge — is work origin may not have, and reads as `unmerged`. Checking a merge needs git 2.38 or newer; on an older git every merge commit reads as `unmerged`.
 
-A **squash merge** reads as `unmerged`: the squashed commit is a new change, not the ones on the branch, and telling them apart would take asking GitHub. Remove those worktrees yourself. A repo with no default branch recorded is skipped — run `talea discover`.
+A **squash merge** reads as `merged`: the squashed commit is a new change, not the ones on the branch, but merging the branch into origin's default branch would add nothing, and git can tell that itself (`git merge-tree`, git 2.38 or newer). A branch with a change the default branch lacks, or one that would conflict, stays `unmerged`; on an older git a squash merge does too, and you remove that worktree yourself. A repo with no default branch recorded is skipped — run `talea discover`.
 
 ### `talea where`
 

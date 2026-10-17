@@ -181,6 +181,19 @@ describe('planRepo and applyRepo when git says no', () => {
     assert.match(plan.worktrees[1].error, /not a git repository/);
   });
 
+  test('a squash merge is kept when git cannot make the merge (before 2.38)', { skip: !posix && 'needs a shell-script git' }, async () => {
+    const dir = makeRepo(path.join(tmp, 'squash-old-git'));
+    const wt = addWorktree(dir, 'feat');
+    commit(wt, 'second.txt'); // two commits: the squash matches neither by patch
+    git(['merge', '-q', '--squash', 'feat'], dir);
+    git(['commit', '-qm', 'feat (#1)'], dir);
+    git(['push', '-q', 'origin', 'HEAD:main'], dir);
+    await withFakeGit('merge-tree', async () => {
+      assert.equal(find(await planRepo(entry(dir)), wt).verdict, 'unmerged');
+    });
+    assert.equal(find(await planRepo(entry(dir)), wt).verdict, 'merged');
+  });
+
   test('a git that fails with nothing on stderr still gets a reason', { skip: !posix && 'needs a shell-script git' }, async () => {
     const dir = makeRepo(path.join(tmp, 'silent'));
     const merged = addWorktree(dir, 'feat');
@@ -203,6 +216,10 @@ describe('planRepo and applyRepo when git says no', () => {
     commit(dir, 'moved-on.txt'); // so the pick gets a sha of its own
     git(['cherry-pick', 'rebased'], dir);
     git(['push', '-q', 'origin', 'HEAD:main'], dir);
+    // A `cherry` that fails is not "every commit has a twin" either.
+    await withFakeGit('cherry', async () => {
+      assert.equal(find(await planRepo(entry(dir)), rebased).verdict, 'unmerged');
+    });
     await withFakeGit('rev-list --merges', async () => {
       assert.equal(find(await planRepo(entry(dir)), rebased).verdict, 'unmerged');
     });
