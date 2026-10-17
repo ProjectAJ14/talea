@@ -317,8 +317,9 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    worktrees on one machine held 8.5 GB, nearly all of it `node_modules`,
    `build` and `.dart_tool`, for branches merged long ago. It stays inside rule
    5 because it leans on git's own guards and adds the one git lacks. A linked worktree is
-   removed only when every commit on it is on `origin/<defaultBranch>` — an
-   ancestor, or patch-identical per `git cherry` (a rebase merge), with every
+   removed only when every change on it is on `origin/<defaultBranch>` — its
+   commits an ancestor, or patch-identical per `git cherry` (a rebase merge), or
+   the whole branch squashed into one commit (below), with every
    merge commit in the range one whose tree is what `git merge-tree
    --write-tree` makes of its two parents — `cherry` never looks at a merge, so
    one carrying a resolution or a file of its own read as merged (found in
@@ -374,10 +375,19 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    dirty-tree guard still holds. Any other reason, or none, is somebody's lock
    and is never touched; anything unreadable — no `ps`, a start time that
    does not parse — reads as held.
-   **Known limit: a squash merge reads as `unmerged`.** The squashed commit is a
-   new change, so neither ancestry nor `cherry` can see it; telling it apart
-   needs the PR's state from GitHub, and `src/github.js` deliberately makes two
-   calls. Those worktrees are kept and the developer removes them by hand.
+   **A squash merge reads as `merged`, by content, with no GitHub call.** The
+   squash of several commits is one new change, so neither ancestry nor
+   `cherry` sees it (a one-commit squash is a patch twin; the developer used to copy `prune`'s output to Claude to clear these by
+   hand). `squashed()` in `src/commands/prune.js` runs `git merge-tree
+   --write-tree <base> <head>` and passes only when it is clean and its tree is
+   the base's own: merging the branch would add nothing. It runs only when
+   `cherry` ran and found a commit with no twin; a failed `cherry`, an octopus
+   or a failed merge listing still keep the worktree. Merged here means "every
+   change is on the base", not "every commit": the folder goes and the branch
+   stays, so no commit is lost. A conflict, a change the base lacks, work done
+   after the squash, or a git older than 2.38 reads as `unmerged`, and so does
+   a squash the base has since edited over the same lines.
+   `src/github.js` still makes two calls: a PR's state is not needed.
    An ignored file only counts as a loss if it is really lost: a folder that
    `--directory` folded into one entry is opened and judged file by file, and
    a file byte-identical to the main checkout's copy at the same path survives

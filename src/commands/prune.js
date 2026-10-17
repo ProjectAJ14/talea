@@ -33,7 +33,7 @@ ${c.bold('talea prune')} — remove worktrees whose work is already merged
 Every linked worktree of every cloned repo gets one verdict. Worktrees
 outside the workspace count too — they belong to the repo.
 
-  merged     every commit is on origin/<default branch>   ${c.dim('→ removed')}
+  merged     every change is on origin/<default branch>   ${c.dim('→ removed')}
   missing    its folder is already gone                   ${c.dim('→ record cleared')}
   dirty      modified or untracked files                  ${c.dim('→ kept')}
   ignored    merged, but holds ignored files you made     ${c.dim('→ kept')}
@@ -48,8 +48,9 @@ outside the workspace count too — they belong to the repo.
 (a rebase merge). A merge commit on the branch counts only when it is the merge
 git would make by itself; one that adds a change of its own is unmerged, and
 so is every merge on a git older than 2.38, which cannot check one. A
-${c.bold('squash merge')} is neither, so it reads as unmerged and is kept — delete
-that worktree yourself.
+${c.bold('squash merge')} is caught too: merging the branch into the default branch
+would add nothing, so every change on it is already there. A branch that still
+holds a change the default branch lacks, or that would conflict, is unmerged.
 
 The removal is \`git worktree remove\`, never forced: git itself refuses a tree
 with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, and
@@ -388,13 +389,29 @@ export function formatAge(seconds) {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
+/**
+ * A squash of several commits leaves none of them on the base, and its one new
+ * commit is patch-identical to none of them, so neither ancestry nor `cherry`
+ * sees it (a one-commit squash is a twin, and `cherry` already clears it).
+ * What it does leave is the change itself: merging the branch into
+ * the base then adds nothing, and the merge's tree is the base's own. A
+ * conflict, a change the base never got, or a git older than 2.38 (no
+ * `merge-tree --write-tree`) all fail that and keep the worktree.
+ */
+async function squashed(repoDir, head, base) {
+  const made = await git(['merge-tree', '--write-tree', base, head], { cwd: repoDir });
+  const tree = await git(['rev-parse', `${base}^{tree}`], { cwd: repoDir });
+  return made.code === 0 && lines(made.stdout)[0] === tree.stdout.trim();
+}
+
 async function isMerged(repoDir, head, base) {
   const ancestor = await git(['merge-base', '--is-ancestor', head, base], { cwd: repoDir });
   if (ancestor.code === 0) return true;
   // A rebase merge rewrote every commit, so none is an ancestor — but each one
   // has a patch-identical twin on the base, and `cherry` marks those with `-`.
   const cherry = await git(['cherry', base, head], { cwd: repoDir });
-  if (cherry.code !== 0 || lines(cherry.stdout).some((l) => l.startsWith('+'))) return false;
+  if (cherry.code !== 0) return false;
+  if (lines(cherry.stdout).some((l) => l.startsWith('+'))) return squashed(repoDir, head, base);
   // `cherry` never looks at a merge commit, so one carrying a change of its own
   // — a conflict resolution, a file added mid-merge — read as merged (found in
   // review). A merge passes only when its tree is the one git makes from its

@@ -103,6 +103,44 @@ describe('prune judges each worktree', () => {
     assert.equal(verdictOf(plan, wt), 'merged');
   });
 
+  test('a squash merge reads as merged, and the branch stays', async () => {
+    const dir = makeRepo('squashed');
+    const wt = addWorktree(dir, 'feat');
+    commit(wt, 'second.txt'); // two commits: the squash matches neither by patch, so `cherry` cannot see it
+    commit(dir, 'other.txt'); // main moved on after the branch was cut
+    git(['merge', '-q', '--squash', 'feat'], dir);
+    git(['commit', '-qm', 'feat (#1)'], dir);
+    git(['push', '-q', 'origin', 'main'], dir);
+
+    const plan = await planRepo(repo(dir));
+    assert.equal(verdictOf(plan, wt), 'merged');
+    await applyRepo(dir, plan);
+    assert.equal(existsSync(wt), false);
+    assert.equal(git(['branch', '--list', 'feat'], dir).replace(/^[*+ ]+/, ''), 'feat');
+  });
+
+  test('a squash-merged branch with a later commit of its own is kept', async () => {
+    const dir = makeRepo('squashed-more');
+    const wt = addWorktree(dir, 'feat');
+    commit(wt, 'second.txt');
+    git(['merge', '-q', '--squash', 'feat'], dir);
+    git(['commit', '-qm', 'feat (#1)'], dir);
+    git(['push', '-q', 'origin', 'main'], dir);
+    commit(wt, 'after.txt'); // work done after the squash
+
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'unmerged');
+  });
+
+  test('a branch whose change conflicts with the default branch is kept', async () => {
+    const dir = makeRepo('squash-conflict');
+    const wt = addWorktree(dir, 'feat');
+    commit(wt, 'shared.txt', 'branch');
+    commit(dir, 'shared.txt', 'main');
+    git(['push', '-q', 'origin', 'main'], dir);
+
+    assert.equal(verdictOf(await planRepo(repo(dir)), wt), 'unmerged');
+  });
+
   test('an unmerged commit is kept', async () => {
     const dir = makeRepo('unmerged');
     const wt = addWorktree(dir, 'feat');
