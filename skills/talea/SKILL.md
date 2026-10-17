@@ -179,7 +179,10 @@ marked `· stale lock` was locked by a Claude Code agent that has exited; prune
 unlocks it itself. Never run `git worktree unlock` on a `locked` one to get it
 removed — a lock prune keeps is somebody's. A branch whose merge commit adds a
 change of its own reads as `unmerged`. A squash-merged branch reads as `merged` (git 2.38+); one with a change the
-default branch lacks, or on an older git, reads as `unmerged` — say so rather than
+default branch lacks, or on an older git, reads as `unmerged` — say so
+rather than removing it by hand. When git cannot tell (the default branch edited the same lines after a squash),
+prune asks GitHub and reads `merged` only for a pull request merged with the worktree's HEAD, or a commit containing it, as its head;
+if GitHub cannot be asked, one stderr line says so and the worktree stays `unmerged` — say so rather than
 removing it by hand. Report a removal as **worktree removed, branch kept** — the
 branch is still there and `git worktree add` brings the checkout back. Never
 reach for `git worktree remove --force` to finish what prune refused.
