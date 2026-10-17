@@ -16,7 +16,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { canonical, worktreeRecords, lines } from '../adopt.js';
-import { defaultBranch, groupDir, repoGroup, repoLabel } from '../config.js';
+import { defaultBranch, groupDir, readUserState, repoGroup, repoId, repoLabel, updateUserState } from '../config.js';
+import { mergedPull, token } from '../github.js';
 import { defaultJobs, fetch, git, pooled } from '../git.js';
 import { task } from '../live.js';
 import { c, context, fail, group, heading, plain, skip, summary, table, warn } from '../log.js';
@@ -51,6 +52,11 @@ so is every merge on a git older than 2.38, which cannot check one. A
 ${c.bold('squash merge')} is caught too: merging the branch into the default branch
 would add nothing, so every change on it is already there. A branch that still
 holds a change the default branch lacks, or that would conflict, is unmerged.
+When git cannot tell — the default branch has edited the same lines since a
+squash — a clean worktree is checked against GitHub (its repo name and head
+sha are sent): ${c.bold('merged')} only if a pull request into the default branch was
+merged whose head is that commit or one that contains it. If GitHub cannot
+be asked, it stays unmerged and one line on stderr says why.
 
 The removal is \`git worktree remove\`, never forced: git itself refuses a tree
 with uncommitted work. The ${c.bold('branch is kept')}; only the folder goes, and
@@ -328,13 +334,15 @@ const FRESH_FOR = 24 * 3600;
  * One worktree's verdict, and for a branch with no commits, its age in
  * seconds. A held lock is decided by the caller, before this is reached.
  */
-async function judge(repoDir, wt, base, now) {
+async function judge(repoDir, wt, base, now, pr) {
   if (wt.prunable || !existsSync(wt.path)) return { verdict: 'missing' };
   // Not isDirty(): it reads a status git could not produce as clean.
   const status = await git(['status', '--porcelain', '-unormal'], { cwd: wt.path });
   if (status.code !== 0) return { verdict: 'unreadable', unread: ['.'] };
   if (status.stdout) return { verdict: 'dirty' };
-  if (!(await isMerged(repoDir, wt.head, base))) return { verdict: 'unmerged' };
+  if (!(await isMerged(repoDir, wt.head, base)) && !(await mergedOnGitHub(repoDir, pr, wt.head))) {
+    return { verdict: 'unmerged' };
+  }
   // A branch with no commits of its own is trivially "merged". Cut a minute
   // ago it is a task just started; cut days ago and never touched, with the
   // folder clean, it is a task nobody started, and nothing goes with it. Its
@@ -404,6 +412,61 @@ async function squashed(repoDir, head, base) {
   return made.code === 0 && lines(made.stdout)[0] === tree.stdout.trim();
 }
 
+// What this run has asked GitHub, and why it stopped asking. A process is one
+// run, so module state is per-run state; tests reset it.
+// `down` stops every ask (no auth, rate limit, network); `gone` stops one repo
+// the token cannot see; `reason` is what the one stderr line says.
+const fresh = () => ({ seen: new Map(), tok: undefined, down: false, gone: new Set(), reason: null, noted: false });
+const asked = fresh();
+export const resetAsked = () => Object.assign(asked, fresh());
+
+/** The one stderr line for a run that could not ask GitHub: once, and nothing when it could. */
+export function reportAsk() {
+  if (!asked.reason || asked.noted) return;
+  asked.noted = true;
+  console.error(c.yellow(`could not ask GitHub (${asked.reason}) — worktrees judged from git alone`));
+}
+
+/**
+ * Git alone cannot see a squash merge whose lines the base has since edited;
+ * GitHub can. Asked only for a clean worktree git calls unmerged, once per sha
+ * per run, and a positive answer is kept in machine state because a merged
+ * PR with that head sha stays merged forever (a negative can flip, so it is
+ * never kept). Any failure — no token, 404, rate limit, odd JSON, a remote
+ * that is not GitHub — is "unknown", which stays unmerged (rule 13).
+ */
+// https://github.com/, https://user@github.com/, git@github.com:, ssh://git@github.com/ —
+// anchored, so notgithub.com and github.com.evil.example do not pass.
+const GITHUB_REMOTE = /^(?:(?:https?|ssh):\/\/(?:[^@/]+@)?|[^@/:]+@)github\.com[:/]/i;
+
+async function mergedOnGitHub(repoDir, { repo, home }, head) {
+  const key = `${repoId(repo)}@${head}`;
+  if (asked.seen.has(key)) return asked.seen.get(key);
+  if (readUserState().mergedHeads?.[key]) return true;
+  if (asked.down || asked.gone.has(repoId(repo))) return false;
+  const origin = await git(['remote', 'get-url', 'origin'], { cwd: repoDir });
+  if (origin.code !== 0 || !GITHUB_REMOTE.test(origin.stdout)) return false;
+  let merged = false;
+  try {
+    asked.tok ??= token().token ?? null;
+    const heads = await mergedPull({ token: asked.tok, owner: repo.owner, name: repo.name, sha: head, base: home });
+    // The worktree is the PR's head, or sits under it (the PR merged main in
+    // after). A head not present locally fails the check: unknown, never merged.
+    for (const h of heads) {
+      if (h === head || (await git(['merge-base', '--is-ancestor', head, h], { cwd: repoDir })).code === 0) merged = true;
+    }
+  } catch (e) {
+    // 422: this commit was never pushed — a normal WIP worktree, nothing wrong.
+    // 404: this repo is invisible to the token, which says nothing of the others.
+    if (e.status === 404) asked.gone.add(repoId(repo));
+    else if (e.status !== 422) asked.down = true;
+    if (e.status !== 422) asked.reason ??= e.message;
+  }
+  asked.seen.set(key, merged);
+  if (merged) updateUserState((s) => ({ ...s, mergedHeads: { ...s.mergedHeads, [key]: true } }));
+  return merged;
+}
+
 async function isMerged(repoDir, head, base) {
   const ancestor = await git(['merge-base', '--is-ancestor', head, base], { cwd: repoDir });
   if (ancestor.code === 0) return true;
@@ -467,15 +530,15 @@ export async function planRepo(
   if (known.code !== 0) return { skip: `${base} does not exist` };
 
   const worktrees = [];
-  for (const wt of linked) worktrees.push(await judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly }));
-  return { base, now, worktrees };
+  for (const wt of linked) worktrees.push(await judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly, pr: { repo, home } }));
+  return { base, now, pr: { repo, home }, worktrees };
 }
 
 /** One linked worktree's entry in the plan, from its `git worktree list` record. */
-async function judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly }) {
+async function judgeWorktree(dir, wt, base, { withIgnored, now, removableOnly, pr }) {
   // A lock is never second-guessed except a leftover one (see staleLock).
   const stale = wt.locked && (await staleLock(wt.lockReason));
-  let { verdict, age, unread = [] } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now);
+  let { verdict, age, unread = [] } = wt.locked && !stale ? { verdict: 'locked' } : await judge(dir, wt, base, now, pr);
   const unmeasured = verdict === 'missing' || (removableOnly && !REMOVABLE.has(verdict));
   const measured = unmeasured ? { size: 0, nested: [], unreadable: [] } : await measure(wt.path);
   // git's spelling, so it matches what `ls-files` lists on any platform.
@@ -524,7 +587,7 @@ async function rejudge(dir, plan, wt) {
   if (!record) return { verdict: 'failed', error: 'no longer a worktree of this repo' };
   // --with-ignored, so the files are listed rather than folded into a verdict:
   // the ones the plan named may go, and only those.
-  const now = await judgeWorktree(dir, record, plan.base, { withIgnored: true, now: plan.now });
+  const now = await judgeWorktree(dir, record, plan.base, { withIgnored: true, now: plan.now, pr: plan.pr });
   const named = new Set(wt.lossy);
   const extra = now.lossy.filter((f) => !named.has(f));
   if (!REMOVABLE.has(now.verdict)) return now;
@@ -629,6 +692,7 @@ export async function run(opts) {
       }),
   );
 
+  reportAsk();
   heading(opts.apply ? 'Pruning worktrees' : 'Worktrees — dry run, nothing changes');
   context([
     ['root', c.bold(root)],

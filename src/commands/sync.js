@@ -19,7 +19,7 @@ import { chooseRepos } from '../select.js';
 import { requireCatalogue, requireWorkspace, selectRepos, withPaths } from '../workspace.js';
 import { reportOrphans } from './adopt.js';
 import { adoptInPlace, cloneMissing, writeDocs } from './clone.js';
-import { formatBytes, planRepo, REMOVABLE } from './prune.js';
+import { formatBytes, planRepo, REMOVABLE, reportAsk } from './prune.js';
 
 export const help = `
 ${c.bold('talea sync')} — make this machine match the list
@@ -162,6 +162,7 @@ export async function run(opts) {
     const what = spare.length === 1 ? '1 worktree is' : `${spare.length} worktrees are`;
     plain(c.yellow(`${what} merged or unused — ${formatBytes(bytes)} to free with \`talea prune --apply\``));
   }
+  reportAsk();
 }
 
 /**

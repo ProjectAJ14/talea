@@ -167,6 +167,14 @@ branch into origin's default branch would add nothing, and git can tell that
 without asking GitHub (`git merge-tree`, git 2.38 or newer). A branch with a
 change the default branch lacks, or one that would conflict, stays `unmerged`.
 
+One case git cannot settle: a squash merge after which the default branch edited
+the same lines. For a clean worktree git calls `unmerged`, prune asks GitHub
+(the repo name and the commit's sha go to api.github.com) and counts it `merged`
+only when a pull request into the default branch was merged with that commit,
+or a commit that contains it, as its head — so nothing was added after the merge. Any failure to ask
+(no token, rate limit, a remote that is not GitHub) leaves it `unmerged`, with
+one line on stderr. A yes is remembered in `~/.talea/state.json`; a no never is.
+
 ## Let your coding agent do it
 
 ```sh

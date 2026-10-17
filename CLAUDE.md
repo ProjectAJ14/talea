@@ -37,7 +37,7 @@ src/
   config.js                manifest + state resolution, paths, URLs
   workspace.js             target selection — what this run is about
   select.js                "what does this machine keep?", asked once
-  github.js                the two API calls and the gist
+  github.js                the API calls (repo list, a commit's merged PR) and the gist
   git.js                   git plumbing; spawn with shell:false
   adopt.js                 match checkouts by remote, move them, repair paths
   theme.js                 the look, in one file — palette, glyphs, width maths
@@ -387,7 +387,28 @@ These are load-bearing. Breaking one causes data loss or a silent failure.
    stays, so no commit is lost. A conflict, a change the base lacks, work done
    after the squash, or a git older than 2.38 reads as `unmerged`, and so does
    a squash the base has since edited over the same lines.
-   `src/github.js` still makes two calls: a PR's state is not needed.
+   **GitHub is asked only for what git cannot decide — a deliberate reversal
+   of "no GitHub call".** A squash followed by a later edit of the same lines
+   makes `merge-tree` conflict, and that reads `unmerged` for a branch that was
+   merged: seven eklavya worktrees, every PR merged. Git cannot know; GitHub
+   does. `mergedPull()` in `src/github.js` asks `commits/{sha}/pulls` and returns
+   the head shas of PRs with `merged_at` and `base.ref` equal to the
+   catalogue's `defaultBranch`; `prune.js` calls the worktree merged when its
+   HEAD is one of those heads or an ancestor of one (`git merge-base
+   --is-ancestor`, no fetch — a head not present locally is unknown). Ancestry,
+   not bare equality, because a PR head is often a "merge main into branch"
+   commit above the worktree's HEAD; either way every commit on the worktree is
+   in the merged PR and none came after it. A PR merged into another branch
+   proves nothing. It runs after ancestor, `cherry` and
+   `squashed()` all say no, and only for a worktree that is clean and not
+   locked, once per sha per run, through `gh` or `fetch`. Unknown is never
+   permission: no token, a 404, a rate limit, bad JSON or a remote that is not
+   GitHub keeps it `unmerged`; the first failure stops further asking and says
+   so once on stderr (`reportAsk`). Only a yes is cached, in `state.json`
+   under `mergedHeads` as `owner/name@sha` (a merged PR with that head stays
+   merged; a no can flip). `planRepo` carries it, so `sync`'s count equals
+   `prune`'s. Every guard after the verdict — dirty, nested, ignored, rejudge —
+   is unchanged. The head sha and repo name now reach api.github.com.
    An ignored file only counts as a loss if it is really lost: a folder that
    `--directory` folded into one entry is opened and judged file by file, and
    a file byte-identical to the main checkout's copy at the same path survives

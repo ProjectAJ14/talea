@@ -66,6 +66,22 @@ will trust, so the agent skill tells an agent never to run it for the
 developer. Pinned by the `quoted` tests in `test/adopt-command.test.js`, which
 round-trip a hostile name through a real `sh`.
 
+### What `prune` sends to GitHub
+
+When git cannot say whether a worktree's branch was merged (a squash merge
+whose lines the default branch has since edited), `prune` and `sync` ask
+`GET /repos/{owner}/{repo}/commits/{sha}/pulls` on api.github.com. What leaves
+the machine is the owner, the repo name and one commit id, only for a clean,
+unlocked worktree that git calls unmerged, and only when its `origin` is on
+github.com. The credential is the one already used for discovery
+(`GITHUB_TOKEN`, `GH_TOKEN` or `gh`); none is added. The answer can only make a
+worktree *more* removable, so every failure (no token, 401/403/429, 404, a
+network error, bad JSON) keeps it `unmerged`, and a 422 (a commit never pushed)
+is that worktree's own answer. The only thing written is a positive-only cache,
+`mergedHeads` in `~/.talea/state.json` (`owner/name@sha`), which never travels
+with the catalogue. Every other guard (dirty, locked, nested, ignored files)
+still runs after the verdict.
+
 ## The site
 
 `web/` is a static Astro + Starlight build (no adapter, no server output, no

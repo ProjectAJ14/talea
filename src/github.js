@@ -1,8 +1,9 @@
 // Talking to GitHub.
 //
-// Two calls and no SDK: list the repos an account can see, and read/write a
-// gist. `fetch` is in Node 20, which is the floor this package already sets, so
-// the dependency count stays at zero.
+// Three calls and no SDK: list the repos an account can see, read/write a
+// gist, and ask which merged pull requests contain a commit (`prune` only,
+// and only when git alone cannot tell). `fetch` is in Node 20, which is the
+// floor this package already sets, so the dependency count stays at zero.
 //
 // The token is whatever the machine already has. `gh auth token` first, because
 // anyone who clones private repos over SSH almost certainly has the GitHub CLI
@@ -68,7 +69,8 @@ function viaGh(pathname, { method = 'GET', body, paginate } = {}) {
 
   if (res.status !== 0) {
     const detail = (res.stderr ?? '').trim().split('\n')[0] || `gh api exited ${res.status}`;
-    throw new Error(`GitHub — ${detail}`);
+    // `gh` ends its message with the status: "… (HTTP 422)".
+    throw Object.assign(new Error(`GitHub — ${detail}`), { status: Number(/\(HTTP (\d{3})\)/.exec(res.stderr)?.[1]) || null });
   }
 
   const json = JSON.parse(res.stdout);
@@ -98,7 +100,7 @@ async function call(pathname, { token: tok, method = 'GET', body } = {}) {
     } catch {
       detail = text.slice(0, 200);
     }
-    throw new Error(`GitHub ${res.status} on ${pathname}${detail ? ` — ${detail}` : ''}`);
+    throw Object.assign(new Error(`GitHub ${res.status} on ${pathname}${detail ? ` — ${detail}` : ''}`), { status: res.status });
   }
 
   return { json: await res.json(), link: res.headers.get('link') };
@@ -149,6 +151,22 @@ export async function listRepos({ token: tok, user }) {
 export async function whoami(tok) {
   const { json } = await call('/user', { token: tok });
   return json.login;
+}
+
+/**
+ * The head shas of the pull requests that contain `sha` and were merged into
+ * `base`.
+ *
+ * A squash merge followed by later edits to the same lines cannot be told from
+ * git alone, and GitHub knows. The caller decides whether `sha` is one of those
+ * heads or an ancestor of one (git can say; GitHub cannot). A PR merged into
+ * some other branch proves nothing, so it is left out. Throws on any failure;
+ * the caller reads a throw as "unknown", never "merged".
+ */
+export async function mergedPull({ token: tok, owner, name, sha, base }) {
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${sha}/pulls?per_page=100`;
+  const { json } = await call(path, { token: tok });
+  return json.filter((p) => p.merged_at && p.base?.ref === base).map((p) => p.head?.sha);
 }
 
 /** The catalogue entry for one API repo. Shape lives here, in one place. */
